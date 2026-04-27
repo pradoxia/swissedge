@@ -1,0 +1,13 @@
+investment_sources:
+  - name: SEC EDGAR
+    type: sec_edgar
+    base_url: https://efts.sec.gov/LATEST/search-index
+    filing_types:
+      - "8-K"
+      - "S-1"
+      - "F-1"
+      - "SC TO"
+      - "Form 10"
+      - "DEF 14A"
+    check_frequency_hours: 6
+    active: true

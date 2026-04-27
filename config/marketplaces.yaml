@@ -1,0 +1,32 @@
+marketplaces:
+  tutti:
+    name: Tutti.ch
+    active: true
+    phase: 1
+    method: browser_automation
+    base_url: https://www.tutti.ch
+    language: de
+    notes: "robots.txt blocks AI bots. Phase 1 = copy-paste drafts only."
+
+  ricardo:
+    name: Ricardo.ch
+    active: false
+    phase: 2
+    method: api
+    requires: partnership_key
+    notes: "Needs partnership credentials from Ricardo."
+
+  amazon_de:
+    name: Amazon.de
+    active: false
+    phase: 1
+    method: pa_api
+    requires: amazon_associates_account
+    notes: "Product Advertising API for price comparison only."
+
+  digitec:
+    name: Digitec.ch
+    active: false
+    phase: 1
+    method: scraping
+    notes: "No public API. Use for price comparison only."

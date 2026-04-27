@@ -1,0 +1,100 @@
+# Investment Sources — seed configuration
+# Load with: POST /api/investment/sources for each entry, or run scripts/seed_sources.py
+# active: false means the scanner skips this source without errors.
+
+sources:
+  - name: "SEC EDGAR Full-Text Search"
+    url: "https://efts.sec.gov/LATEST/search-index"
+    source_type: "sec_edgar"
+    active: true
+    check_frequency_hours: 6
+    description: "SEC EDGAR full-text search for 8-K, SC TO-T, S-4, and other special situation filings."
+    market: "US"
+    jurisdiction: "SEC"
+    priority: 10
+    requires_api_key: false
+    access_method: "http_api"
+    query_template: "form_type=8-K&dateRange=custom&startdt={start_date}&enddt={end_date}"
+    notes: "Requires SEC_USER_AGENT env var (your email). Rate limit: 10 req/s."
+
+  - name: "SEC EDGAR — Merger/Acquisition (SC TO-T)"
+    url: "https://efts.sec.gov/LATEST/search-index"
+    source_type: "sec_edgar"
+    active: true
+    check_frequency_hours: 6
+    description: "Tender offer statements (Schedule TO-T). Primary signal for merger arbitrage."
+    market: "US"
+    jurisdiction: "SEC"
+    priority: 9
+    requires_api_key: false
+    access_method: "http_api"
+    query_template: "form_type=SC+TO-T&dateRange=custom&startdt={start_date}&enddt={end_date}"
+    notes: "High-value signal. Filter for all-cash and stock offers."
+
+  - name: "SEC EDGAR — Spin-off Proxy (DEF 14A)"
+    url: "https://efts.sec.gov/LATEST/search-index"
+    source_type: "sec_edgar"
+    active: true
+    check_frequency_hours: 12
+    description: "Definitive proxy statements, often used for spin-off shareholder votes."
+    market: "US"
+    jurisdiction: "SEC"
+    priority: 7
+    requires_api_key: false
+    access_method: "http_api"
+    query_template: "form_type=DEF+14A&dateRange=custom&startdt={start_date}&enddt={end_date}"
+    notes: "Noisy — many routine proxy filings. Filter by keywords: spin-off, distribution, separation."
+
+  - name: "SEC EDGAR — Registration (S-4)"
+    url: "https://efts.sec.gov/LATEST/search-index"
+    source_type: "sec_edgar"
+    active: true
+    check_frequency_hours: 12
+    description: "Registration statements for mergers, reorganizations, and exchange offers."
+    market: "US"
+    jurisdiction: "SEC"
+    priority: 8
+    requires_api_key: false
+    access_method: "http_api"
+    query_template: "form_type=S-4&dateRange=custom&startdt={start_date}&enddt={end_date}"
+    notes: "Often early indicator of pending mergers before public announcement."
+
+  - name: "SEC EDGAR — Bankruptcy Chapter 11 (8-K Item 1.03)"
+    url: "https://efts.sec.gov/LATEST/search-index"
+    source_type: "sec_edgar"
+    active: false
+    check_frequency_hours: 24
+    description: "8-K filings disclosing bankruptcy petition (Item 1.03). Potential distressed situations."
+    market: "US"
+    jurisdiction: "SEC"
+    priority: 6
+    requires_api_key: false
+    access_method: "http_api"
+    query_template: "q=%22bankruptcy%22+%22chapter+11%22&form_type=8-K&dateRange=custom&startdt={start_date}&enddt={end_date}"
+    notes: "Active=false — distressed investing not yet in scope. Enable in Phase 2."
+
+  - name: "Reuters M&A News (placeholder)"
+    url: "https://feeds.reuters.com/reuters/mergersNews"
+    source_type: "rss"
+    active: false
+    check_frequency_hours: 2
+    description: "Reuters M&A RSS feed. Placeholder — RSS adapter not yet built."
+    market: "Global"
+    jurisdiction: "N/A"
+    priority: 4
+    requires_api_key: false
+    access_method: "rss"
+    notes: "Active=false — requires RSS adapter (Phase 2)."
+
+  - name: "Bloomberg Terminal API (placeholder)"
+    url: "https://api.bloomberg.com/eap"
+    source_type: "bloomberg"
+    active: false
+    check_frequency_hours: 1
+    description: "Bloomberg Enterprise Access Point for real-time corporate events."
+    market: "Global"
+    jurisdiction: "N/A"
+    priority: 10
+    requires_api_key: true
+    access_method: "http_api"
+    notes: "Active=false — requires Bloomberg terminal subscription. High cost."

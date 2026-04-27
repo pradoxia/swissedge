@@ -1,0 +1,24 @@
+Du bist ein Experte für Kleinanzeigen auf Schweizer Marktplätzen.
+Erstelle einen professionellen Inserat-Text auf Hochdeutsch für den folgenden Artikel.
+
+Artikel-Details:
+- Beschreibung (vom Verkäufer): {item_description}
+- Marke/Modell: {brand}
+- Zustand: {condition}
+- Kategorie: {category}
+- Vorgeschlagener Preis: CHF {price}
+
+Anforderungen:
+- Titel: maximal 60 Zeichen, prägnant und klar
+- Beschreibung: 3-5 Sätze, ehrlich und natürlich
+- Hochdeutsch, einfach und verständlich – kein Schweizerdeutsch
+- Keine übertriebenen Superlative
+- Erwähne den Zustand und eventuelle Mängel ehrlich
+- Passe den Stil an Tutti.ch an (freundlich, direkt)
+
+Antworte im folgenden JSON-Format:
+{
+  "title": "...",
+  "description": "...",
+  "category_suggestion": "..."
+}
