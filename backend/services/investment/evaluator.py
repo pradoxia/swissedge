@@ -145,28 +145,35 @@ async def _evaluate_situation_v2(filing: Filing) -> tuple[dict, dict]:
     # Format routing decision for prompt
     routing_text = json.dumps(routing_decision, indent=2)
 
-    # Build prompt
+    # Build prompt - use safe replacement to preserve literal JSON braces in template
     template = _load_prompt_v2()
-    prompt = template.format(
-        company_name=filing.company,
-        ticker=filing.ticker or "N/A",
-        filing_type=filing.filing_type,
-        filing_date=filing.date,
-        filing_url=filing.url or "N/A",
-        filing_summary=filing.summary,
-        routing_decision=routing_text,
-        situation_type=situation_type,
-        subtype=subtype or "N/A",
-        playbook_status=playbook_status,
-        selected_playbook=selected_playbook,
-        detection_confidence=routing_decision.get("detection_confidence", "UNKNOWN"),
-        allowed_checks="\n".join(f"- {c}" for c in allowed_checks) if allowed_checks else "None specified",
-        prohibited_checks="\n".join(f"- {c}" for c in prohibited_checks) if prohibited_checks else "None specified",
-        human_review_triggers="\n".join(f"- {t}" for t in human_review_triggers) if human_review_triggers else "None specified",
-        relevant_risk_patterns=relevant_risk_patterns,
-        playbook_context=playbook_context,
-        evidence_sources=evidence_sources,
-    )
+
+    # Replace placeholders manually to avoid .format() interpreting JSON braces
+    # Convert None values to strings to avoid replace() errors
+    replacements = {
+        "{company_name}": filing.company,
+        "{ticker}": filing.ticker or "N/A",
+        "{filing_type}": filing.filing_type,
+        "{filing_date}": filing.date,
+        "{filing_url}": filing.url or "N/A",
+        "{filing_summary}": filing.summary,
+        "{routing_decision}": routing_text,
+        "{situation_type}": situation_type,
+        "{subtype}": subtype or "N/A",
+        "{playbook_status}": playbook_status,
+        "{selected_playbook}": selected_playbook,
+        "{detection_confidence}": routing_decision.get("detection_confidence", "UNKNOWN"),
+        "{allowed_checks}": "\n".join(f"- {c}" for c in allowed_checks) if allowed_checks else "None specified",
+        "{prohibited_checks}": "\n".join(f"- {c}" for c in prohibited_checks) if prohibited_checks else "None specified",
+        "{human_review_triggers}": "\n".join(f"- {t}" for t in human_review_triggers) if human_review_triggers else "None specified",
+        "{relevant_risk_patterns}": relevant_risk_patterns,
+        "{playbook_context}": playbook_context,
+        "{evidence_sources}": evidence_sources,
+    }
+
+    prompt = template
+    for placeholder, value in replacements.items():
+        prompt = prompt.replace(placeholder, str(value))
 
     # Call AI
     usage: dict = {}
