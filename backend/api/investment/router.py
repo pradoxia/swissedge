@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 from backend.db.database import get_db
 from backend.models.investment import SpecialSituation, SituationHistory, InvestmentSource
 from backend.services.investment.sources.sec_edgar import SECEdgarAdapter
+from backend.services.investment.sources.base import Filing
 from backend.services.investment.evaluator import evaluate_situation
 from backend.services.investment.course_index import load_master_index
 from backend.services.observability import run_logger
@@ -20,6 +21,10 @@ VALID_STATUSES = {
     "detected", "analyzing", "watchlist", "active",
     "closed_profit", "closed_loss", "passed", "expired",
 }
+
+# Simple in-memory daily cap for v2 evaluations (MVP - replace with Redis later)
+_v2_daily_counter = {"date": None, "count": 0}
+_V2_DAILY_LIMIT = 10
 
 
 # ── Pydantic schemas ──────────────────────────────────────────────────────────
@@ -62,10 +67,44 @@ class SourcePatch(BaseModel):
     notes: str | None = None
 
 
+class FilingInput(BaseModel):
+    company: str
+    ticker: str | None = None
+    filing_type: str
+    date: str
+    url: str
+    summary: str
+    situation_type: str | None = None
+    cik: str | None = None
+    accession_number: str | None = None
+    save_to_db: bool = False
+
+
 # ── Serializers ───────────────────────────────────────────────────────────────
 
-def _serialize(s: SpecialSituation) -> dict:
+def _extract_v2_fields(evaluation: dict | None) -> dict:
+    """Extract v2 schema fields from evaluation JSON for dashboard display."""
+    if not evaluation:
+        return {}
+
     return {
+        "evaluator_version": evaluation.get("evaluator_version", "v1"),
+        "v2_situation_type": evaluation.get("situation_type"),
+        "v2_subtype": evaluation.get("subtype"),
+        "selected_playbook": evaluation.get("routing_decision", {}).get("selected_playbook"),
+        "playbook_status": evaluation.get("playbook_status"),
+        "recommendation": evaluation.get("recommendation"),
+        "evaluator_confidence": evaluation.get("evaluator_confidence"),
+        "human_review_required_count": len(evaluation.get("human_review_required", [])),
+        "risk_flags_count": len(evaluation.get("risk_flags", [])),
+        "prohibited_inferences_count": len(evaluation.get("prohibited_inferences_detected", [])),
+        "missing_documents_count": len(evaluation.get("missing_documents", [])),
+        "fallback_occurred": evaluation.get("fallback_occurred", False),
+    }
+
+
+def _serialize(s: SpecialSituation) -> dict:
+    base = {
         "id": str(s.id),
         "situation_type": s.situation_type,
         "company_name": s.company_name,
@@ -86,6 +125,11 @@ def _serialize(s: SpecialSituation) -> dict:
         "created_at": s.created_at.isoformat() if s.created_at else None,
         "updated_at": s.updated_at.isoformat() if s.updated_at else None,
     }
+
+    # Add v2 dashboard fields
+    base.update(_extract_v2_fields(s.evaluation))
+
+    return base
 
 
 def _serialize_source(src: InvestmentSource) -> dict:
@@ -108,6 +152,152 @@ def _serialize_source(src: InvestmentSource) -> dict:
         "query_template": src.query_template,
         "notes": src.notes,
     }
+
+
+def _check_v2_daily_limit() -> bool:
+    """Check if v2 daily limit has been reached. Returns True if under limit."""
+    global _v2_daily_counter
+    today = date.today().isoformat()
+
+    if _v2_daily_counter["date"] != today:
+        _v2_daily_counter = {"date": today, "count": 0}
+
+    return _v2_daily_counter["count"] < _V2_DAILY_LIMIT
+
+
+def _increment_v2_counter():
+    """Increment v2 daily counter."""
+    global _v2_daily_counter
+    _v2_daily_counter["count"] += 1
+
+
+# ── Endpoints ─────────────────────────────────────────────────────────────────
+
+@router.post("/evaluate-v2")
+async def evaluate_v2_manual(
+    filing_input: FilingInput,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Manual evaluator v2 endpoint for controlled testing.
+    Always uses v2 evaluator. Limited to 10 evaluations per day.
+    V1 remains default for all other flows.
+
+    If save_to_db=true, persists the evaluation result as a SpecialSituation row.
+    """
+    if not _check_v2_daily_limit():
+        raise HTTPException(
+            status_code=429,
+            detail=f"Daily v2 evaluation limit reached ({_V2_DAILY_LIMIT}/day). Try again tomorrow."
+        )
+
+    filing = Filing(
+        company=filing_input.company,
+        ticker=filing_input.ticker,
+        filing_type=filing_input.filing_type,
+        date=filing_input.date,
+        url=filing_input.url,
+        summary=filing_input.summary,
+        situation_type=filing_input.situation_type,
+        cik=filing_input.cik,
+        accession_number=filing_input.accession_number,
+    )
+
+    run_id = await run_logger.start_run(
+        db,
+        agent_name="investment_evaluator",
+        agent_type="analyzer",
+        module="backend.services.investment.evaluator",
+        runtime="fastapi",
+        trigger_source="manual_v2_endpoint",
+        task_name=f"Evaluate {filing.company} ({filing.filing_type})",
+        input_summary=f"{filing.filing_type} for {filing.company}",
+    )
+
+    import os
+    original_version = os.environ.get("EVALUATOR_VERSION")
+    fallback_occurred = False
+    situation_id = None
+
+    try:
+        os.environ["EVALUATOR_VERSION"] = "v2"
+        result, usage = await evaluate_situation(filing)
+
+        if "evaluator_version" not in result:
+            result["evaluator_version"] = "v2"
+
+        if result.get("_fallback_to_v1"):
+            fallback_occurred = True
+            result["evaluator_version"] = "v1"
+            result["fallback_occurred"] = True
+
+        _increment_v2_counter()
+
+        # Optionally persist to database
+        if filing_input.save_to_db:
+            sit = SpecialSituation(
+                situation_type=filing.situation_type or result.get("situation_type"),
+                company_name=filing.company,
+                ticker=filing.ticker,
+                filing_type=filing.filing_type,
+                filing_url=filing.url,
+                status="detected",
+                evaluation=result,
+                source_urls=[filing.url],
+            )
+            db.add(sit)
+            await db.flush()
+            situation_id = str(sit.id)
+
+        await run_logger.finish_run(
+            db,
+            run_id,
+            output_summary=f"Evaluated as {result.get('situation_type', 'unknown')}" + (f"; saved as {situation_id}" if situation_id else ""),
+            final_outcome="success",
+            model_used=usage.get("model"),
+            input_tokens=usage.get("input_tokens"),
+            output_tokens=usage.get("output_tokens"),
+        )
+
+        await run_logger.log_ai_usage(
+            db,
+            run_id=run_id,
+            agent_name="investment_evaluator",
+            provider=usage.get("provider", "unknown"),
+            model=usage.get("model", "unknown"),
+            prompt_name="situation_evaluator_v2",
+            input_tokens=usage.get("input_tokens", 0),
+            output_tokens=usage.get("output_tokens", 0),
+        )
+
+        await db.commit()
+
+        response = {
+            "result": result,
+            "usage": usage,
+            "evaluator_version": result.get("evaluator_version", "v2"),
+            "fallback_occurred": fallback_occurred,
+            "daily_limit": {
+                "used": _v2_daily_counter["count"],
+                "limit": _V2_DAILY_LIMIT,
+                "remaining": _V2_DAILY_LIMIT - _v2_daily_counter["count"],
+            }
+        }
+
+        if situation_id:
+            response["situation_id"] = situation_id
+
+        return response
+
+    except Exception as e:
+        await run_logger.fail_run(db, run_id, str(e))
+        raise HTTPException(status_code=500, detail=f"Evaluation failed: {str(e)}")
+
+    finally:
+        if original_version is None:
+            os.environ.pop("EVALUATOR_VERSION", None)
+        else:
+            os.environ["EVALUATOR_VERSION"] = original_version
 
 
 # ── Scan endpoint (instrumented) ──────────────────────────────────────────────
@@ -219,20 +409,40 @@ async def scan_situations(hours_back: int = 6, db: AsyncSession = Depends(get_db
 async def list_situations(
     status: str | None = None,
     situation_type: str | None = None,
+    evaluator_version: str | None = None,
+    playbook_status: str | None = None,
+    recommendation: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    List special situations with optional filters.
+    Supports filtering by v2 fields extracted from evaluation JSON.
+    """
     q = select(SpecialSituation)
     filters = []
     if status:
         filters.append(SpecialSituation.status == status)
     if situation_type:
         filters.append(SpecialSituation.situation_type == situation_type)
+
+    # V2 filters require JSON extraction - apply post-query
     if filters:
         q = q.where(and_(*filters))
     q = q.order_by(SpecialSituation.detected_at.desc())
     result = await db.execute(q)
     items = result.scalars().all()
-    return {"count": len(items), "situations": [_serialize(s) for s in items]}
+
+    # Apply v2 filters in Python (since they're in JSONB)
+    serialized = [_serialize(s) for s in items]
+
+    if evaluator_version:
+        serialized = [s for s in serialized if s.get("evaluator_version") == evaluator_version]
+    if playbook_status:
+        serialized = [s for s in serialized if s.get("playbook_status") == playbook_status]
+    if recommendation:
+        serialized = [s for s in serialized if s.get("recommendation") == recommendation]
+
+    return {"count": len(serialized), "situations": serialized}
 
 
 @router.get("/situations/{situation_id}")
