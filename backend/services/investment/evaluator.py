@@ -189,6 +189,35 @@ async def _evaluate_situation_v2(filing: Filing) -> tuple[dict, dict]:
         start = raw.find("{")
         if start != -1:
             raw = raw[start:]
+        else:
+            # No braces found - check if it looks like JSON object fields without outer braces
+            # This handles cases where AI returns: "field": value, "field2": value2
+            # without the surrounding { }
+            stripped = raw.lstrip()
+            if stripped.startswith('"') and '":' in stripped:
+                # Need to find where JSON content ends before any trailing text
+                # Look for patterns that indicate end of JSON: closing brackets/braces, or last field value
+                # Try to find the last character that could be part of valid JSON
+                last_json_char = len(stripped)
+
+                # Look backwards for the last closing bracket, brace, quote, or digit
+                # that could be the end of a JSON value
+                for i in range(len(stripped) - 1, -1, -1):
+                    char = stripped[i]
+                    if char in ']}':
+                        last_json_char = i + 1
+                        break
+                    elif char == '"':
+                        # Found a closing quote - this could be end of a string value
+                        # Check if there's only whitespace or newlines after it (valid end)
+                        # or if there's more JSON content
+                        remaining = stripped[i+1:].lstrip()
+                        if not remaining or (remaining[0] not in '":,[]{}' and not remaining[0].isalnum()):
+                            # Looks like end of JSON content
+                            last_json_char = i + 1
+                            break
+
+                raw = "{" + stripped[:last_json_char] + "}"
 
     if not raw.endswith("}"):
         # Look for last } to handle trailing text
@@ -196,7 +225,26 @@ async def _evaluate_situation_v2(filing: Filing) -> tuple[dict, dict]:
         if end != -1:
             raw = raw[:end + 1]
 
-    result = json.loads(raw.strip())
+    # Try parsing - if it fails due to trailing content, strip from the end
+    try:
+        result = json.loads(raw.strip())
+    except json.JSONDecodeError as e:
+        # If error is about trailing content, try to find the actual end of JSON
+        if "Extra data" in str(e) or "Expecting" in str(e):
+            # Find the position where valid JSON ends
+            # Try progressively shorter strings from the end
+            for i in range(len(raw) - 1, 0, -1):
+                if raw[i] in ']}':
+                    try:
+                        result = json.loads(raw[:i+1].strip())
+                        break
+                    except json.JSONDecodeError:
+                        continue
+            else:
+                # If we still can't parse, re-raise original error
+                raise
+        else:
+            raise
 
     # Normalize schema
     result = _normalize_v2_result(result, filing, routing_decision)
