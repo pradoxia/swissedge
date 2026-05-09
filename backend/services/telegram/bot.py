@@ -138,14 +138,220 @@ async def cmd_doctor(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await _safe_reply(update, "\n".join(lines))
 
 
+async def cmd_missioncontrol(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text("🤖 Cargando Mission Control...")
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            resp = await client.get(f"{BACKEND_URL}/api/observability/mission-control/text")
+            resp.raise_for_status()
+            text = resp.text
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {e}")
+        return
+    if len(text) > 4000:
+        text = text[:4000] + "\n...[truncado]"
+    await update.message.reply_text(text)
+
+
+async def cmd_agentes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(f"{BACKEND_URL}/api/observability/agents")
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {e}")
+        return
+
+    status_icons = {"active": "✅", "partial": "⚠️", "pending": "🔵", "future": "⚙️"}
+    lines = [f"🤖 *Agentes SwissEdge* ({data['count']} total)\n"]
+    for a in data["agents"]:
+        icon = status_icons.get(a["current_status"], "❓")
+        run_info = f"runs={a['total_runs']}"
+        if a["failed_runs"]:
+            run_info += f" fallos={a['failed_runs']}"
+        lines.append(f"{icon} `{a['agent_name']}` — {a['current_status']} ({run_info})")
+        if a.get("last_outcome"):
+            lines.append(f"   ↳ {a['last_outcome'][:60]}")
+        for w in a.get("warnings", [])[:1]:
+            lines.append(f"   ⚠️ {w[:70]}")
+    await _safe_reply(update, "\n".join(lines))
+
+
+async def cmd_agente(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not context.args:
+        await update.message.reply_text(
+            "Uso: /agente <nombre>\nEjemplo: /agente marketplace\\_lister"
+        )
+        return
+    name = context.args[0]
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(f"{BACKEND_URL}/api/observability/agents/{name}/text")
+            if resp.status_code == 404:
+                await update.message.reply_text(f"❌ Agente '{name}' no registrado.")
+                return
+            resp.raise_for_status()
+            text = resp.text
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {e}")
+        return
+    if len(text) > 4000:
+        text = text[:4000] + "\n...[truncado]"
+    await update.message.reply_text(text)
+
+
+async def cmd_cron(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(
+                f"{BACKEND_URL}/api/observability/cron/upcoming/text?days=3"
+            )
+            resp.raise_for_status()
+            text = resp.text
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {e}")
+        return
+    if len(text) > 4000:
+        text = text[:4000] + "\n...[truncado]"
+    await update.message.reply_text(text)
+
+
+async def cmd_costes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(f"{BACKEND_URL}/api/observability/summary")
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {e}")
+        return
+
+    sr = data.get("success_rate")
+    sr_str = f"{sr * 100:.1f}%" if sr is not None else "N/A"
+    lines = [
+        "💰 *Costes SwissEdge*\n",
+        f"Total runs: {data['total_runs']}",
+        f"Fallos: {data['failed_runs']}",
+        f"Tasa éxito: {sr_str}",
+        f"Coste total IA: ${data['total_ai_cost_usd']:.4f}",
+        f"Aprobaciones pendientes: {data['pending_human_approvals']}",
+        "",
+        "*Top agentes:*",
+    ]
+    for i, a in enumerate(data.get("top_agents", [])[:5], 1):
+        lines.append(f"{i}. `{a['agent_name']}` — {a['run_count']} runs")
+    await _safe_reply(update, "\n".join(lines))
+
+
+async def cmd_errores(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(
+                f"{BACKEND_URL}/api/observability/runs?status=failed&limit=10"
+            )
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {e}")
+        return
+
+    runs = data.get("runs", [])
+    if not runs:
+        await _safe_reply(update, "✅ No hay errores recientes.")
+        return
+
+    lines = [f"❌ *Últimos errores* ({len(runs)})\n"]
+    for r in runs:
+        ts = (r.get("started_at") or "")[:16]
+        lines.append(f"🔴 `{r['agent_name']}` — {ts}")
+        if r.get("error_message"):
+            lines.append(f"   {r['error_message'][:100]}")
+    await _safe_reply(update, "\n".join(lines))
+
+
+FRONTEND_BASE_URL = "http://100.73.109.52:3001"
+
+
+async def _create_sales_item(
+    chat_id: str,
+    message_id: str | None,
+    hint: str | None,
+    photo_file_id: str | None,
+) -> dict | None:
+    payload: dict = {
+        "created_from": "telegram",
+        "telegram_chat_id": chat_id,
+    }
+    if message_id:
+        payload["telegram_message_id"] = message_id
+    if hint:
+        payload["brand_model"] = hint[:200]
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(
+                f"{BACKEND_URL}/api/marketplace/sales/items",
+                json=payload,
+            )
+            resp.raise_for_status()
+            return resp.json()
+    except Exception as e:
+        logger.warning("Failed to create SalesItem: %s", e)
+        return None
+
+
+SALES_INTAKE_RESPONSE = (
+    "Perfecto, preparo una venta asistida. 🇨🇭\n\n"
+    "No publicaré nada sin tu confirmación.\n\n"
+    "Para hacer un buen anuncio en *Ricardo / Tutti / Anibis* necesito:\n"
+    "1️⃣ ¿Qué es exactamente el artículo?\n"
+    "2️⃣ Estado: nuevo / como nuevo / muy bueno / bueno / con defectos\n"
+    "3️⃣ Precio deseado en CHF\n"
+    "4️⃣ Recogida o envío (y desde dónde)\n"
+    "5️⃣ Defectos, accesorios o detalles importantes\n\n"
+    "_Sin confirmación tuya no publico nada._"
+)
+
+SALES_TRIGGERS = {
+    "vende eso", "vende esto", "ponlo a la venta", "ponla a la venta",
+    "quiero vender esto", "quiero vender eso", "sell this", "sell that",
+    "vender esto", "vender eso",
+}
+
+
+def _is_sales_intent(text: str) -> bool:
+    t = text.strip().lower()
+    if t in SALES_TRIGGERS:
+        return True
+    sales_verbs = ("vende ", "vender ", "sell ", "ponlo a la venta", "ponla a la venta", "quiero vender")
+    return any(t.startswith(v) for v in sales_verbs)
+
+
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle incoming photos — Phase 1: use caption as description."""
-    caption = update.message.caption or ""
-    if not caption:
+    """Handle incoming photos — enter sales intake mode and create persistent SalesItem."""
+    caption = (update.message.caption or "").strip()
+    chat_id = str(update.effective_chat.id)
+    message_id = str(update.message.message_id)
+    photo = update.message.photo[-1] if update.message.photo else None
+    photo_file_id = photo.file_id if photo else None
+
+    if _is_sales_intent(caption) or not caption:
+        hint = None
+        if caption and _is_sales_intent(caption):
+            words = caption.split()
+            if len(words) > 2:
+                hint = " ".join(words[2:])
+
+        item = await _create_sales_item(chat_id, message_id, hint, photo_file_id)
+        context.user_data["active_item_id"] = item["id"] if item else None
+
+        item_link = (
+            f"\n\n🔗 [Ver item]({FRONTEND_BASE_URL}/marketplace/sales/items/{item['id']})"
+            if item else ""
+        )
         await _safe_reply(
             update,
-            "📸 Foto erhalten! Bitte füge eine *Beschreibung* als Bildunterschrift hinzu.\n"
-            "Beispiel: 'Samsung Galaxy S23, sehr gut, 128GB'",
+            "📸 He recibido la foto.\n\n" + SALES_INTAKE_RESPONSE + item_link,
         )
         return
 
@@ -172,6 +378,26 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await _safe_reply(update, msg)
 
 
+async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Catch free-text sales intent phrases."""
+    text = (update.message.text or "").strip()
+    if _is_sales_intent(text):
+        chat_id = str(update.effective_chat.id)
+        message_id = str(update.message.message_id)
+        words = text.split()
+        hint = " ".join(words[2:]) if len(words) > 2 else None
+
+        item = await _create_sales_item(chat_id, message_id, hint, None)
+        context.user_data["active_item_id"] = item["id"] if item else None
+
+        item_link = (
+            f"\n\n🔗 [Ver item]({FRONTEND_BASE_URL}/marketplace/sales/items/{item['id']})"
+            if item else ""
+        )
+        await _safe_reply(update, SALES_INTAKE_RESPONSE + item_link)
+        return
+
+
 # ── app setup ─────────────────────────────────────────────────────────────────
 
 def build_app() -> Application:
@@ -185,7 +411,15 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("situations", cmd_situations))
     app.add_handler(CommandHandler("watchlist", cmd_situations))
     app.add_handler(CommandHandler("doctor", cmd_doctor))
+    app.add_handler(CommandHandler("missioncontrol", cmd_missioncontrol))
+    app.add_handler(CommandHandler("control", cmd_missioncontrol))
+    app.add_handler(CommandHandler("agentes", cmd_agentes))
+    app.add_handler(CommandHandler("agente", cmd_agente))
+    app.add_handler(CommandHandler("cron", cmd_cron))
+    app.add_handler(CommandHandler("costes", cmd_costes))
+    app.add_handler(CommandHandler("errores", cmd_errores))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
 
     return app
 

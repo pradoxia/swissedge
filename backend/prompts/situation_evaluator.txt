@@ -22,14 +22,14 @@ Then provide:
 4. Recommended next action: PASS / WATCHLIST / INVESTIGATE
 
 Respond in the following JSON format:
-{
-  "checklist_results": [{"item": "...", "result": "PASS|FAIL|UNCERTAIN|NOT_APPLICABLE", "note": "..."}],
+{{
+  "checklist_results": [{{"item": "...", "result": "PASS|FAIL|UNCERTAIN|NOT_APPLICABLE", "note": "..."}}],
   "strengths": ["...", "..."],
   "weaknesses": ["...", "..."],
   "risks": ["...", "..."],
   "confidence": "LOW|MEDIUM|HIGH",
   "recommendation": "PASS|WATCHLIST|INVESTIGATE",
   "summary": "Two-sentence summary of the situation."
-}
+}}
 
 IMPORTANT: This is for educational analysis only. Always include uncertainty. Never present as financial advice.

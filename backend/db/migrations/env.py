@@ -10,6 +10,11 @@ import backend.models.inventory  # noqa: F401
 import backend.models.investment  # noqa: F401
 import backend.models.health  # noqa: F401
 import backend.models.observability  # noqa: F401
+import backend.models.sales  # noqa: F401
+import backend.models.investment_research  # noqa: F401
+import backend.models.source_intelligence  # noqa: F401
+import backend.models.publishing  # noqa: F401
+import backend.models.agent_ops  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:

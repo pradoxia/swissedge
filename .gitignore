@@ -134,3 +134,7 @@ claude-code-sessions.md
 docs/engineering-log.md
 docs/claude-code-usage.md
 docs/openclaw-observability.md
+
+vscode-setup-backup/
+
+.env.*.local

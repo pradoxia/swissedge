@@ -2,7 +2,7 @@ import json
 import logging
 from pathlib import Path
 
-from backend.services.ai_client import complete
+from backend.services.ai_client import complete_with_usage
 
 logger = logging.getLogger(__name__)
 
@@ -19,10 +19,12 @@ async def generate_listing(
     condition: str = "Gut",
     category: str = "",
     price: float = 0,
-) -> dict:
+) -> tuple[dict, dict]:
     """
     Generate a Hochdeutsch listing title and description.
-    Returns dict with keys: title, description, category_suggestion.
+    Returns (result_dict, usage_dict).
+    result keys: title, description, category_suggestion.
+    usage keys: provider, model, input_tokens, output_tokens.
     """
     template = _load_prompt()
     prompt = (
@@ -35,7 +37,7 @@ async def generate_listing(
     )
 
     try:
-        raw = await complete(prompt)
+        raw, usage = await complete_with_usage(prompt)
         # Strip markdown code fences if present
         raw = raw.strip()
         if raw.startswith("```"):
@@ -54,4 +56,4 @@ async def generate_listing(
         logger.error("Listing generation failed: %s", e)
         raise
 
-    return result
+    return result, usage

@@ -129,7 +129,7 @@ async def analyze_photo(req: AnalyzePhotoRequest):
     Phase 1: uses user_message as item description. Phase 2+: vision API for photo.
     """
     try:
-        listing = await gen_listing(item_description=req.user_message)
+        listing, _ = await gen_listing(item_description=req.user_message)
         price_comparison = await _tutti.get_price(listing.get("title", req.user_message))
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
@@ -164,7 +164,7 @@ async def generate_listing_endpoint(req: GenerateListingRequest, db: AsyncSessio
         human_approval_required=True,
     )
     try:
-        result = await gen_listing(
+        result, usage = await gen_listing(
             item_description=req.item_description,
             brand=req.brand,
             condition=req.condition,
@@ -176,12 +176,30 @@ async def generate_listing_endpoint(req: GenerateListingRequest, db: AsyncSessio
         await db.commit()
         raise HTTPException(status_code=502, detail=str(e))
 
+    # Log AI usage so ai_usage table is populated and tokens/cost are tracked
+    try:
+        await run_logger.log_ai_usage(
+            db,
+            run_id=run_id,
+            agent_name="marketplace_lister",
+            provider=usage.get("provider", "openai"),
+            model=usage.get("model", "gpt-4o-mini"),
+            prompt_name="listing_generator",
+            input_tokens=usage.get("input_tokens", 0),
+            output_tokens=usage.get("output_tokens", 0),
+        )
+    except Exception:
+        pass
+
     title = result.get("title", "")
     await run_logger.finish_run(
         db, run_id,
         output_summary=f"Listing draft: {title!r}",
         final_outcome="Listing draft generated. Awaiting human approval before publish.",
         outcome_score=1 if title else 0,
+        model_used=usage.get("model"),
+        input_tokens=usage.get("input_tokens"),
+        output_tokens=usage.get("output_tokens"),
     )
     await db.commit()
     return result

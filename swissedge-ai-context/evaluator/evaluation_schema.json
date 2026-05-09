@@ -1,0 +1,85 @@
+{
+  "schema_version": "ai_safe_placeholder_v1",
+  "note": "AI-safe placeholder; validate against processed core artifact before implementation. Do not copy raw course text into this context layer.",
+  "fields": {
+    "situation_type": {
+      "type": "string",
+      "purpose": "Classifies the investment situation using the approved taxonomy.",
+      "required": true
+    },
+    "methodology_status": {
+      "type": "string",
+      "purpose": "States whether the output is evaluator-ready, partial, detection-only, out of scope, or needs human review.",
+      "allowed_values": [
+        "unknown",
+        "evaluator_ready",
+        "partial",
+        "routing_detection_only",
+        "detection_only",
+        "out_of_scope",
+        "human_review_required"
+      ],
+      "required": true
+    },
+    "evidence_level": {
+      "type": "string",
+      "purpose": "Summarizes the reliability of the evidence supporting the case.",
+      "allowed_values": [
+        "unknown",
+        "external_unverified",
+        "trusted_external",
+        "official_secondary",
+        "official_primary",
+        "mixed"
+      ],
+      "required": true
+    },
+    "official_source_status": {
+      "type": "string",
+      "purpose": "Tracks whether official evidence is missing, needed, pending review, attached, not applicable, or unknown.",
+      "allowed_values": [
+        "unknown",
+        "official_missing",
+        "official_needed",
+        "official_pending_review",
+        "official_attached",
+        "official_not_applicable"
+      ],
+      "required": true
+    },
+    "risks": {
+      "type": "array",
+      "items": "string",
+      "purpose": "Lists material research risks without making a recommendation.",
+      "required": true
+    },
+    "missing_information": {
+      "type": "array",
+      "items": "string",
+      "purpose": "Lists information needed before deeper research or publication.",
+      "required": true
+    },
+    "next_steps": {
+      "type": "array",
+      "items": "string",
+      "purpose": "Lists research tasks or verification steps.",
+      "required": true
+    },
+    "human_review_required": {
+      "type": "boolean",
+      "purpose": "Indicates whether a human must review the output before relying on it.",
+      "required": true
+    },
+    "disclaimer": {
+      "type": "string",
+      "purpose": "Required educational-only disclaimer with no financial advice language.",
+      "required": true
+    }
+  },
+  "guardrails": {
+    "no_financial_advice": true,
+    "no_buy_sell_hold_language": true,
+    "no_raw_course_text": true,
+    "human_review_required_for_uncertain_cases": true
+  }
+}

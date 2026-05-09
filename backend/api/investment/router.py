@@ -18,8 +18,7 @@ router = APIRouter()
 _sec = SECEdgarAdapter()
 
 VALID_STATUSES = {
-    "detected", "analyzing", "watchlist", "active",
-    "closed_profit", "closed_loss", "passed", "expired",
+    "detected", "reviewing", "watchlist", "ignored", "archived",
 }
 
 # Simple in-memory daily cap for v2 evaluations (MVP - replace with Redis later)
@@ -171,6 +170,34 @@ def _increment_v2_counter():
     _v2_daily_counter["count"] += 1
 
 
+def _empty_scanner_funnel(hours_back: int) -> dict:
+    return {
+        "adapter_name": "SECEdgarAdapter",
+        "source": "sec_edgar",
+        "source_registry_used": False,
+        "hours_back": hours_back,
+        "forms_searched": list(SECEdgarAdapter.FILING_TYPES),
+        "raw_hits_total": None,
+        "parsed_filings_total": 0,
+        "classified_candidates_count": 0,
+        "classified_candidates_by_type": {},
+        "skipped_unclassified_count": 0,
+        "skipped_duplicate_count": 0,
+        "evaluated_count": 0,
+        "evaluation_error_count": 0,
+        "created_count": 0,
+    }
+
+
+def _count_classified_by_type(filings: list[Filing]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for filing in filings:
+        if not filing.situation_type:
+            continue
+        counts[filing.situation_type] = counts.get(filing.situation_type, 0) + 1
+    return counts
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("/evaluate-v2")
@@ -318,13 +345,21 @@ async def scan_situations(hours_back: int = 6, db: AsyncSession = Depends(get_db
 
     api_calls: list[dict] = []
     new_situations: list[dict] = []
+    funnel = _empty_scanner_funnel(hours_back)
 
     try:
-        filings = await _sec.search_recent(hours_back=hours_back)
+        filings, sec_diagnostics = await _sec.search_recent_with_diagnostics(hours_back=hours_back)
+        funnel.update(sec_diagnostics)
+        funnel.update({
+            "parsed_filings_total": len(filings),
+            "classified_candidates_count": sum(1 for f in filings if f.situation_type),
+            "classified_candidates_by_type": _count_classified_by_type(filings),
+        })
         api_calls.append({
             "source": "sec_edgar",
             "url": "https://efts.sec.gov/LATEST/search-index",
             "filings_returned": len(filings),
+            "diagnostics": funnel,
             "errors": None,
         })
     except Exception as e:
@@ -339,16 +374,19 @@ async def scan_situations(hours_back: int = 6, db: AsyncSession = Depends(get_db
 
     for filing in filings:
         if not filing.situation_type:
+            funnel["skipped_unclassified_count"] += 1
             continue
 
         existing = await db.execute(
             select(SpecialSituation).where(SpecialSituation.filing_url == filing.url)
         )
         if existing.scalars().first():
+            funnel["skipped_duplicate_count"] += 1
             continue
 
         evaluation: dict = {}
         try:
+            funnel["evaluated_count"] += 1
             evaluation, usage = await evaluate_situation(filing)
             eval_model = usage.get("model")
             in_tok = usage.get("input_tokens", 0) or 0
@@ -366,6 +404,7 @@ async def scan_situations(hours_back: int = 6, db: AsyncSession = Depends(get_db
                 output_tokens=out_tok,
             )
         except Exception as e:
+            funnel["evaluation_error_count"] += 1
             evaluation = {"error": str(e), "disclaimer": "This is not financial advice."}
 
         sit = SpecialSituation(
@@ -381,6 +420,10 @@ async def scan_situations(hours_back: int = 6, db: AsyncSession = Depends(get_db
         db.add(sit)
         await db.flush()
         new_situations.append(_serialize(sit))
+
+    funnel["created_count"] = len(new_situations)
+    if api_calls and api_calls[0].get("source") == "sec_edgar":
+        api_calls[0]["diagnostics"] = funnel
 
     await run_logger.finish_run(
         db,
@@ -412,14 +455,21 @@ async def list_situations(
     evaluator_version: str | None = None,
     playbook_status: str | None = None,
     recommendation: str | None = None,
+    include_archived: bool = False,
     db: AsyncSession = Depends(get_db),
 ):
     """
     List special situations with optional filters.
     Supports filtering by v2 fields extracted from evaluation JSON.
+    By default, archived situations are excluded unless include_archived=true.
     """
     q = select(SpecialSituation)
     filters = []
+
+    # Exclude archived by default
+    if not include_archived:
+        filters.append(SpecialSituation.status != "archived")
+
     if status:
         filters.append(SpecialSituation.status == status)
     if situation_type:

@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 _SEARCH_URL = "https://efts.sec.gov/LATEST/search-index"
 _BROWSE_URL = "https://www.sec.gov/cgi-bin/browse-edgar"
 _RATE_LIMIT_SECONDS = 0.11  # ~10 req/s max per SEC policy
+_DEFAULT_QUERY_LIMIT = 20
 
 # Map filing types to situation types
 _FILING_TYPE_MAP: dict[str, str] = {
@@ -108,16 +109,42 @@ class SECEdgarAdapter(InvestmentSource):
     FILING_TYPES = ["8-K", "S-1", "F-1", "SC TO-T", "SC TO-I", "Form 10", "DEF 14A", "DEFC14A"]
 
     async def search_recent(self, hours_back: int = 6) -> list[Filing]:
+        filings, _diagnostics = await self.search_recent_with_diagnostics(hours_back=hours_back)
+        return filings
+
+    async def search_recent_with_diagnostics(self, hours_back: int = 6) -> tuple[list[Filing], dict]:
         since = datetime.now(timezone.utc) - timedelta(hours=hours_back)
         date_str = since.strftime("%Y-%m-%d")
 
         all_filings: list[Filing] = []
+        by_form: dict[str, dict] = {}
         for filing_type in self.FILING_TYPES:
             await _rate_limit()
-            filings = await self._query(filing_type=filing_type, date_from=date_str)
+            filings, diagnostics = await self._query_with_diagnostics(
+                filing_type=filing_type,
+                date_from=date_str,
+            )
             all_filings.extend(filings)
+            by_form[filing_type] = diagnostics
 
-        return all_filings
+        total_raw_hits = sum(int(d.get("raw_hits", 0)) for d in by_form.values())
+        total_limited_hits = sum(int(d.get("limited_hits", 0)) for d in by_form.values())
+        total_parsed_filings = sum(int(d.get("parsed_filings", 0)) for d in by_form.values())
+
+        return all_filings, {
+            "adapter_name": "SECEdgarAdapter",
+            "source": "sec_edgar",
+            "endpoint": _SEARCH_URL,
+            "source_registry_used": False,
+            "hours_back": hours_back,
+            "date_from": date_str,
+            "forms_searched": self.FILING_TYPES,
+            "query_limit_per_form": _DEFAULT_QUERY_LIMIT,
+            "raw_hits_total": total_raw_hits,
+            "limited_hits_total": total_limited_hits,
+            "parsed_filings_total": total_parsed_filings,
+            "by_form": by_form,
+        }
 
     async def search_by_type(self, situation_type: str) -> list[Filing]:
         filing_types = _SITUATION_FILING_TYPES.get(situation_type, ["8-K"])
@@ -128,16 +155,27 @@ class SECEdgarAdapter(InvestmentSource):
             all_filings.extend(filings)
         return all_filings
 
-    async def _query(self, filing_type: str, date_from: str | None = None, limit: int = 20) -> list[Filing]:
+    async def _query(self, filing_type: str, date_from: str | None = None, limit: int = _DEFAULT_QUERY_LIMIT) -> list[Filing]:
+        filings, _diagnostics = await self._query_with_diagnostics(
+            filing_type=filing_type,
+            date_from=date_from,
+            limit=limit,
+        )
+        return filings
+
+    async def _query_with_diagnostics(
+        self,
+        filing_type: str,
+        date_from: str | None = None,
+        limit: int = _DEFAULT_QUERY_LIMIT,
+    ) -> tuple[list[Filing], dict]:
         params: dict = {
             "q": f'"{filing_type}"',
-            "dateRange": "custom" if date_from else "custom",
-            "startdt": date_from or "2024-01-01",
             "forms": filing_type,
-            "_source": "file_date,entity_name,display_names,file_type,period_of_report,entity_id,accession_no",
-            "hits.hits.total.value": 1,
-            "hits.hits._source.file_date": 1,
         }
+        if date_from:
+            params["dateRange"] = "custom"
+            params["startdt"] = date_from
 
         try:
             async with httpx.AsyncClient(headers=_build_headers(), timeout=20) as client:
@@ -145,7 +183,17 @@ class SECEdgarAdapter(InvestmentSource):
                 if response.status_code == 429:
                     logger.warning("SEC EDGAR rate limited. Sleeping 60s.")
                     await asyncio.sleep(60)
-                    return []
+                    return [], {
+                        "filing_type": filing_type,
+                        "query": params,
+                        "raw_hits": 0,
+                        "limited_hits": 0,
+                        "parsed_filings": 0,
+                        "parse_failures": 0,
+                        "classified_filings": 0,
+                        "unclassified_filings": 0,
+                        "rate_limited": True,
+                    }
                 response.raise_for_status()
                 data = response.json()
         except httpx.RequestError as e:
@@ -155,4 +203,14 @@ class SECEdgarAdapter(InvestmentSource):
         hits = data.get("hits", {}).get("hits", [])
         filings = [f for hit in hits[:limit] if (f := _parse_hit(hit)) is not None]
         logger.info("SEC EDGAR: %d filings for type '%s'", len(filings), filing_type)
-        return filings
+        classified = [f for f in filings if f.situation_type]
+        return filings, {
+            "filing_type": filing_type,
+            "query": params,
+            "raw_hits": len(hits),
+            "limited_hits": len(hits[:limit]),
+            "parsed_filings": len(filings),
+            "parse_failures": max(0, len(hits[:limit]) - len(filings)),
+            "classified_filings": len(classified),
+            "unclassified_filings": len(filings) - len(classified),
+        }

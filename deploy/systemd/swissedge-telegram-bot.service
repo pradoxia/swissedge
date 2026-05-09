@@ -1,0 +1,20 @@
+[Unit]
+Description=SwissEdge Telegram Sales Bot
+Documentation=https://github.com/pradoxia/swissedge
+After=network.target swissedge.service
+Wants=swissedge.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/swissedge
+EnvironmentFile=/opt/swissedge/.env
+ExecStart=/opt/swissedge/.venv/bin/python -m backend.services.telegram.bot
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=swissedge-telegram-bot
+
+[Install]
+WantedBy=multi-user.target

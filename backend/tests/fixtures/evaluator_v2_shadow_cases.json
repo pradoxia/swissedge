@@ -1,0 +1,133 @@
+{
+  "test_cases": [
+    {
+      "id": "cash_merger_acquisition_tender",
+      "description": "Cash merger via acquisition tender offer (SC TO-T)",
+      "filing": {
+        "company": "Target Acquisition Corp",
+        "ticker": "TACQ",
+        "filing_type": "SC TO-T",
+        "date": "2026-04-15",
+        "url": "https://sec.gov/Archives/edgar/data/0001234567/000123456726000001/sc-to-t.htm",
+        "summary": "Acquirer Holdings Inc. commences tender offer to acquire all outstanding shares of Target Acquisition Corp at $85.00 per share in cash. Offer expires May 15, 2026. Minimum condition: 90% of shares tendered."
+      },
+      "expected_routing": {
+        "situation_type": "merger_arbitrage",
+        "subtype": "acquisition_tender_offer",
+        "selected_playbook": "merger_arbitrage.md",
+        "playbook_status": "evaluator_ready",
+        "detection_confidence": "HIGH"
+      },
+      "expected_behavior": {
+        "recommendation_class": "DEEP_RESEARCH",
+        "human_review_expected": false,
+        "prohibited_inference_expected": false,
+        "evaluator_confidence": "FULL"
+      }
+    },
+    {
+      "id": "self_tender_fixed_price",
+      "description": "Issuer self-tender offer at fixed price (SC TO-I)",
+      "filing": {
+        "company": "Buyback Industries Inc",
+        "ticker": "BBIN",
+        "filing_type": "SC TO-I",
+        "date": "2026-04-20",
+        "url": "https://sec.gov/Archives/edgar/data/0001234568/000123456826000002/sc-to-i.htm",
+        "summary": "Buyback Industries Inc. announces self-tender offer to repurchase up to 10 million shares at $42.50 per share. Offer expires May 20, 2026. Odd-lot priority provision included."
+      },
+      "expected_routing": {
+        "situation_type": "tender_offer",
+        "subtype": "self_tender",
+        "selected_playbook": "tender_offer.md",
+        "playbook_status": "partial",
+        "detection_confidence": "HIGH"
+      },
+      "expected_behavior": {
+        "recommendation_class": "HUMAN_REVIEW_REQUIRED",
+        "human_review_expected": true,
+        "prohibited_inference_expected": false,
+        "evaluator_confidence": "PARTIAL",
+        "human_review_items": ["hold_vs_tender_decision", "intrinsic_value_estimate"]
+      }
+    },
+    {
+      "id": "standard_spin_off",
+      "description": "Standard tax-free spin-off (Form 10)",
+      "filing": {
+        "company": "SpinCo Technologies",
+        "ticker": null,
+        "filing_type": "Form 10",
+        "date": "2026-04-18",
+        "url": "https://sec.gov/Archives/edgar/data/0001234569/000123456926000003/form10.htm",
+        "summary": "Parent Corporation files Form 10 registration statement for tax-free spin-off of SpinCo Technologies, a wholly-owned subsidiary. Distribution ratio: 1 share of SpinCo for every 2 shares of Parent. Record date: June 1, 2026. Distribution date: June 15, 2026."
+      },
+      "expected_routing": {
+        "situation_type": "spin_off",
+        "subtype": "standard_spin_off",
+        "selected_playbook": "spin_off.md",
+        "playbook_status": "partial",
+        "detection_confidence": "HIGH"
+      },
+      "expected_behavior": {
+        "recommendation_class": "HUMAN_REVIEW_REQUIRED",
+        "human_review_expected": true,
+        "prohibited_inference_expected": false,
+        "evaluator_confidence": "PARTIAL",
+        "human_review_items": ["sum_of_parts_valuation", "institutional_mandate_inference", "forced_selling_duration"]
+      }
+    },
+    {
+      "id": "voluntary_liquidation",
+      "description": "Plan of dissolution and voluntary liquidation (8-K)",
+      "filing": {
+        "company": "Liquidating Assets Corp",
+        "ticker": "LIQD",
+        "filing_type": "8-K",
+        "date": "2026-04-22",
+        "url": "https://sec.gov/Archives/edgar/data/0001234570/000123457026000004/8k-dissolution.htm",
+        "summary": "Liquidating Assets Corp announces Board approval of plan of complete dissolution and liquidation. Shareholders to vote on plan at special meeting on May 30, 2026. Management estimates distribution of $12-15 per share over 18-24 month wind-down period."
+      },
+      "expected_routing": {
+        "situation_type": "bankruptcy",
+        "subtype": "voluntary_liquidation",
+        "selected_playbook": "bankruptcy.md",
+        "playbook_status": "partial",
+        "detection_confidence": "HIGH"
+      },
+      "expected_behavior": {
+        "recommendation_class": "HUMAN_REVIEW_REQUIRED",
+        "human_review_expected": true,
+        "prohibited_inference_expected": false,
+        "evaluator_confidence": "PARTIAL",
+        "human_review_items": ["nav_construction", "margin_of_safety_calculation", "asset_realization_factors"]
+      }
+    },
+    {
+      "id": "activist_proxy_fight",
+      "description": "Activist campaign and proxy contest (SC 13D)",
+      "filing": {
+        "company": "Target Governance Inc",
+        "ticker": "TGOV",
+        "filing_type": "SC 13D",
+        "date": "2026-04-25",
+        "url": "https://sec.gov/Archives/edgar/data/0001234571/000123457126000005/sc13d.htm",
+        "summary": "Activist Capital Partners discloses 7.8% stake in Target Governance Inc. Item 4 states intent to nominate three directors to Board at upcoming annual meeting and pursue strategic alternatives including potential sale or spin-off of underperforming division."
+      },
+      "expected_routing": {
+        "situation_type": "proxy_fight",
+        "subtype": "activist_campaign",
+        "selected_playbook": "proxy_fight.md",
+        "playbook_status": "detection_only",
+        "detection_confidence": "HIGH"
+      },
+      "expected_behavior": {
+        "recommendation_class": "DETECTION_ONLY",
+        "human_review_expected": true,
+        "prohibited_inference_expected": false,
+        "evaluator_confidence": "PARTIAL",
+        "human_review_items": ["all_proxy_fight_analysis_beyond_detection"]
+      }
+    }
+  ]
+}
