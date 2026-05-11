@@ -13,7 +13,7 @@
 
 ## 2. Last Updated
 
-2026-05-11 (Sprint X-B local — ResearchCase Evaluation Preparation / Deep Research Assist; read-only preparation package, no automatic evaluation)
+2026-05-11 (Sprint Y local — Evidence Links & Research Traceability; metadata-only source links, no automatic evaluation)
 
 ---
 
@@ -33,6 +33,7 @@ Current sprint state:
 - Sprint W: milestone closeout and GitHub sync preparation. Current active flow is `SEC EDGAR cron -> SpecialSituation -> Kanban -> checklist/resources -> evidence mapping -> manual ResearchCase promotion`.
 - Sprint X-A: Compact Kanban Overview implemented for `/investment/situations`. The page now defaults to a compact responsive Kanban overview with phase counts, top cases per phase, preserved filters, and a detailed board toggle. Frontend-only; no backend, migration, cron, scanner, live AI, evaluator, ResearchCase automation, publishing, or Marketplace/Sales changes.
 - Sprint X-B: ResearchCase Evaluation Preparation / Deep Research Assist implemented locally. `GET /api/investment/research-cases/{id}/evaluation-prep` returns a deterministic metadata-only preparation package from the ResearchCase brief snapshot, metadata, tasks, documents, and sources. `/investment/research/[id]` now includes an Evaluation Preparation panel with readiness level, missing required resources, checklist gaps, source quality notes, and manual next actions. This is preparation only: no live AI, no evaluator v2 global enablement, no automatic evaluation, no recommendations, no publishing, no crawling/PDF/document body fetching, no `/scan`, and no cron change.
+- Sprint Y: Evidence Links & Research Traceability implemented locally. New read-only endpoints `GET /api/investment/situations/{id}/evidence-links` and `GET /api/investment/research-cases/{id}/evidence-links` normalize stored source metadata into traceability packages. `/investment/situations/[id]` and `/investment/research/[id]` show original SEC source links, resource candidate links, required-resource/checklist support links, ResearchCase source/document links, and metadata-only guardrails. It does not fetch document bodies, crawl, download PDFs, evaluate, verify evidence automatically, recommend, publish, call `/scan`, change cron, or enable evaluator v2 globally.
 
 Current strategic direction:
 - ResearchCase is the primary durable work object.

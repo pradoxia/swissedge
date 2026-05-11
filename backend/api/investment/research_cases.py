@@ -57,6 +57,7 @@ from backend.services.investment.research_cases import (
     update_public_article_draft,
     render_public_article_markdown,
 )
+from backend.services.investment.evidence_links import build_research_case_evidence_links
 from backend.services.observability import run_logger
 
 router = APIRouter()
@@ -108,6 +109,12 @@ async def get_case(research_case_id: str, db: AsyncSession = Depends(get_db)):
 @router.get("/research-cases/{research_case_id}/evaluation-prep", response_model=EvaluationPrepPackage)
 async def get_case_evaluation_prep(research_case_id: str, db: AsyncSession = Depends(get_db)):
     return await get_evaluation_prep_package(db, _parse_uuid(research_case_id, "research_case_id"))
+
+
+@router.get("/research-cases/{research_case_id}/evidence-links")
+async def get_case_evidence_links(research_case_id: str, db: AsyncSession = Depends(get_db)):
+    rc = await get_research_case(db, _parse_uuid(research_case_id, "research_case_id"))
+    return build_research_case_evidence_links(rc).model_dump()
 
 
 @router.patch("/research-cases/{research_case_id}", response_model=ResearchCaseRead)

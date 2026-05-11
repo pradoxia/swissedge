@@ -12,8 +12,10 @@ import {
   SectionCard,
   StatusBadge,
 } from '@/app/components/ui';
+import { EvidenceLinksPanel } from '@/app/components/EvidenceLinksPanel';
 import {
   addSituationResource,
+  fetchSituationEvidenceLinks,
   fetchSituation,
   promoteSituationToResearchCase,
   updateSituationResourceCandidate,
@@ -23,6 +25,7 @@ import {
   type RequiredResourceItem,
   type ResourceCandidate,
   type Situation,
+  type SituationEvidenceLinksPackage,
 } from '@/lib/api';
 
 const MONO_LABEL: CSSProperties = {
@@ -145,6 +148,8 @@ export default function SpecialSituationMethodologyPage() {
   const [promoting, setPromoting] = useState(false);
   const [promotionMessage, setPromotionMessage] = useState<string | null>(null);
   const [savingCandidateId, setSavingCandidateId] = useState<string | null>(null);
+  const [evidenceLinks, setEvidenceLinks] = useState<SituationEvidenceLinksPackage | null>(null);
+  const [evidenceLinksError, setEvidenceLinksError] = useState<string | null>(null);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
@@ -153,9 +158,16 @@ export default function SpecialSituationMethodologyPage() {
       try {
         setLoading(true);
         setError(null);
-        setSituation(await fetchSituation(id));
+        const [situationData, linksData] = await Promise.all([
+          fetchSituation(id),
+          fetchSituationEvidenceLinks(id),
+        ]);
+        setSituation(situationData);
+        setEvidenceLinks(linksData);
+        setEvidenceLinksError(null);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load situation');
+        setEvidenceLinksError(err instanceof Error ? err.message : 'Failed to load evidence links');
       } finally {
         setLoading(false);
       }
@@ -496,6 +508,19 @@ export default function SpecialSituationMethodologyPage() {
                   ))}
                 </div>
               )}
+            </SectionCard>
+
+            <SectionCard title="Evidence Links / Source Traceability">
+              {evidenceLinksError && (
+                <InfoBanner variant="warning">{evidenceLinksError}</InfoBanner>
+              )}
+              <EvidenceLinksPanel
+                title="SpecialSituation evidence links"
+                links={evidenceLinks?.links ?? []}
+                guardrails={evidenceLinks?.guardrails ?? []}
+                searchSuggestions={evidenceLinks?.search_suggestions ?? searchSuggestions}
+                emptyText="No stored evidence links are available for this situation yet."
+              />
             </SectionCard>
 
             <SectionCard title="Add Resource Manually">

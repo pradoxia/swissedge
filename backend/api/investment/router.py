@@ -20,6 +20,7 @@ from backend.services.investment.resource_scout import (
     update_resource_candidate_review,
     update_workflow_status,
 )
+from backend.services.investment.evidence_links import build_situation_evidence_links
 from backend.services.investment.research_cases import (
     PromoteSpecialSituationPayload,
     ResearchCaseRead,
@@ -551,6 +552,17 @@ async def get_situation(situation_id: str, db: AsyncSession = Depends(get_db)):
         for h in sit.history
     ]
     return data
+
+
+@router.get("/situations/{situation_id}/evidence-links")
+async def get_situation_evidence_links(situation_id: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(SpecialSituation).where(SpecialSituation.id == uuid.UUID(situation_id))
+    )
+    sit = result.scalars().first()
+    if not sit:
+        raise HTTPException(status_code=404, detail="Situation not found")
+    return build_situation_evidence_links(sit).model_dump()
 
 
 @router.patch("/situations/{situation_id}")

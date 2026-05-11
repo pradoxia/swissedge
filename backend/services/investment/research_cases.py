@@ -19,6 +19,7 @@ from backend.models.investment import SpecialSituation
 from backend.models.agent_ops import AgentProfile, AgentRoom
 from backend.services.agent_ops.activity_logger import log_agent_activity
 from backend.services.ai_client import complete_with_usage
+from backend.services.investment.evidence_links import summarize_evidence_links, build_research_case_evidence_links
 from backend.services.investment.methodology_workspace import WORKSPACE_KEY
 from backend.services.investment.routing_engine import check_scope, route_playbook
 
@@ -376,6 +377,7 @@ class EvaluationPrepPackage(BaseModel):
     required_resources: EvaluationPrepBucket
     checklist: EvaluationPrepBucket
     source_quality: EvaluationPrepSourceQuality
+    evidence_links_summary: dict | None = None
     suggested_next_actions: list[EvaluationPrepAction]
     guardrails: list[str]
 
@@ -929,6 +931,13 @@ def build_evaluation_prep_package(rc: ResearchCase) -> EvaluationPrepPackage:
             priority="medium",
         ))
 
+    evidence_package = build_research_case_evidence_links(rc)
+    missing_link_items = [
+        str(item.get("title") or item.get("resource_id") or "Required resource")
+        for item in resource_buckets["missing"]
+    ]
+    evidence_summary = summarize_evidence_links(evidence_package.links, missing_link_items=missing_link_items)
+
     return EvaluationPrepPackage(
         research_case_id=str(rc.id),
         case_title=_brief_title(rc),
@@ -956,6 +965,7 @@ def build_evaluation_prep_package(rc: ResearchCase) -> EvaluationPrepPackage:
             ]),
             issues=source_quality_issues,
         ),
+        evidence_links_summary=evidence_summary.model_dump(),
         suggested_next_actions=actions,
         guardrails=[
             "This is not an evaluation.",

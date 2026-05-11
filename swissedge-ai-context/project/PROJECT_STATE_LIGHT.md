@@ -40,6 +40,7 @@ SwissEdge is moving toward:
 - Sprint W: SEC EDGAR to ResearchCase milestone closeout and GitHub sync preparation. Current active flow is `SEC EDGAR cron -> SpecialSituation -> Kanban -> checklist/resources -> evidence mapping -> manual ResearchCase promotion`. Next recommended phase is ResearchCase Evaluation Preparation / Deep Research Assist, without automatic evaluation.
 - Sprint X-A: Compact Kanban Overview implemented for `/investment/situations`. The page now defaults to a compact responsive Kanban overview with phase counts, top cases per phase, preserved filters, and a detailed board toggle. Frontend-only; no backend, migration, cron, scanner, live AI, evaluator, ResearchCase automation, publishing, or Marketplace/Sales changes.
 - Sprint X-B: ResearchCase Evaluation Preparation / Deep Research Assist implemented locally. New read-only endpoint `GET /api/investment/research-cases/{id}/evaluation-prep` returns a deterministic metadata-only readiness package. Frontend `/investment/research/[id]` shows readiness level, missing required resources, checklist gaps, source quality notes, and manual next actions. This is preparation only: no live AI, no evaluator v2 global enablement, no automatic evaluation, no recommendations, no publishing, no crawling/PDF/document body fetching, no `/scan`, and no cron change.
+- Sprint Y: Evidence Links & Research Traceability implemented locally. New read-only traceability endpoints show original SEC source links, resource candidate links, required-resource/checklist support links, ResearchCase source/document links, and metadata-only guardrails in `/investment/situations/[id]` and `/investment/research/[id]`. It does not fetch document bodies, crawl, download PDFs, evaluate, verify evidence automatically, recommend, publish, call `/scan`, change cron, or enable evaluator v2 globally.
 
 ## Current Status Summary
 
@@ -75,5 +76,5 @@ The current system has an operational SEC-driven detection path. Evaluation rema
 ## Next Strategic Sprints
 
 - Sprint W/X-B GitHub sync after final review: commit/push only when Dani chooses to run it.
-- Claude review of Sprint X-B ResearchCase Evaluation Preparation.
+- Claude review of Sprint X-B ResearchCase Evaluation Preparation and Sprint Y Evidence Links & Research Traceability.
 - Later: controlled official-source discovery, SEC intake observability, external manual intake, Fontana CTO reports, market monitoring.

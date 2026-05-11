@@ -76,6 +76,62 @@ export interface SearchSuggestion {
   created_at: string;
 }
 
+export interface EvidenceLink {
+  id: string;
+  label: string;
+  url: string | null;
+  source_type: string;
+  origin: string;
+  filing_type: string | null;
+  accession_number: string | null;
+  cik: string | null;
+  company_name: string | null;
+  filing_date: string | null;
+  status: string;
+  linked_required_resource_ids: string[];
+  linked_checklist_item_ids: string[];
+  metadata_only: boolean;
+  verified: boolean;
+  notes: string | null;
+}
+
+export interface SituationEvidenceLinksPackage {
+  situation_id: string;
+  company_name: string;
+  ticker: string | null;
+  sec_detection: Record<string, unknown>;
+  links: EvidenceLink[];
+  required_resource_links: Array<{
+    resource_id: string | null;
+    title: string | null;
+    status: string;
+    links: EvidenceLink[];
+  }>;
+  checklist_links: Array<{
+    check_id: string | null;
+    title: string | null;
+    status: string;
+    links: EvidenceLink[];
+  }>;
+  search_suggestions: SearchSuggestion[];
+  guardrails: string[];
+}
+
+export interface ResearchCaseEvidenceLinksPackage {
+  research_case_id: string;
+  case_title: string | null;
+  origin: {
+    intake_method: string | null;
+    situation_id: string | null;
+    source: string;
+  };
+  links: EvidenceLink[];
+  source_links: EvidenceLink[];
+  document_links: EvidenceLink[];
+  snapshot_links: EvidenceLink[];
+  guardrails: string[];
+}
+
 export interface MethodologyWorkspace {
   template_key: string;
   template_version: string;
@@ -261,6 +317,16 @@ export async function fetchSituation(id: string): Promise<Situation> {
 
   if (!response.ok) {
     throw new Error(`Failed to fetch situation: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+export async function fetchSituationEvidenceLinks(id: string): Promise<SituationEvidenceLinksPackage> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/situations/${id}/evidence-links`);
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch situation evidence links: ${response.statusText}`);
   }
 
   return response.json();
@@ -707,6 +773,15 @@ export interface EvaluationPrepPackage {
     manual_sources_count: number;
     issues: string[];
   };
+  evidence_links_summary?: {
+    total_links: number;
+    sec_links: number;
+    manual_links: number;
+    research_source_links: number;
+    research_document_links: number;
+    metadata_only_links: number;
+    missing_link_items: string[];
+  } | null;
   suggested_next_actions: EvaluationPrepAction[];
   guardrails: string[];
 }
@@ -739,6 +814,12 @@ export async function fetchResearchCase(id: string): Promise<ResearchCase> {
 export async function fetchResearchCaseEvaluationPrep(id: string): Promise<EvaluationPrepPackage> {
   const response = await fetch(`${API_BASE_URL}/api/investment/research-cases/${id}/evaluation-prep`);
   if (!response.ok) throw new Error(`Failed to fetch evaluation preparation: ${response.statusText}`);
+  return response.json();
+}
+
+export async function fetchResearchCaseEvidenceLinks(id: string): Promise<ResearchCaseEvidenceLinksPackage> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/research-cases/${id}/evidence-links`);
+  if (!response.ok) throw new Error(`Failed to fetch research traceability: ${response.statusText}`);
   return response.json();
 }
 

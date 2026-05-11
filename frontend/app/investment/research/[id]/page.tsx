@@ -3,8 +3,10 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import { EvidenceLinksPanel } from '@/app/components/EvidenceLinksPanel';
 import {
   fetchResearchCase,
+  fetchResearchCaseEvidenceLinks,
   fetchResearchCaseEvaluationPrep,
   updateResearchCase,
   addResearchTask,
@@ -23,6 +25,7 @@ import {
   createPublicDraftFromResearchCase,
   fetchPublicDrafts,
   type ResearchCase,
+  type ResearchCaseEvidenceLinksPackage,
   type EvaluationPrepPackage,
   type ResearchTask,
   type ResearchDocument,
@@ -1520,8 +1523,9 @@ function EvaluationPrepPanel({
           <p className="mb-2 text-xs font-mono uppercase tracking-wide text-gray-600">Source Quality</p>
           <div className="space-y-1 text-xs text-gray-400">
             <p>Official sources: {prep.source_quality.official_sources_count}</p>
-            <p>Metadata-only sources: {prep.source_quality.metadata_only_sources_count}</p>
+            <p>Attached sources/documents: {prep.source_quality.metadata_only_sources_count}</p>
             <p>Manual sources: {prep.source_quality.manual_sources_count}</p>
+            <p className="text-gray-600">Sources are metadata-only; no document bodies are fetched.</p>
           </div>
           {prep.source_quality.issues.length > 0 && (
             <ul className="mt-2 space-y-1">
@@ -1529,6 +1533,17 @@ function EvaluationPrepPanel({
                 <li key={issue} className="text-xs text-amber-300">• {issue}</li>
               ))}
             </ul>
+          )}
+          {prep.evidence_links_summary && (
+            <div className="mt-3 rounded border border-gray-800 p-2">
+              <p className="text-xs font-mono uppercase tracking-wide text-gray-600">Evidence Links</p>
+              <div className="mt-1 space-y-1 text-xs text-gray-400">
+                <p>Total links: {prep.evidence_links_summary.total_links}</p>
+                <p>SEC links: {prep.evidence_links_summary.sec_links}</p>
+                <p>Research records: {prep.evidence_links_summary.research_source_links + prep.evidence_links_summary.research_document_links}</p>
+                <p>Missing linked items: {prep.evidence_links_summary.missing_link_items.length}</p>
+              </div>
+            </div>
           )}
         </div>
         <div>
@@ -1567,8 +1582,10 @@ export default function ResearchDetailPage() {
 
   const [rc, setRc] = useState<ResearchCase | null>(null);
   const [evaluationPrep, setEvaluationPrep] = useState<EvaluationPrepPackage | null>(null);
+  const [evidenceLinks, setEvidenceLinks] = useState<ResearchCaseEvidenceLinksPackage | null>(null);
   const [prepLoading, setPrepLoading] = useState(true);
   const [prepError, setPrepError] = useState<string | null>(null);
+  const [evidenceLinksError, setEvidenceLinksError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -1630,10 +1647,16 @@ export default function ResearchDetailPage() {
     try {
       setPrepLoading(true);
       setPrepError(null);
-      const data = await fetchResearchCaseEvaluationPrep(id);
-      setEvaluationPrep(data);
+      const [prepData, linksData] = await Promise.all([
+        fetchResearchCaseEvaluationPrep(id),
+        fetchResearchCaseEvidenceLinks(id),
+      ]);
+      setEvaluationPrep(prepData);
+      setEvidenceLinks(linksData);
+      setEvidenceLinksError(null);
     } catch (err) {
       setPrepError(err instanceof Error ? err.message : 'Failed to load evaluation preparation');
+      setEvidenceLinksError(err instanceof Error ? err.message : 'Failed to load research traceability');
     } finally {
       setPrepLoading(false);
     }
@@ -1912,6 +1935,19 @@ export default function ResearchDetailPage() {
             loading={prepLoading}
             error={prepError}
             onRefresh={loadEvaluationPrep}
+          />
+        </Section>
+
+        {/* ── Evidence Links / Traceability ── */}
+        <Section title="Evidence Links / Research Traceability" hint="Metadata-only source links used to trace where case information came from.">
+          {evidenceLinksError && (
+            <p className="mb-3 text-xs font-mono text-amber-300">{evidenceLinksError}</p>
+          )}
+          <EvidenceLinksPanel
+            title="ResearchCase evidence links"
+            links={evidenceLinks?.links ?? []}
+            guardrails={evidenceLinks?.guardrails ?? []}
+            emptyText="No stored traceability links are available for this ResearchCase yet."
           />
         </Section>
 

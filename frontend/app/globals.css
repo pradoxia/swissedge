@@ -335,6 +335,12 @@ body {
   border-color: var(--status-partial-border);
 }
 
+.status-badge--danger {
+  background-color: rgba(220, 38, 38, 0.08);
+  color: #fca5a5;
+  border-color: rgba(220, 38, 38, 0.3);
+}
+
 /* ─── Status dot ──────────────────────────────────────────── */
 
 .status-dot {
@@ -770,4 +776,3 @@ body {
   .page-title { font-size: 22px; }
   .filter-group { gap: 4px; }
 }
-
