@@ -38,6 +38,7 @@ SwissEdge is moving toward:
 - Sprint U: Kanban Actions + Evidence Mapping implemented locally. Workflow status is stored in `evaluation.methodology_workspace.workflow_status`; manual resource review can link candidates to required resources/checklist items and mark linked material `evidence_found`. `evidence_found` does not mean verified, evaluated, or recommended. No cron modification, `/scan`, live AI, evaluator v2 global enablement, ResearchCase auto-creation, web crawling, PDF download, document body fetching, public publishing, or Marketplace/Sales changes.
 - Sprint V: manual SpecialSituation -> ResearchCase promotion implemented and production-validated after hotfix. Endpoint `POST /api/investment/situations/{id}/promote-to-research-case` creates an idempotent ResearchCase for deeper research, stores `research_case_id` in `evaluation.methodology_workspace`, snapshots detection/workspace context into `ResearchCase.brief`, and creates conservative initial tasks/sources. Promotion is manual only and does not evaluate, recommend, publish, create public drafts, call live AI, enable evaluator v2 globally, crawl, download PDFs, fetch document bodies, modify cron, or call `/scan`.
 - Sprint W: SEC EDGAR to ResearchCase milestone closeout and GitHub sync preparation. Current active flow is `SEC EDGAR cron -> SpecialSituation -> Kanban -> checklist/resources -> evidence mapping -> manual ResearchCase promotion`. Next recommended phase is ResearchCase Evaluation Preparation / Deep Research Assist, without automatic evaluation.
+- Sprint X-B: ResearchCase Evaluation Preparation / Deep Research Assist implemented locally. New read-only endpoint `GET /api/investment/research-cases/{id}/evaluation-prep` returns a deterministic metadata-only readiness package. Frontend `/investment/research/[id]` shows readiness level, missing required resources, checklist gaps, source quality notes, and manual next actions. This is preparation only: no live AI, no evaluator v2 global enablement, no automatic evaluation, no recommendations, no publishing, no crawling/PDF/document body fetching, no `/scan`, and no cron change.
 
 ## Current Status Summary
 
@@ -72,6 +73,6 @@ The current system has an operational SEC-driven detection path. Evaluation rema
 
 ## Next Strategic Sprints
 
-- Sprint W GitHub sync after final review: commit/push only when Dani chooses to run it.
-- ResearchCase Evaluation Preparation / Deep Research Assist: safe readiness package, missing evidence report, source quality overview, and manual evaluation preview design before any AI/evaluator activation.
+- Sprint W/X-B GitHub sync after final review: commit/push only when Dani chooses to run it.
+- Claude review of Sprint X-B ResearchCase Evaluation Preparation.
 - Later: controlled official-source discovery, SEC intake observability, external manual intake, Fontana CTO reports, market monitoring.

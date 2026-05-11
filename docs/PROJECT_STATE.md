@@ -13,7 +13,7 @@
 
 ## 2. Last Updated
 
-2026-05-11 (Sprint W milestone closeout — SEC EDGAR to ResearchCase workflow complete and production-validated; next phase is ResearchCase Evaluation Preparation / Deep Research Assist)
+2026-05-11 (Sprint X-B local — ResearchCase Evaluation Preparation / Deep Research Assist; read-only preparation package, no automatic evaluation)
 
 ---
 
@@ -31,6 +31,7 @@ Current sprint state:
 - Sprint U: Kanban actions and evidence mapping completed. Workflow movement and resource evidence mapping are manual; `evidence_found` does not mean verified, evaluated, or recommended.
 - Sprint V: manual SpecialSituation -> ResearchCase promotion completed and production-validated after hotfix. Promotion is idempotent and stores `research_case_id` in `evaluation.methodology_workspace`.
 - Sprint W: milestone closeout and GitHub sync preparation. Current active flow is `SEC EDGAR cron -> SpecialSituation -> Kanban -> checklist/resources -> evidence mapping -> manual ResearchCase promotion`.
+- Sprint X-B: ResearchCase Evaluation Preparation / Deep Research Assist implemented locally. `GET /api/investment/research-cases/{id}/evaluation-prep` returns a deterministic metadata-only preparation package from the ResearchCase brief snapshot, metadata, tasks, documents, and sources. `/investment/research/[id]` now includes an Evaluation Preparation panel with readiness level, missing required resources, checklist gaps, source quality notes, and manual next actions. This is preparation only: no live AI, no evaluator v2 global enablement, no automatic evaluation, no recommendations, no publishing, no crawling/PDF/document body fetching, no `/scan`, and no cron change.
 
 Current strategic direction:
 - ResearchCase is the primary durable work object.
@@ -61,7 +62,7 @@ Fontana is documented as SwissEdge CTO / Project Governor. Fontana is an observe
 
 Current status: Investment Platform V2 and Agent Ops are the active tracks. SEC EDGAR source-driven detection is operational through the approved cron wrapper. `SpecialSituation` is the detection object; manual Kanban/resource/evidence work prepares cases for manual ResearchCase promotion. `investment_sources` still does not control scanner execution. `/agent-ops` UI is documented deployed and smoke-tested, with Scoreboard and Fontana runtime still deferred.
 
-Next steps: GitHub sync after final review, then ResearchCase Evaluation Preparation / Deep Research Assist. That next phase should prepare readiness packages, missing evidence reports, source quality summaries, and manual evaluation preview design without live AI, evaluator v2 global enablement, auto-publishing, automatic ResearchCase creation from detection, web crawling, PDF download, or document body fetching.
+Next steps: Claude review of Sprint X-B, then Dani manual deploy if approved. Any future manual evaluation preview or evaluator v2 preview remains a separate explicit-approval gate without live AI/global evaluator activation by default.
 
 **Previous deployed baseline — Investment Research Platform Phase 5 COMPLETE AND DEPLOYED — validated by Dani (2026-05-03).**
 

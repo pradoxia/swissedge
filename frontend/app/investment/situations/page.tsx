@@ -399,7 +399,8 @@ export default function SpecialSituationsPage() {
       />
 
       <InfoBanner variant="guardrail">
-        Detected does not mean evaluated. These are official-source detections awaiting human review.
+        Detected does not mean evaluated. Evidence found does not mean verified.
+        These are official-source detections awaiting human review.
         No automated investment decisions are made from this pipeline.
       </InfoBanner>
 

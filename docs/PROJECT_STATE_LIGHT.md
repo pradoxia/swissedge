@@ -2,7 +2,7 @@
 
 > Full canonical state: `docs/PROJECT_STATE.md`
 > Architecture decisions: `docs/decisions.md`
-> Last updated: 2026-05-11 (Sprint W closeout — SEC EDGAR to ResearchCase milestone validated)
+> Last updated: 2026-05-11 (Sprint X-B local — ResearchCase Evaluation Preparation)
 
 ---
 
@@ -80,6 +80,8 @@ SwissEdge is a modular AI platform with two domains:
 - Sprint U: Kanban Actions + Evidence Mapping implemented locally. Workflow status is stored in `evaluation.methodology_workspace.workflow_status`; manual resource review can link candidates to required resources/checklist items and mark linked material `evidence_found`. `evidence_found` does not mean verified, evaluated, or recommended. No cron modification, `/scan`, live AI, evaluator v2 global enablement, ResearchCase auto-creation, web crawling, PDF download, document body fetching, public publishing, or Marketplace/Sales changes.
 - Sprint V: manual SpecialSituation -> ResearchCase promotion implemented and production-validated after hotfix. Endpoint `POST /api/investment/situations/{id}/promote-to-research-case` creates an idempotent ResearchCase for deeper research, stores `research_case_id` in `evaluation.methodology_workspace`, snapshots detection/workspace context into `ResearchCase.brief`, and creates conservative initial tasks/sources. Promotion is manual only and does not evaluate, recommend, publish, create public drafts, call live AI, enable evaluator v2 globally, crawl, download PDFs, fetch document bodies, modify cron, or call `/scan`.
 - Sprint W: SEC EDGAR to ResearchCase milestone closeout and GitHub sync preparation. Current active flow is `SEC EDGAR cron -> SpecialSituation -> Kanban -> checklist/resources -> evidence mapping -> manual ResearchCase promotion`. Next recommended phase is ResearchCase Evaluation Preparation / Deep Research Assist, without automatic evaluation.
+- Sprint X-A: Compact Kanban Overview implemented for `/investment/situations`. The page now defaults to a compact responsive Kanban overview with phase counts, top cases per phase, preserved filters, and a detailed board toggle. Frontend-only; no backend, migration, cron, scanner, live AI, evaluator, ResearchCase automation, publishing, or Marketplace/Sales changes.
+- Sprint X-B: ResearchCase Evaluation Preparation / Deep Research Assist implemented locally. New read-only endpoint `GET /api/investment/research-cases/{id}/evaluation-prep` returns a deterministic metadata-only readiness package for promoted ResearchCases. Frontend `/investment/research/[id]` shows an Evaluation Preparation panel with readiness level, missing required resources, checklist gaps, source quality notes, and next manual actions. Preparation only: no live AI, no evaluator v2 global enablement, no automatic evaluation, no recommendations, no publishing, no crawling/PDF/document body fetching, no `/scan`, and no cron change.
 
 ## Current blockers / warnings
 
@@ -98,7 +100,7 @@ SwissEdge is a modular AI platform with two domains:
 ## Next recommended sprints
 
 1. Sprint W GitHub sync after final review: commit/push only when Dani chooses to run it.
-2. ResearchCase Evaluation Preparation / Deep Research Assist: build a safe readiness package, missing evidence report, and manual evaluation preview design before any AI/evaluator activation.
+2. Claude review of Sprint X-B ResearchCase Evaluation Preparation.
 3. Optional controlled official-source discovery only after explicit approval; Resource Scout remains manual until then.
 4. Fontana report runtime after explicit approval.
 5. Market monitoring after source-driven intake stabilizes.
