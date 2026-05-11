@@ -1,20 +1,29 @@
 import json
+import logging
 import os
 import uuid
+from copy import deepcopy
 from datetime import datetime, timezone
 
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from sqlalchemy.orm.attributes import flag_modified
 from fastapi import HTTPException
 
 from backend.models.investment_research import ResearchCase, ResearchTask, ResearchDocument, ResearchSource, HistoricalCase
 from backend.models.source_intelligence import SourceIntelligenceSuggestion
 from backend.models.publishing import PublicArticleDraft
 from backend.models.investment import SpecialSituation
+from backend.models.agent_ops import AgentProfile, AgentRoom
+from backend.services.agent_ops.activity_logger import log_agent_activity
 from backend.services.ai_client import complete_with_usage
+from backend.services.investment.methodology_workspace import WORKSPACE_KEY
 from backend.services.investment.routing_engine import check_scope, route_playbook
+
+logger = logging.getLogger(__name__)
+SPECIAL_SITUATION_PROMOTION_BRIEF_VERSION = "ss_promo_v1"
 
 def _load_prompt(filename: str) -> str:
     path = os.path.join(os.path.dirname(__file__), "..", "..", "prompts", filename)
@@ -114,6 +123,22 @@ def _initial_tasks_for_situation() -> list[ResearchTask]:
         "Identify key dates, deadlines, or transaction milestones.",
         "Document missing information and risks.",
         "Decide whether the case should move to deep research, monitoring, or archive.",
+    ]
+
+
+def _initial_tasks_for_promoted_special_situation() -> list[ResearchTask]:
+    descriptions = [
+        "Verify official SEC filing and amendments.",
+        "Collect primary offer or transaction document.",
+        "Confirm key dates and deadlines.",
+        "Review required resources and missing evidence.",
+        "Map resources to checklist evidence.",
+        "Human review of methodology checklist.",
+        "Decide whether deep evaluation is warranted.",
+    ]
+    return [
+        ResearchTask(description=description, status="open", priority=2, source="manual_promotion")
+        for description in descriptions
     ]
     return [
         ResearchTask(description=description, status="open", priority=2, source="system")
@@ -294,6 +319,12 @@ class ResearchCaseCreate(BaseModel):
     investment_readiness: str | None = None
 
 
+class PromoteSpecialSituationPayload(BaseModel):
+    title: str | None = None
+    initial_status: str | None = "under_investigation"
+    notes: str | None = None
+
+
 class ResearchCaseUpdate(BaseModel):
     status: str | None = None
     notes: str | None = None
@@ -444,7 +475,242 @@ async def create_research_case_from_situation(
     db.add(source)
     await db.flush()
     await db.refresh(rc)
+    await _log_research_case_bridge_activity(db, research_case=rc, situation=situation)
     return rc
+
+
+def _workspace_from_situation(situation: SpecialSituation) -> dict:
+    evaluation = situation.evaluation if isinstance(situation.evaluation, dict) else {}
+    workspace = evaluation.get(WORKSPACE_KEY)
+    if not isinstance(workspace, dict):
+        raise HTTPException(status_code=400, detail="methodology_workspace is required before promotion")
+    return workspace
+
+
+def _sec_detection_from_situation(situation: SpecialSituation) -> dict:
+    evaluation = situation.evaluation if isinstance(situation.evaluation, dict) else {}
+    sec_detection = evaluation.get("sec_detection")
+    return sec_detection if isinstance(sec_detection, dict) else {}
+
+
+def _promotion_title(situation: SpecialSituation, title: str | None) -> str:
+    if title and title.strip():
+        return title.strip()
+    filing = f" - {situation.filing_type}" if situation.filing_type else ""
+    ticker = f" ({situation.ticker})" if situation.ticker else ""
+    return f"{situation.company_name}{ticker}{filing}"
+
+
+def _build_promotion_brief(
+    situation: SpecialSituation,
+    *,
+    title: str,
+    workspace: dict,
+    sec_detection: dict,
+) -> dict:
+    return {
+        "title": title,
+        "source": "special_situation_promotion",
+        "disclaimer": _DISCLAIMER,
+        "detected_not_evaluated": True,
+        "detection_summary": {
+            "company_name": situation.company_name,
+            "ticker": situation.ticker,
+            "situation_type": situation.situation_type,
+            "subtype": sec_detection.get("subtype"),
+            "filing_type": situation.filing_type,
+            "filing_url": situation.filing_url,
+            "detected_at": situation.detected_at.isoformat() if situation.detected_at else None,
+            "source_urls": situation.source_urls or [],
+            "accession_number": sec_detection.get("accession_number"),
+            "filing_date": sec_detection.get("filing_date"),
+            "selected_playbook": sec_detection.get("selected_playbook"),
+            "playbook_status": sec_detection.get("playbook_status"),
+            "detection_confidence": sec_detection.get("detection_confidence"),
+        },
+        "methodology_workspace_snapshot": {
+            "template_key": workspace.get("template_key"),
+            "template_version": workspace.get("template_version"),
+            "checklist": deepcopy(workspace.get("checklist", [])),
+            "required_resources": deepcopy(workspace.get("required_resources", [])),
+            "resource_candidates": deepcopy(workspace.get("resource_candidates", [])),
+            "search_suggestions": deepcopy(workspace.get("search_suggestions", [])),
+            "progress": deepcopy(workspace.get("progress", {})),
+            "workflow_status": workspace.get("workflow_status"),
+        },
+        "suggested_tasks": [
+            "Verify official SEC filing and amendments.",
+            "Collect primary offer or transaction document.",
+            "Confirm key dates and deadlines.",
+            "Review required resources and missing evidence.",
+            "Map resources to checklist evidence.",
+            "Human review of methodology checklist.",
+            "Decide whether deep evaluation is warranted.",
+        ],
+    }
+
+
+async def promote_special_situation_to_research_case(
+    db: AsyncSession,
+    situation_id: uuid.UUID,
+    payload: PromoteSpecialSituationPayload | None = None,
+) -> tuple[ResearchCase, bool]:
+    payload = payload or PromoteSpecialSituationPayload()
+    initial_status = payload.initial_status or "under_investigation"
+    if initial_status not in VALID_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid initial_status '{initial_status}'. Valid values: {sorted(VALID_STATUSES)}",
+        )
+
+    sit_result = await db.execute(select(SpecialSituation).where(SpecialSituation.id == situation_id))
+    situation = sit_result.scalars().first()
+    if not situation:
+        raise HTTPException(status_code=404, detail="Situation not found")
+
+    evaluation = deepcopy(situation.evaluation) if isinstance(situation.evaluation, dict) else {}
+    workspace = evaluation.get(WORKSPACE_KEY)
+    if not isinstance(workspace, dict):
+        raise HTTPException(status_code=400, detail="methodology_workspace is required before promotion")
+
+    linked_id = workspace.get("research_case_id")
+    if linked_id:
+        existing_by_link = await get_research_case(db, uuid.UUID(str(linked_id)))
+        return existing_by_link, False
+
+    existing = await db.execute(
+        select(ResearchCase)
+        .where(ResearchCase.situation_id == situation_id)
+        .options(
+            selectinload(ResearchCase.tasks),
+            selectinload(ResearchCase.documents),
+            selectinload(ResearchCase.sources),
+        )
+    )
+    existing_case = existing.scalars().first()
+    if existing_case:
+        workspace["research_case_id"] = str(existing_case.id)
+        workspace["workflow_status"] = "promoted_to_research_case"
+        situation.evaluation = evaluation
+        flag_modified(situation, "evaluation")
+        await db.flush()
+        return existing_case, False
+
+    sec_detection = _sec_detection_from_situation(situation)
+    title = _promotion_title(situation, payload.title)
+    metadata = _derive_v2_metadata_from_situation(situation)
+    metadata.update({
+        "source_origin_name": "SpecialSituation",
+        "intake_method": "special_situation_promotion",
+        "connector_key": "sec_edgar_efts" if sec_detection else metadata.get("connector_key"),
+        "intake_event_id": sec_detection.get("accession_number"),
+        "evidence_level": "official_primary" if sec_detection else metadata.get("evidence_level"),
+        "official_source_status": "official_attached" if sec_detection else metadata.get("official_source_status"),
+        "methodology_status": sec_detection.get("playbook_status") or metadata.get("methodology_status"),
+        "playbook_used": sec_detection.get("selected_playbook") or metadata.get("playbook_used"),
+        "checklist_used": workspace.get("template_key") or metadata.get("checklist_used"),
+    })
+
+    rc = ResearchCase(
+        situation_id=situation_id,
+        status=initial_status,
+        brief=_build_promotion_brief(situation, title=title, workspace=workspace, sec_detection=sec_detection),
+        brief_version=SPECIAL_SITUATION_PROMOTION_BRIEF_VERSION,
+        playbook_version=workspace.get("template_version"),
+        model_used=None,
+        notes=payload.notes,
+        disclaimer=_DISCLAIMER,
+        investment_readiness="needs_more_work",
+        **metadata,
+    )
+    db.add(rc)
+    await db.flush()
+
+    for task in _initial_tasks_for_promoted_special_situation():
+        task.research_case_id = rc.id
+        db.add(task)
+
+    candidate_sources = workspace.get("resource_candidates") if isinstance(workspace.get("resource_candidates"), list) else []
+    if situation.filing_url:
+        db.add(ResearchSource(
+            research_case_id=rc.id,
+            source_name="SEC EDGAR",
+            source_url=situation.filing_url,
+            signal_quality="high",
+            notes="Primary SEC filing from promoted SpecialSituation. Metadata only; URL not fetched.",
+        ))
+    for candidate in candidate_sources:
+        if not isinstance(candidate, dict) or not candidate.get("url"):
+            continue
+        db.add(ResearchSource(
+            research_case_id=rc.id,
+            source_name=str(candidate.get("title") or candidate.get("source_domain") or "Resource candidate"),
+            source_url=str(candidate.get("url")),
+            signal_quality="medium",
+            notes="Resource candidate copied from SpecialSituation methodology workspace. Metadata only; URL not fetched.",
+        ))
+
+    await db.flush()
+    workspace["research_case_id"] = str(rc.id)
+    workspace["workflow_status"] = "promoted_to_research_case"
+    situation.evaluation = evaluation
+    situation.updated_at = datetime.now(timezone.utc)
+    flag_modified(situation, "evaluation")
+    await db.flush()
+    await db.refresh(rc)
+    rc = await get_research_case(db, rc.id)
+    return rc, True
+
+
+async def _log_research_case_bridge_activity(
+    db: AsyncSession,
+    *,
+    research_case: ResearchCase,
+    situation: SpecialSituation,
+) -> None:
+    try:
+        agent_id = await _lookup_agent_id(db, "case_builder")
+        room_id = await _lookup_room_id(db, "research_desk")
+        company = (
+            _safe_attr_str(situation, "company_name")
+            or _safe_attr_str(situation, "ticker")
+            or "unknown company"
+        )
+        await log_agent_activity(
+            db,
+            agent_id=agent_id,
+            room_id=room_id,
+            activity_type="research_case_created",
+            title="ResearchCase created from Evaluation",
+            summary=f"Created ResearchCase for {company} from linked evaluation.",
+            severity="success",
+            status="completed",
+            related_entity_type="research_case",
+            related_entity_id=str(research_case.id),
+            metadata={
+                "situation_id": str(situation.id),
+                "source_origin_name": _nullable_str(research_case.source_origin_name),
+                "intake_method": _nullable_str(research_case.intake_method),
+                "evidence_level": _nullable_str(research_case.evidence_level),
+                "official_source_status": _nullable_str(research_case.official_source_status),
+                "situation_type": _safe_attr_str(situation, "situation_type"),
+                "filing_type": _safe_attr_str(situation, "filing_type"),
+            },
+        )
+    except Exception as exc:
+        logger.warning("Agent Ops ResearchCase bridge logging failed: %s", exc)
+
+
+async def _lookup_agent_id(db: AsyncSession, key: str) -> uuid.UUID | None:
+    result = await db.execute(select(AgentProfile).where(AgentProfile.key == key))
+    agent = result.scalars().first()
+    return agent.id if isinstance(agent, AgentProfile) else None
+
+
+async def _lookup_room_id(db: AsyncSession, key: str) -> uuid.UUID | None:
+    result = await db.execute(select(AgentRoom).where(AgentRoom.key == key))
+    room = result.scalars().first()
+    return room.id if isinstance(room, AgentRoom) else None
 
 
 async def get_research_case(db: AsyncSession, research_case_id: uuid.UUID) -> ResearchCase:

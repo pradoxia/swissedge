@@ -12,6 +12,10 @@ This document defines the proposed Agent Ops data model for a future backend imp
 
 Sprint H implementation note: core Agent Ops tables were implemented for rooms, profiles, activity, results, diagnostic events, and learning proposals. `agent_score_snapshot` remains deferred for a later scoreboard sprint.
 
+Sprint J hardening note: proposal PATCH allows reviewer-note-only updates without changing status or review metadata. Agent Ops logger fail-safe behavior is covered by tests. No scanner/evaluator integration was added.
+
+Sprint K hardening note: Agent Ops logger writes are isolated with nested transactions/SAVEPOINTs before any scanner/evaluator integration. If a logger write fails, the logger returns `None` and the caller transaction is intended to remain usable.
+
 ## 2. `agent_room`
 
 ### Purpose
@@ -68,7 +72,7 @@ Defines documented or implemented agents and their room membership.
 | `status` | string | yes | `planned` | `planned`, `active`, `paused`, `retired`. |
 | `implementation_status` | string | yes | `documented` | `documented`, `planned`, `partial`, `implemented`. |
 | `autonomy_level` | string | yes | `observer` | `observer`, `manual`, `assistive`, `automated`, `prohibited`. |
-| `guardrails` | text/json | no | null | Sanitized guardrail list. |
+| `guardrails` | json | no | null | Sanitized guardrail list or structured object; implementation accepts list/dict/null. |
 | `created_at` | datetime | yes | now | Creation timestamp. |
 | `updated_at` | datetime | yes | now | Last update timestamp. |
 
@@ -260,6 +264,8 @@ Keep rejected and archived proposals for institutional memory.
 ### Safety Notes
 
 Proposal acceptance never applies the change automatically. Implementation remains Dani approval -> Codex work -> optional Claude review -> manual deploy.
+
+`rejected` is terminal except archive by design. Reopening rejected proposals requires explicit future approval.
 
 ## 8. `agent_score_snapshot` Optional/Future
 

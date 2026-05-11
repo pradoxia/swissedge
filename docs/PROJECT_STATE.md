@@ -13,33 +13,31 @@
 
 ## 2. Last Updated
 
-2026-05-10 (End-of-day handoff — Investment Platform V2, AI-Safe Context, Agent Ops backend foundation, and `/agent-ops` Mission Control UI prepared locally/pending deploy; Public Site remains paused)
+2026-05-11 (Sprint W milestone closeout — SEC EDGAR to ResearchCase workflow complete and production-validated; next phase is ResearchCase Evaluation Preparation / Deep Research Assist)
 
 ---
 
 ## 3. Current Phase
 
-**Current active track — Investment Platform V2 + Agent Ops / Fontana foundation (local/pending deploy where noted).**
+**Current active track — Investment Platform V2 + Agent Ops / Fontana foundation.**
 
 Current sprint state:
-- Sprint A: scanner funnel diagnostics and truthful Radar Status completed.
-- Sprint B: `/investment/research-inbox` read-only completed.
-- Sprint B.1: Research Inbox UI polish completed.
-- Sprint C: V2 ResearchCase metadata fields and contract completed; migration `d4e5f6a7b8c9`.
-- Sprint D: V2 metadata detail panel and Internal Audit read-only completed.
-- Sprint E: manual Evaluation/SpecialSituation to V2 ResearchCase bridge completed locally/pending deploy.
-- Sprint F/F.1: `swissedge-ai-context` AI-safe context layer completed.
-- Sprint G/G.1: Agent Ops + Fontana architecture docs, implementation specs, and ADRs completed.
-- Sprint H: Agent Ops backend foundation completed locally/pending deploy; migration `e5f6a7b8c9d0`; no scanner/evaluator integration.
-- Sprint H.1: backend deploy allowlist cleanup for Agent Ops migration/modules noted locally/pending deploy.
-- Sprint I: `/agent-ops` Mission Control UI completed locally/pending deploy; read-only except proposal status review.
+- Sprints A-O: Investment Platform V2 and Agent Ops foundation completed as previously documented. Agent Ops backend foundation and `/agent-ops` UI are deployed; logger isolation exists; scanner/evaluator integration remains not approved.
+- Sprint Q: SEC EDGAR Detection Core completed and production-validated. It detects P1 official SEC signals (`SC TO-T`, `SC TO-I`, `Form 10`, and 8-K liquidation/dissolution metadata signals), enforces lookback locally, deduplicates repeated findings, and creates/updates minimal `SpecialSituation` detection records. Detected does not mean evaluated.
+- Sprint Q.1: historical false detections from the pre-Hotfix-2 date-filter bug were cleaned through a manual, confirmation-gated CLI.
+- Sprint R: scheduled SEC EDGAR intake is active through cron after Dani manual approval. It runs the manual detection path with a 168-hour lookback and keeps the one-request-per-five-seconds SEC throttle.
+- Sprint S: SpecialSituation methodology workspace completed. P1 SpecialSituations have fixed checklist and required-resource snapshots under `evaluation.methodology_workspace`.
+- Sprint T: Resource Scout v1 completed. It stores manual resource candidates and search suggestions; it does not browse the web, crawl, download PDFs, fetch document bodies, or verify evidence.
+- Sprint U: Kanban actions and evidence mapping completed. Workflow movement and resource evidence mapping are manual; `evidence_found` does not mean verified, evaluated, or recommended.
+- Sprint V: manual SpecialSituation -> ResearchCase promotion completed and production-validated after hotfix. Promotion is idempotent and stores `research_case_id` in `evaluation.methodology_workspace`.
+- Sprint W: milestone closeout and GitHub sync preparation. Current active flow is `SEC EDGAR cron -> SpecialSituation -> Kanban -> checklist/resources -> evidence mapping -> manual ResearchCase promotion`.
 
 Current strategic direction:
 - ResearchCase is the primary durable work object.
 - Research Inbox is the main operating queue for existing and future preliminary ResearchCases.
 - Agent Ops is observability-first, not autonomy-first.
 - Fontana is documented as CTO / Project Governor concept only; no runtime implementation yet.
-- SEC source-driven intake remains future work.
+- SEC EDGAR source-driven detection is operational and scheduled. ResearchCase evaluation remains manual/preparatory.
 - Public Site / Brand Experience / User Documentation remains paused.
 
 Standing guardrails:
@@ -52,6 +50,18 @@ Standing guardrails:
 - No Marketplace/Sales changes unless explicitly scoped.
 - No public-site implementation while paused.
 - No secrets, private infrastructure details, raw `.env`, DB dumps, raw course transcripts, or copyrighted raw course text in docs.
+
+## Strategic Consolidation — AI Context + Agent Ops + Fontana
+
+AI-Safe Context Architecture is now represented by `swissedge-ai-context/`, a curated context layer for assistants. It contains safe project state, roadmap, decisions, glossary, Agent Ops notes, AI-safe playbook/evaluator placeholders, and publication guardrails. It must not contain secrets, private infrastructure details, raw course materials, or copyrighted raw course text.
+
+Agent Ops & Learning Layer is documented and partially implemented. The docs in `docs/agent-ops/` define rooms, agents, metrics, data model, API, UI, Fontana CTO, and routing audits. Sprint H backend foundation is documented deployed with additive migration `e5f6a7b8c9d0` applied, read-only endpoints, proposal status review, and a fail-safe logger skeleton. Sprint I `/agent-ops` UI is documented deployed. Sprint K logger isolation exists locally, but scanner/evaluator integration remains not approved. Sprint N/O add only narrow observer activity logging for proposal review and manual ResearchCase creation.
+
+Fontana is documented as SwissEdge CTO / Project Governor. Fontana is an observer/advisor/documenter concept only. It can propose reports, ADRs, and improvements, but cannot deploy, modify production, trigger scans, change cron, enable evaluator v2, or auto-apply proposals.
+
+Current status: Investment Platform V2 and Agent Ops are the active tracks. SEC EDGAR source-driven detection is operational through the approved cron wrapper. `SpecialSituation` is the detection object; manual Kanban/resource/evidence work prepares cases for manual ResearchCase promotion. `investment_sources` still does not control scanner execution. `/agent-ops` UI is documented deployed and smoke-tested, with Scoreboard and Fontana runtime still deferred.
+
+Next steps: GitHub sync after final review, then ResearchCase Evaluation Preparation / Deep Research Assist. That next phase should prepare readiness packages, missing evidence reports, source quality summaries, and manual evaluation preview design without live AI, evaluator v2 global enablement, auto-publishing, automatic ResearchCase creation from detection, web crawling, PDF download, or document body fetching.
 
 **Previous deployed baseline — Investment Research Platform Phase 5 COMPLETE AND DEPLOYED — validated by Dani (2026-05-03).**
 

@@ -7,17 +7,23 @@ import {
   reviewSourceIntelligenceSuggestion,
   type SourceIntelligenceSuggestionRecord,
 } from '@/lib/api';
-
-const STATUS_STYLE: Record<string, string> = {
-  proposed: 'text-amber-500',
-  approved: 'text-green-500',
-  rejected: 'text-gray-600',
-};
+import { PageHeader, StatusBadge, EmptyState, LoadingState, ErrorBanner, InfoBanner } from '@/app/components/ui';
 
 const ACTION_LABELS: Record<string, string> = {
-  add: 'ADD SOURCE',
-  update_priority: 'UPDATE PRIORITY',
-  deactivate: 'DEACTIVATE',
+  add: 'Add source',
+  update_priority: 'Update priority',
+  deactivate: 'Deactivate',
+};
+
+const selectStyle: React.CSSProperties = {
+  padding: '7px 10px',
+  background: 'var(--bg-subtle)',
+  border: '1px solid var(--border-default)',
+  borderRadius: '7px',
+  fontFamily: 'var(--font-mono)',
+  fontSize: '12px',
+  color: 'var(--text-secondary)',
+  outline: 'none',
 };
 
 export default function SourceIntelligenceQueuePage() {
@@ -61,145 +67,145 @@ export default function SourceIntelligenceQueuePage() {
   const reviewed = suggestions.filter(s => s.status !== 'proposed');
 
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100 p-6">
-      <div className="max-w-4xl mx-auto">
-        <div className="flex items-start justify-between mb-6">
-          <div>
-            <h1 className="text-xl font-mono font-bold text-white">Source Intelligence Queue</h1>
-            <p className="text-xs font-mono text-gray-600 mt-0.5">
-              Manual approval queue. No action applies proposals to investment_sources.
-            </p>
-          </div>
-          <div className="flex gap-3">
-            <Link href="/investment/historical-cases" className="px-3 py-1.5 rounded border border-gray-700 hover:border-gray-500 text-xs font-mono text-gray-400 transition-colors">
-              HISTORICAL CASES
-            </Link>
-            <Link href="/investment/research" className="px-3 py-1.5 rounded border border-gray-700 hover:border-gray-500 text-xs font-mono text-gray-400 transition-colors">
-              RESEARCH CASES
-            </Link>
-          </div>
-        </div>
+    <div className="page-container">
 
-        <div className="mb-4 flex items-center gap-4 flex-wrap">
-          <div className="flex items-center gap-2">
-            <label className="text-xs font-mono text-gray-500">Status:</label>
-            <select
-              value={filterStatus}
-              onChange={e => setFilterStatus(e.target.value)}
-              className="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs font-mono text-gray-300 focus:outline-none"
-            >
+      <PageHeader
+        title="Source Intelligence Queue"
+        subtitle="Manual approval queue — approved proposals are not applied automatically."
+        backHref="/investment/research"
+        backLabel="Research Cases"
+        actions={
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <Link href="/investment/historical-cases" className="btn btn--secondary btn--sm">Historical Cases</Link>
+          </div>
+        }
+      />
+
+      {/* Filters */}
+      <div className="card" style={{ marginBottom: '24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <label style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Status</label>
+            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={selectStyle}>
               <option value="">All</option>
               <option value="proposed">proposed</option>
               <option value="approved">approved</option>
               <option value="rejected">rejected</option>
             </select>
           </div>
-          <div className="flex items-center gap-2">
-            <label className="text-xs font-mono text-gray-500">Action:</label>
-            <select
-              value={filterAction}
-              onChange={e => setFilterAction(e.target.value)}
-              className="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs font-mono text-gray-300 focus:outline-none"
-            >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <label style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Action</label>
+            <select value={filterAction} onChange={e => setFilterAction(e.target.value)} style={selectStyle}>
               <option value="">All</option>
               <option value="add">add</option>
               <option value="update_priority">update_priority</option>
               <option value="deactivate">deactivate</option>
             </select>
           </div>
-          {reviewMsg && <p className="text-xs font-mono text-emerald-500">{reviewMsg}</p>}
+          {reviewMsg && (
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-secondary)' }}>{reviewMsg}</span>
+          )}
         </div>
-
-        {loading && <p className="text-xs font-mono text-gray-600">Loading…</p>}
-        {error && <p className="text-xs font-mono text-red-400">{error}</p>}
-
-        {!loading && !error && suggestions.length === 0 && (
-          <p className="text-xs font-mono text-gray-700">No proposals in queue.</p>
-        )}
-
-        {proposed.length > 0 && (
-          <div className="mb-6">
-            <p className="text-xs font-mono text-amber-500 uppercase tracking-widest mb-2">Pending Review ({proposed.length})</p>
-            <div className="space-y-2">
-              {proposed.map((p) => (
-                <div key={p.id} className="rounded border border-amber-900/30 bg-gray-900/40 px-4 py-3">
-                  <div className="flex items-center gap-2 flex-wrap mb-1">
-                    <span className="text-xs font-mono text-gray-600 border border-gray-700 rounded px-1">
-                      {ACTION_LABELS[p.action] ?? p.action.toUpperCase()}
-                    </span>
-                    <span className="text-sm font-mono text-gray-200">{p.proposed_name || '—'}</span>
-                    {p.proposed_source_type && (
-                      <span className="text-xs font-mono text-gray-600">{p.proposed_source_type}</span>
-                    )}
-                    <span className="text-xs font-mono ml-auto text-amber-500">PROPOSED</span>
-                  </div>
-                  {p.rationale && <p className="text-xs text-gray-500">{p.rationale}</p>}
-                  <div className="flex items-center gap-3 mt-2 flex-wrap">
-                    {p.research_case_id && (
-                      <Link href={`/investment/research/${p.research_case_id}`} className="text-xs font-mono text-indigo-500 hover:text-indigo-400">
-                        → Research Case
-                      </Link>
-                    )}
-                    {p.historical_case_id && (
-                      <Link href={`/investment/historical-cases/${p.historical_case_id}`} className="text-xs font-mono text-blue-500 hover:text-blue-400">
-                        → Historical Case
-                      </Link>
-                    )}
-                    <div className="flex gap-2 ml-auto">
-                      <button
-                        onClick={() => handleReview(p.id, 'approved')}
-                        className="px-2 py-1 rounded bg-green-900 hover:bg-green-800 text-xs font-mono text-green-100 border border-green-700 transition-colors"
-                      >
-                        APPROVE
-                      </button>
-                      <button
-                        onClick={() => handleReview(p.id, 'rejected')}
-                        className="px-2 py-1 rounded border border-gray-700 hover:border-red-800 text-xs font-mono text-gray-500 hover:text-red-400 transition-colors"
-                      >
-                        REJECT
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {reviewed.length > 0 && (
-          <div>
-            <p className="text-xs font-mono text-gray-600 uppercase tracking-widest mb-2">Reviewed ({reviewed.length})</p>
-            <div className="space-y-1">
-              {reviewed.map((p) => (
-                <div key={p.id} className="rounded border border-gray-800 bg-gray-900/20 px-4 py-2">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-mono text-gray-700 border border-gray-800 rounded px-1">
-                      {ACTION_LABELS[p.action] ?? p.action.toUpperCase()}
-                    </span>
-                    <span className={`text-sm font-mono ${p.status === 'rejected' ? 'line-through text-gray-700' : 'text-gray-400'}`}>
-                      {p.proposed_name || '—'}
-                    </span>
-                    <span className={`text-xs font-mono ml-auto ${STATUS_STYLE[p.status] ?? 'text-gray-500'}`}>
-                      {p.status.toUpperCase()}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className="mt-6 rounded border border-gray-800 bg-gray-900/20 px-4 py-3">
-          <p className="text-xs font-mono text-gray-700">
-            GUARDRAIL: Approved proposals are not applied to investment_sources. No apply action exists.
-            Application to the global source registry requires a separate manual sprint (Phase 4D+).
-          </p>
-        </div>
-
-        <p className="text-xs font-mono text-gray-800 mt-4 text-center">
-          Este análisis es educativo. No es asesoramiento financiero.
-        </p>
       </div>
+
+      {loading && <LoadingState label="Loading proposals…" />}
+      {error && <ErrorBanner message={error} />}
+
+      {!loading && !error && suggestions.length === 0 && (
+        <EmptyState icon="📡" title="No proposals in queue" />
+      )}
+
+      {/* Pending */}
+      {proposed.length > 0 && (
+        <div style={{ marginBottom: '24px' }}>
+          <div className="section-header" style={{ marginBottom: '12px' }}>
+            <span className="section-title">Pending Review ({proposed.length})</span>
+            <div className="section-line" />
+          </div>
+          <div style={{ display: 'grid', gap: '8px' }}>
+            {proposed.map(p => (
+              <div key={p.id} className="card">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '6px' }}>
+                  <span className="status-badge status-badge--readonly">
+                    {ACTION_LABELS[p.action] ?? p.action}
+                  </span>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '13px', color: 'var(--text-primary)', fontWeight: 500 }}>
+                    {p.proposed_name || '—'}
+                  </span>
+                  {p.proposed_source_type && (
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-faint)' }}>
+                      {p.proposed_source_type}
+                    </span>
+                  )}
+                  <StatusBadge value={p.status} />
+                </div>
+                {p.rationale && (
+                  <p style={{ fontFamily: 'var(--font-sans)', fontSize: '12px', color: 'var(--text-secondary)', margin: '0 0 8px' }}>
+                    {p.rationale}
+                  </p>
+                )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                  {p.research_case_id && (
+                    <Link href={`/investment/research/${p.research_case_id}`} style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-secondary)', textDecoration: 'none' }}>
+                      → Research Case
+                    </Link>
+                  )}
+                  {p.historical_case_id && (
+                    <Link href={`/investment/historical-cases/${p.historical_case_id}`} style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-secondary)', textDecoration: 'none' }}>
+                      → Historical Case
+                    </Link>
+                  )}
+                  <div style={{ display: 'flex', gap: '8px', marginLeft: 'auto' }}>
+                    <button onClick={() => handleReview(p.id, 'approved')} className="btn btn--secondary btn--sm">
+                      Approve
+                    </button>
+                    <button onClick={() => handleReview(p.id, 'rejected')} className="btn btn--ghost btn--sm">
+                      Reject
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Reviewed */}
+      {reviewed.length > 0 && (
+        <div style={{ marginBottom: '24px' }}>
+          <div className="section-header" style={{ marginBottom: '12px' }}>
+            <span className="section-title">Reviewed ({reviewed.length})</span>
+            <div className="section-line" />
+          </div>
+          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Action</th>
+                  <th>Name</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reviewed.map(p => (
+                  <tr key={p.id}>
+                    <td style={{ color: 'var(--text-faint)' }}>{ACTION_LABELS[p.action] ?? p.action}</td>
+                    <td style={{ color: p.status === 'rejected' ? 'var(--text-faint)' : 'var(--text-primary)', textDecoration: p.status === 'rejected' ? 'line-through' : 'none' }}>
+                      {p.proposed_name || '—'}
+                    </td>
+                    <td><StatusBadge value={p.status} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      <InfoBanner variant="guardrail">
+        Guardrail: approved proposals are not applied to investment_sources. Application to the global source registry requires a separate manual sprint.
+      </InfoBanner>
+
     </div>
   );
 }

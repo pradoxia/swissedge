@@ -8,6 +8,7 @@ import {
   type ResearchCase,
   type Situation,
 } from '@/lib/api';
+import { PageHeader, MetricRow, LoadingState, ErrorBanner, InfoBanner } from '@/app/components/ui';
 
 type BucketKey =
   | 'all'
@@ -52,6 +53,7 @@ const BUCKETS: { key: BucketKey; label: string }[] = [
 const READINESS = ['monitor', 'not_actionable', 'needs_more_work', 'candidate'];
 const STATUSES = ['detected', 'brief_generated', 'under_investigation', 'documented', 'archived', 'published'];
 
+// Inline badge classes for semantic status fields (not buy/sell — informational only)
 const BUCKET_BADGE: Record<BucketKey, string> = {
   all: 'border-slate-200 bg-slate-50 text-slate-600',
   new_detected: 'border-sky-200 bg-sky-50 text-sky-700',
@@ -81,13 +83,7 @@ function safeText(value: unknown, fallback = '-'): string {
 function formatDate(value: string | null | undefined): string {
   if (!value) return '-';
   try {
-    return new Date(value).toLocaleString('en-CH', {
-      year: '2-digit',
-      month: 'short',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    return new Date(value).toLocaleString('en-CH', { year: '2-digit', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' });
   } catch {
     return value;
   }
@@ -104,20 +100,10 @@ function briefString(rc: ResearchCase, key: string): string {
 
 function hasV2Metadata(rc: ResearchCase): boolean {
   return Boolean(
-    rc.source_origin_name ||
-      rc.investment_source_id ||
-      rc.intake_method ||
-      rc.connector_key ||
-      rc.intake_event_id ||
-      rc.evidence_level ||
-      rc.official_source_status ||
-      rc.methodology_status ||
-      rc.playbook_used ||
-      rc.checklist_used ||
-      rc.course_reference ||
-      rc.duplicate_status ||
-      rc.next_follow_up_at ||
-      rc.discarded_reason,
+    rc.source_origin_name || rc.investment_source_id || rc.intake_method || rc.connector_key ||
+    rc.intake_event_id || rc.evidence_level || rc.official_source_status || rc.methodology_status ||
+    rc.playbook_used || rc.checklist_used || rc.course_reference || rc.duplicate_status ||
+    rc.next_follow_up_at || rc.discarded_reason,
   );
 }
 
@@ -182,24 +168,16 @@ function buildInboxRow(rc: ResearchCase, situation: Situation | null): InboxRow 
   if (rc.sources.length === 0) warnings.push('no sources');
 
   return {
-    rc,
-    situation,
+    rc, situation,
     bucket: deriveBucket(rc, officialSource, legacyMissingV2),
-    sourceOrigin,
-    intakeMethod: rc.intake_method ?? 'legacy/manual',
-    evidence,
-    officialSource,
-    methodology,
-    legacyMissingV2,
-    openTaskCount,
-    taskCount: rc.tasks.length,
-    docCount: rc.documents.length,
-    sourceCount: rc.sources.length,
+    sourceOrigin, intakeMethod: rc.intake_method ?? 'legacy/manual',
+    evidence, officialSource, methodology, legacyMissingV2,
+    openTaskCount, taskCount: rc.tasks.length, docCount: rc.documents.length, sourceCount: rc.sources.length,
     warnings,
   };
 }
 
-function Badge({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+function InlineBadge({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
     <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${className}`}>
       {children}
@@ -208,38 +186,35 @@ function Badge({ children, className = '' }: { children: React.ReactNode; classN
 }
 
 function evidenceBadgeClass(value: string): string {
-  if (['official_filing', 'official_primary', 'official_secondary'].includes(value)) {
-    return 'border-green-200 bg-green-50 text-green-700';
-  }
+  if (['official_filing', 'official_primary', 'official_secondary'].includes(value)) return 'border-green-200 bg-green-50 text-green-700';
   if (value === 'trusted_external' || value === 'mixed') return 'border-blue-200 bg-blue-50 text-blue-700';
   if (value === 'external_unverified') return 'border-amber-200 bg-amber-50 text-amber-800';
   return 'border-slate-200 bg-slate-100 text-slate-500';
 }
 
 function officialSourceBadgeClass(value: string): string {
-  if (['likely_official', 'official_attached'].includes(value)) {
-    return 'border-green-200 bg-green-50 text-green-700';
-  }
+  if (['likely_official', 'official_attached'].includes(value)) return 'border-green-200 bg-green-50 text-green-700';
   if (value === 'official_pending_review') return 'border-amber-200 bg-amber-50 text-amber-800';
   return 'border-slate-200 bg-slate-100 text-slate-500';
 }
 
 function methodologyBadgeClass(value: string): string {
-  if (['evaluator_ready', 'partial', 'legacy'].includes(value)) {
-    return 'border-slate-200 bg-slate-50 text-slate-600';
-  }
+  if (['evaluator_ready', 'partial', 'legacy'].includes(value)) return 'border-slate-200 bg-slate-50 text-slate-600';
   if (value === 'human_review_required') return 'border-violet-200 bg-violet-50 text-violet-700';
   return 'border-slate-200 bg-slate-100 text-slate-500';
 }
 
-function EmptyState({ title, description }: { title: string; description: string }) {
-  return (
-    <div className="rounded-lg border border-slate-200 bg-white p-10 text-center shadow-sm">
-      <p className="text-sm font-semibold text-slate-700">{title}</p>
-      <p className="mt-2 text-sm text-slate-500">{description}</p>
-    </div>
-  );
-}
+const selectStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '7px 10px',
+  background: 'var(--bg-subtle)',
+  border: '1px solid var(--border-default)',
+  borderRadius: '7px',
+  fontFamily: 'var(--font-mono)',
+  fontSize: '12px',
+  color: 'var(--text-secondary)',
+  outline: 'none',
+};
 
 export default function ResearchInboxPage() {
   const [researchCases, setResearchCases] = useState<ResearchCase[]>([]);
@@ -286,15 +261,8 @@ export default function ResearchInboxPage() {
 
   const bucketCounts = useMemo(() => {
     const counts: Record<BucketKey, number> = {
-      all: rows.length,
-      new_detected: 0,
-      needs_official_source: 0,
-      needs_enrichment: 0,
-      ready_for_deep_research: 0,
-      monitoring: 0,
-      documented: 0,
-      archived_discarded: 0,
-      legacy_missing_v2: 0,
+      all: rows.length, new_detected: 0, needs_official_source: 0, needs_enrichment: 0,
+      ready_for_deep_research: 0, monitoring: 0, documented: 0, archived_discarded: 0, legacy_missing_v2: 0,
     };
     for (const row of rows) {
       counts[row.bucket] += 1;
@@ -304,11 +272,8 @@ export default function ResearchInboxPage() {
   }, [rows]);
 
   const filteredRows = rows.filter(row => {
-    if (bucketFilter === 'legacy_missing_v2') {
-      if (!row.legacyMissingV2) return false;
-    } else if (bucketFilter !== 'all' && row.bucket !== bucketFilter) {
-      return false;
-    }
+    if (bucketFilter === 'legacy_missing_v2') { if (!row.legacyMissingV2) return false; }
+    else if (bucketFilter !== 'all' && row.bucket !== bucketFilter) return false;
     if (readinessFilter && row.rc.investment_readiness !== readinessFilter) return false;
     if (statusFilter && row.rc.status !== statusFilter) return false;
     if (hasOpenTasks && row.openTaskCount === 0) return false;
@@ -323,303 +288,225 @@ export default function ResearchInboxPage() {
   const totalSources = rows.reduce((sum, row) => sum + row.sourceCount, 0);
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6 text-slate-900 md:p-8">
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-8 flex items-center justify-between text-sm">
-          <Link href="/" className="font-medium text-slate-500 hover:text-slate-900">
-            Mission Control
-          </Link>
-          <div className="flex items-center gap-5">
-            <Link href="/investment/research" className="font-medium text-slate-500 hover:text-slate-900">
-              Research Cases
-            </Link>
-            <Link href="/investment/evaluations" className="font-medium text-slate-500 hover:text-slate-900">
-              Evaluations
-            </Link>
-            <Link href="/investment/internal-audit" className="font-medium text-slate-500 hover:text-slate-900">
-              Internal Audit
-            </Link>
-            <Link href="/investment/radar-status" className="font-medium text-slate-500 hover:text-slate-900">
-              Radar Status
-            </Link>
+    <div className="page-container--wide">
+
+      <PageHeader
+        title="Research Inbox"
+        subtitle="Source-driven intake view — no scans, AI previews, status changes, or cron actions triggered here."
+        backHref="/investment/research"
+        backLabel="Research Cases"
+        actions={
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <Link href="/investment/evaluations" className="btn btn--secondary btn--sm">Evaluations</Link>
+            <Link href="/investment/radar-status" className="btn btn--secondary btn--sm">Radar Status</Link>
           </div>
+        }
+      />
+
+      <InfoBanner variant="warning">
+        V2 transition: source-driven intake and SEC-to-ResearchCase automation are not active yet. Cases shown originate from the Evaluations/SpecialSituation flow.
+      </InfoBanner>
+
+      {/* Stats */}
+      {!loading && !error && rows.length > 0 && (
+        <div className="card" style={{ marginBottom: '24px' }}>
+          <MetricRow items={[
+            { label: 'Cases', value: rows.length },
+            { label: 'Legacy', value: bucketCounts.legacy_missing_v2 },
+            { label: 'Open Tasks', value: totalOpenTasks },
+            { label: 'Docs', value: totalDocs },
+            { label: 'Sources', value: totalSources },
+          ]} />
         </div>
+      )}
 
-        <div className="mb-6">
-          <h1 className="mb-2 text-3xl font-semibold tracking-tight text-slate-950">
-            Research Inbox
-          </h1>
-          <p className="max-w-3xl text-sm leading-6 text-slate-600">
-            Source-driven intake is not wired yet. This inbox currently shows existing ResearchCases and labels missing V2 metadata as legacy/manual.
-          </p>
-        </div>
-
-        <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50/80 p-4 shadow-sm">
-          <p className="mb-1 text-sm font-semibold text-amber-950">V2 transition notice</p>
-          <p className="text-sm leading-6 text-amber-900">
-            Source-driven intake is not active yet. SEC-to-ResearchCase automation is not active yet. This page is read-only and current cases may still originate from the Evaluations/SpecialSituation flow.
-          </p>
-          <p className="mt-2 text-xs leading-5 text-amber-800">
-            No scans, AI previews, status changes, source toggles, publishing, or cron actions are triggered from this page.
-          </p>
-        </div>
-
-        {!loading && !error && rows.length > 0 && (
-          <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-5">
-            <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="text-xl font-semibold text-slate-950">{rows.length}</div>
-              <div className="mt-1 text-xs font-medium uppercase tracking-wide text-slate-500">Cases</div>
-            </div>
-            <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="text-xl font-semibold text-slate-950">{bucketCounts.legacy_missing_v2}</div>
-              <div className="mt-1 text-xs font-medium uppercase tracking-wide text-slate-500">Legacy</div>
-            </div>
-            <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="text-xl font-semibold text-slate-950">{totalOpenTasks}</div>
-              <div className="mt-1 text-xs font-medium uppercase tracking-wide text-slate-500">Open tasks</div>
-            </div>
-            <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="text-xl font-semibold text-slate-950">{totalDocs}</div>
-              <div className="mt-1 text-xs font-medium uppercase tracking-wide text-slate-500">Docs</div>
-            </div>
-            <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="text-xl font-semibold text-slate-950">{totalSources}</div>
-              <div className="mt-1 text-xs font-medium uppercase tracking-wide text-slate-500">Sources</div>
-            </div>
-          </div>
-        )}
-
-        <div className="mb-6 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="mb-4 flex flex-wrap gap-2">
-            {BUCKETS.map(bucket => {
-              const active = bucketFilter === bucket.key;
-              return (
-                <button
-                  key={bucket.key}
-                  onClick={() => setBucketFilter(bucket.key)}
-                  className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-                    active
-                      ? 'bg-slate-900 text-white shadow-sm'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
-                  }`}
-                >
-                  {bucket.label}
-                  <span className={active ? 'ml-2 text-slate-300' : 'ml-2 text-slate-400'}>{bucketCounts[bucket.key]}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div>
-              <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">Readiness</label>
-              <select
-                value={readinessFilter}
-                onChange={e => setReadinessFilter(e.target.value)}
-                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-slate-500 focus:outline-none"
+      {/* Filters */}
+      <div className="card" style={{ marginBottom: '24px' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
+          {BUCKETS.map(bucket => {
+            const active = bucketFilter === bucket.key;
+            return (
+              <button
+                key={bucket.key}
+                onClick={() => setBucketFilter(bucket.key)}
+                className={`filter-btn ${active ? 'filter-btn--active' : ''}`}
               >
-                <option value="">All readiness</option>
-                {READINESS.map(r => <option key={r} value={r}>{r}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">Status</label>
-              <select
-                value={statusFilter}
-                onChange={e => setStatusFilter(e.target.value)}
-                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-slate-500 focus:outline-none"
-              >
-                <option value="">All statuses</option>
-                {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
-            <label className="flex items-center gap-2 text-sm text-slate-600">
-              <input type="checkbox" checked={hasOpenTasks} onChange={e => setHasOpenTasks(e.target.checked)} className="accent-slate-700" />
-              Has open tasks
-            </label>
-            <label className="flex items-center gap-2 text-sm text-slate-600">
-              <input type="checkbox" checked={hasDocuments} onChange={e => setHasDocuments(e.target.checked)} className="accent-slate-700" />
-              Has documents
-            </label>
-            <label className="flex items-center gap-2 text-sm text-slate-600">
-              <input type="checkbox" checked={hasSources} onChange={e => setHasSources(e.target.checked)} className="accent-slate-700" />
-              Has sources
-            </label>
-            <label className="flex items-center gap-2 text-sm text-slate-600">
-              <input type="checkbox" checked={legacyOnly} onChange={e => setLegacyOnly(e.target.checked)} className="accent-slate-700" />
-              Legacy / missing V2 metadata
-            </label>
-          </div>
+                {bucket.label}
+                <span style={{ marginLeft: 4, opacity: 0.6 }}>{bucketCounts[bucket.key]}</span>
+              </button>
+            );
+          })}
         </div>
-
-        {loading && (
-          <div className="rounded-lg border border-slate-200 bg-white p-8 text-center shadow-sm">
-            <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700"></div>
-            <p className="text-sm text-slate-500">Loading research inbox...</p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', alignItems: 'center' }}>
+          <div>
+            <label style={{ display: 'block', fontFamily: 'var(--font-mono)', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-faint)', marginBottom: '6px' }}>Readiness</label>
+            <select value={readinessFilter} onChange={e => setReadinessFilter(e.target.value)} style={selectStyle}>
+              <option value="">All readiness</option>
+              {READINESS.map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
           </div>
-        )}
-
-        {error && (
-          <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 shadow-sm">
-            <p className="text-sm text-red-700">Error: {error}</p>
+          <div>
+            <label style={{ display: 'block', fontFamily: 'var(--font-mono)', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-faint)', marginBottom: '6px' }}>Status</label>
+            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={selectStyle}>
+              <option value="">All statuses</option>
+              {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
           </div>
-        )}
-
-        {!loading && !error && rows.length === 0 && (
-          <EmptyState
-            title="No ResearchCases yet."
-            description="Create one from an existing evaluation. Source-driven intake is unavailable in this sprint."
-          />
-        )}
-
-        {!loading && !error && rows.length > 0 && filteredRows.length === 0 && (
-          <EmptyState
-            title="No cases match selected filters."
-            description="Clear filters or check archived/discarded and legacy/manual cases."
-          />
-        )}
-
-        {!loading && !error && filteredRows.length > 0 && (
-          <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-            <div className="overflow-x-auto">
-              <table className="min-w-full border-separate border-spacing-0">
-                <thead className="border-b border-slate-200 bg-slate-100">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Case</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Company / ticker</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Situation / linked situation</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Source origin</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Intake method</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Evidence</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Official source</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Methodology</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Readiness</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Status / bucket</th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-500">Tasks</th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-500">Docs</th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-500">Sources</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Updated</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredRows.map(row => {
-                    const situationLabel = row.situation
-                      ? `${safeText(row.situation.situation_type, safeText(row.situation.filing_type, 'linked situation'))}`
-                      : row.rc.situation_id
-                        ? 'linked situation'
-                        : 'manual case';
-                    const bucketLabel = BUCKETS.find(b => b.key === row.bucket)?.label ?? row.bucket;
-                    return (
-                      <tr key={row.rc.id} className="align-top transition-colors hover:bg-slate-50">
-                        <td className="px-4 py-4 text-sm">
-                          <Link href={`/investment/research/${row.rc.id}`} className="font-semibold text-slate-900 hover:text-slate-700 hover:underline">
-                            Case {row.rc.id.slice(0, 8).toUpperCase()}
-                          </Link>
-                          {row.warnings.length > 0 && (
-                            <div className="mt-2 flex flex-wrap gap-1">
-                              {row.warnings.slice(0, 3).map(w => (
-                                <Badge key={w} className="border-amber-200 bg-amber-50 text-amber-800">{w}</Badge>
-                              ))}
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-4 py-4 text-sm text-slate-700">
-                          <div className="max-w-[180px] truncate" title={row.situation?.company_name ?? undefined}>
-                            {safeText(row.situation?.company_name, 'unknown')}
-                          </div>
-                          <div className="text-xs text-slate-400">{safeText(row.situation?.ticker)}</div>
-                        </td>
-                        <td className="px-4 py-4 text-sm text-slate-600">
-                          <div className="max-w-[170px] truncate">{situationLabel}</div>
-                          {row.rc.situation_id ? (
-                            <Link href={`/investment/evaluations/${row.rc.situation_id}`} className="text-xs font-medium text-slate-500 hover:text-slate-900">
-                              {row.rc.situation_id.slice(0, 8).toUpperCase()} →
-                            </Link>
-                          ) : (
-                            <span className="text-xs text-slate-400">no linked situation</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-4 text-sm text-slate-600">{row.sourceOrigin}</td>
-                        <td className="px-4 py-4 text-sm text-slate-500">{row.intakeMethod}</td>
-                        <td className="px-4 py-4">
-                          <Badge className={evidenceBadgeClass(row.evidence)}>
-                            {row.evidence}
-                          </Badge>
-                        </td>
-                        <td className="px-4 py-4">
-                          <Badge className={officialSourceBadgeClass(row.officialSource)}>
-                            {row.officialSource}
-                          </Badge>
-                        </td>
-                        <td className="px-4 py-4">
-                          <Badge className={methodologyBadgeClass(row.methodology)}>
-                            {row.methodology}
-                          </Badge>
-                          {(row.rc.playbook_used || row.rc.checklist_used) && (
-                            <div className="mt-1 max-w-[160px] truncate text-[11px] text-slate-400">
-                              {row.rc.playbook_used ?? row.rc.checklist_used}
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-4 py-4">
-                          <Badge className={row.rc.investment_readiness ? READINESS_BADGE[row.rc.investment_readiness] ?? 'border-slate-200 bg-slate-100 text-slate-500' : 'border-slate-200 bg-slate-100 text-slate-500'}>
-                            {safeText(row.rc.investment_readiness, 'none')}
-                          </Badge>
-                        </td>
-                        <td className="px-4 py-4 text-sm">
-                          <div className="mb-1 text-slate-600">{row.rc.status}</div>
-                          <Badge className={BUCKET_BADGE[row.bucket]}>{bucketLabel}</Badge>
-                          {row.rc.duplicate_status && (
-                            <div className="mt-1">
-                              <Badge className="border-slate-200 bg-slate-50 text-slate-500">{row.rc.duplicate_status}</Badge>
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-4 py-4 text-center text-sm text-slate-600">
-                          <span className={row.openTaskCount > 0 ? 'font-semibold text-slate-900' : 'text-slate-400'}>{row.openTaskCount}</span>
-                          <span className="text-slate-400"> / {row.taskCount}</span>
-                        </td>
-                        <td className="px-4 py-4 text-center text-sm text-slate-600">{row.docCount}</td>
-                        <td className="px-4 py-4 text-center text-sm text-slate-600">{row.sourceCount}</td>
-                        <td className="px-4 py-4 text-sm text-slate-500">
-                          <div>{formatDate(row.rc.updated_at)}</div>
-                          {row.rc.next_follow_up_at && (
-                            <div className="mt-1 text-[11px] text-slate-400">
-                              Follow-up {formatDate(row.rc.next_follow_up_at)}
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-4 py-4 text-sm">
-                          <div className="flex flex-col gap-1">
-                            <Link href={`/investment/research/${row.rc.id}`} className="font-medium text-slate-900 hover:text-slate-600">
-                              Open ResearchCase
-                            </Link>
-                            {row.rc.situation_id && (
-                              <Link href={`/investment/evaluations/${row.rc.situation_id}`} className="text-slate-500 hover:text-slate-900">
-                                Open Evaluation
-                              </Link>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            <div className="border-t border-slate-200 bg-slate-50 px-4 py-3">
-              <p className="text-xs text-slate-500">
-                Showing {filteredRows.length} of {rows.length} ResearchCases.
-              </p>
-            </div>
-          </div>
-        )}
-
-        <div className="mt-6 text-center text-xs text-slate-500">
-          Read-only inbox — no scans, AI previews, source toggles, publishing, or cron actions are triggered from this page.
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+            <input type="checkbox" checked={hasOpenTasks} onChange={e => setHasOpenTasks(e.target.checked)} />
+            Has open tasks
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+            <input type="checkbox" checked={hasDocuments} onChange={e => setHasDocuments(e.target.checked)} />
+            Has documents
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+            <input type="checkbox" checked={hasSources} onChange={e => setHasSources(e.target.checked)} />
+            Has sources
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+            <input type="checkbox" checked={legacyOnly} onChange={e => setLegacyOnly(e.target.checked)} />
+            Legacy / missing V2
+          </label>
         </div>
       </div>
+
+      {loading && <LoadingState label="Loading research inbox…" />}
+      {error && <ErrorBanner message={error} />}
+
+      {!loading && !error && rows.length === 0 && (
+        <div className="empty-state">
+          <div className="empty-state-title">No ResearchCases yet</div>
+          <div className="empty-state-desc">Create one from an existing evaluation. Source-driven intake is unavailable in this sprint.</div>
+        </div>
+      )}
+
+      {!loading && !error && rows.length > 0 && filteredRows.length === 0 && (
+        <div className="empty-state">
+          <div className="empty-state-title">No cases match selected filters</div>
+          <div className="empty-state-desc">Clear filters or check archived/discarded and legacy/manual cases.</div>
+        </div>
+      )}
+
+      {!loading && !error && filteredRows.length > 0 && (
+        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Case</th>
+                  <th>Company / Ticker</th>
+                  <th>Situation / Linked</th>
+                  <th>Source Origin</th>
+                  <th>Intake</th>
+                  <th>Evidence</th>
+                  <th>Official Source</th>
+                  <th>Methodology</th>
+                  <th>Readiness</th>
+                  <th>Status / Bucket</th>
+                  <th style={{ textAlign: 'center' }}>Tasks</th>
+                  <th style={{ textAlign: 'center' }}>Docs</th>
+                  <th style={{ textAlign: 'center' }}>Src</th>
+                  <th>Updated</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredRows.map(row => {
+                  const situationLabel = row.situation
+                    ? safeText(row.situation.situation_type, safeText(row.situation.filing_type, 'linked'))
+                    : row.rc.situation_id ? 'linked' : 'manual';
+                  const bucketLabel = BUCKETS.find(b => b.key === row.bucket)?.label ?? row.bucket;
+                  return (
+                    <tr key={row.rc.id}>
+                      <td>
+                        <Link href={`/investment/research/${row.rc.id}`} style={{ fontWeight: 500, color: 'var(--text-primary)', textDecoration: 'none' }}>
+                          {row.rc.id.slice(0, 8).toUpperCase()}
+                        </Link>
+                        {row.warnings.length > 0 && (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', marginTop: '4px' }}>
+                            {row.warnings.slice(0, 3).map(w => (
+                              <InlineBadge key={w} className="border-amber-200 bg-amber-50 text-amber-800">{w}</InlineBadge>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+                      <td>
+                        <div style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-primary)' }} title={row.situation?.company_name ?? undefined}>
+                          {safeText(row.situation?.company_name, 'unknown')}
+                        </div>
+                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-faint)' }}>{safeText(row.situation?.ticker)}</div>
+                      </td>
+                      <td>
+                        <div style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-muted)' }}>{situationLabel}</div>
+                        {row.rc.situation_id ? (
+                          <Link href={`/investment/evaluations/${row.rc.situation_id}`} style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-faint)', textDecoration: 'none' }}>
+                            {row.rc.situation_id.slice(0, 8).toUpperCase()} →
+                          </Link>
+                        ) : (
+                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-faint)' }}>no situation</span>
+                        )}
+                      </td>
+                      <td style={{ color: 'var(--text-muted)' }}>{row.sourceOrigin}</td>
+                      <td style={{ color: 'var(--text-faint)' }}>{row.intakeMethod}</td>
+                      <td><InlineBadge className={evidenceBadgeClass(row.evidence)}>{row.evidence}</InlineBadge></td>
+                      <td><InlineBadge className={officialSourceBadgeClass(row.officialSource)}>{row.officialSource}</InlineBadge></td>
+                      <td>
+                        <InlineBadge className={methodologyBadgeClass(row.methodology)}>{row.methodology}</InlineBadge>
+                        {(row.rc.playbook_used || row.rc.checklist_used) && (
+                          <div style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--text-faint)', marginTop: 3 }}>
+                            {row.rc.playbook_used ?? row.rc.checklist_used}
+                          </div>
+                        )}
+                      </td>
+                      <td>
+                        <InlineBadge className={row.rc.investment_readiness ? READINESS_BADGE[row.rc.investment_readiness] ?? 'border-slate-200 bg-slate-100 text-slate-500' : 'border-slate-200 bg-slate-100 text-slate-500'}>
+                          {safeText(row.rc.investment_readiness, 'none')}
+                        </InlineBadge>
+                      </td>
+                      <td>
+                        <div style={{ color: 'var(--text-muted)', marginBottom: 3 }}>{row.rc.status}</div>
+                        <InlineBadge className={BUCKET_BADGE[row.bucket]}>{bucketLabel}</InlineBadge>
+                        {row.rc.duplicate_status && (
+                          <div style={{ marginTop: 3 }}>
+                            <InlineBadge className="border-slate-200 bg-slate-50 text-slate-500">{row.rc.duplicate_status}</InlineBadge>
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                        <span style={{ fontWeight: row.openTaskCount > 0 ? 600 : 400, color: row.openTaskCount > 0 ? 'var(--text-primary)' : 'var(--text-faint)' }}>{row.openTaskCount}</span>
+                        <span style={{ color: 'var(--text-faint)' }}> / {row.taskCount}</span>
+                      </td>
+                      <td style={{ textAlign: 'center', color: 'var(--text-muted)' }}>{row.docCount}</td>
+                      <td style={{ textAlign: 'center', color: 'var(--text-muted)' }}>{row.sourceCount}</td>
+                      <td style={{ color: 'var(--text-faint)' }}>
+                        <div>{formatDate(row.rc.updated_at)}</div>
+                        {row.rc.next_follow_up_at && (
+                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--text-faint)', marginTop: 2 }}>
+                            Follow-up {formatDate(row.rc.next_follow_up_at)}
+                          </div>
+                        )}
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <Link href={`/investment/research/${row.rc.id}`} className="btn btn--secondary btn--sm">Open Case</Link>
+                          {row.rc.situation_id && (
+                            <Link href={`/investment/evaluations/${row.rc.situation_id}`} className="btn btn--ghost btn--sm">Evaluation</Link>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border-subtle)', fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-faint)' }}>
+            Showing {filteredRows.length} of {rows.length} ResearchCases — read-only inbox
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

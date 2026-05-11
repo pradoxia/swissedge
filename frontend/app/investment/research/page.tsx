@@ -9,25 +9,10 @@ import {
   type ResearchCase,
   type Situation,
 } from '@/lib/api';
+import { PageHeader, StatusBadge, EmptyState, LoadingState, ErrorBanner, InfoBanner } from '@/app/components/ui';
 
 const STATUSES = ['detected', 'brief_generated', 'under_investigation', 'documented', 'archived', 'published'];
 const READINESS = ['monitor', 'not_actionable', 'needs_more_work', 'candidate'];
-
-const STATUS_COLORS: Record<string, string> = {
-  detected:             'text-gray-400 border-gray-700',
-  brief_generated:      'text-cyan-400 border-cyan-800',
-  under_investigation:  'text-violet-400 border-violet-800',
-  documented:           'text-green-400 border-green-800',
-  archived:             'text-gray-600 border-gray-800',
-  published:            'text-emerald-400 border-emerald-800',
-};
-
-const READINESS_COLORS: Record<string, string> = {
-  monitor:           'text-amber-400 border-amber-800',
-  not_actionable:    'text-gray-500 border-gray-700',
-  needs_more_work:   'text-violet-400 border-violet-800',
-  candidate:         'text-cyan-400 border-cyan-800',
-};
 
 function safeStr(v: unknown): string {
   if (typeof v === 'string') return v;
@@ -41,7 +26,6 @@ export default function ResearchListPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [readinessFilter, setReadinessFilter] = useState('');
 
-  // Create-from-situation panel state
   const [situations, setSituations] = useState<Situation[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [selectedSituationId, setSelectedSituationId] = useState('');
@@ -71,7 +55,7 @@ export default function ResearchListPage() {
       const data = await fetchSituations({ include_archived: false });
       setSituations(data.situations);
     } catch {
-      // non-fatal — create panel degrades gracefully
+      // non-fatal
     }
   }
 
@@ -101,219 +85,192 @@ export default function ResearchListPage() {
   const counts: Record<string, number> = { all: cases.length };
   for (const s of STATUSES) counts[s] = cases.filter(c => c.status === s).length;
 
+  const selectStyle: React.CSSProperties = {
+    width: '100%',
+    padding: '7px 10px',
+    background: 'var(--bg-subtle)',
+    border: '1px solid var(--border-default)',
+    borderRadius: '7px',
+    fontFamily: 'var(--font-mono)',
+    fontSize: '12px',
+    color: 'var(--text-secondary)',
+    outline: 'none',
+  };
+
+  const labelStyle: React.CSSProperties = {
+    display: 'block',
+    fontFamily: 'var(--font-mono)',
+    fontSize: '10px',
+    fontWeight: 500,
+    letterSpacing: '0.1em',
+    textTransform: 'uppercase',
+    color: 'var(--text-faint)',
+    marginBottom: '6px',
+  };
+
   return (
-    <div className="min-h-screen p-8">
-      <div className="max-w-5xl mx-auto">
+    <div className="page-container">
 
-        {/* Nav */}
-        <div className="flex items-center gap-3 mb-6 text-xs font-mono text-gray-600">
-          <Link href="/" className="hover:text-cyan-400">MISSION CONTROL</Link>
-          <span>/</span>
-          <Link href="/investment/evaluations" className="hover:text-cyan-400">EVALUATIONS</Link>
-          <span>/</span>
-          <Link href="/investment/research-inbox" className="hover:text-cyan-400">RESEARCH INBOX</Link>
-          <span>/</span>
-          <span className="text-cyan-400">RESEARCH CASES</span>
-        </div>
-
-        {/* Header */}
-        <div className="flex items-start justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-cyan-400 font-mono">RESEARCH CASES</h1>
-            <p className="text-xs text-gray-500 font-mono mt-1">
-              Private research workspace for detected special situations. Create a case from an evaluation, then document tasks, sources and key documents.
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <Link
-              href="/investment/research-inbox"
-              className="px-4 py-2 rounded border border-violet-700 text-violet-400 text-xs font-mono hover:bg-violet-900/30 transition-colors"
-            >
-              Research Inbox
-            </Link>
+      <PageHeader
+        title="Research Cases"
+        subtitle="Private research workspace for detected special situations."
+        backHref="/investment/evaluations"
+        backLabel="Evaluations Queue"
+        actions={
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <Link href="/investment/research-inbox" className="btn btn--secondary btn--sm">Research Inbox</Link>
             <button
               onClick={() => { setShowCreate(v => !v); if (!situations.length) loadSituations(); }}
-              className="px-4 py-2 rounded border border-cyan-700 text-cyan-400 text-xs font-mono hover:bg-cyan-900/30 transition-colors"
+              className="btn btn--primary btn--sm"
             >
-              + Create from existing evaluation
+              + Create from evaluation
             </button>
           </div>
-        </div>
+        }
+      />
 
-        {/* Disclaimer strip */}
-        <div className="glass-panel rounded p-2 mb-6 border-amber-500/20 text-center">
-          <span className="text-xs font-mono text-amber-400/70">
-            RESEARCH ONLY — ESTE ANÁLISIS ES EDUCATIVO. NO ES ASESORAMIENTO FINANCIERO.
-          </span>
-        </div>
+      <InfoBanner variant="guardrail">
+        Research only — educational analysis. Not financial advice.
+      </InfoBanner>
 
-        {/* Create panel */}
-        {showCreate && (
-          <div className="glass-panel rounded-lg p-5 mb-6 border-cyan-700/40">
-            <h3 className="text-sm font-mono font-bold text-cyan-400 mb-4">CREATE RESEARCH CASE FROM SITUATION</h3>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-mono text-gray-400 mb-1">SITUATION</label>
-                <select
-                  value={selectedSituationId}
-                  onChange={e => setSelectedSituationId(e.target.value)}
-                  className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 font-mono"
-                >
-                  <option value="">— select a situation —</option>
-                  {situations.map(s => (
-                    <option key={s.id} value={s.id}>
-                      {s.company_name} ({safeStr(s.filing_type) || safeStr(s.situation_type) || 'unknown'}) — {s.status}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-mono text-gray-400 mb-1">INITIAL READINESS (optional)</label>
-                <select
-                  value={createReadiness}
-                  onChange={e => setCreateReadiness(e.target.value)}
-                  className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 font-mono"
-                >
-                  <option value="">— leave blank —</option>
-                  {READINESS.map(r => <option key={r} value={r}>{r}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-mono text-gray-400 mb-1">NOTES (optional)</label>
-                <textarea
-                  value={createNotes}
-                  onChange={e => setCreateNotes(e.target.value)}
-                  rows={2}
-                  className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 font-mono"
-                  placeholder="Initial observation..."
-                />
-              </div>
-              {createError && <p className="text-xs text-red-400 font-mono">{createError}</p>}
-              <div className="flex gap-3">
-                <button
-                  onClick={handleCreate}
-                  disabled={creating || !selectedSituationId}
-                  className="px-4 py-2 rounded bg-cyan-800 hover:bg-cyan-700 disabled:opacity-40 text-xs font-mono text-cyan-100 transition-colors"
-                >
-                  {creating ? 'CREATING…' : 'CREATE CASE'}
-                </button>
-                <button
-                  onClick={() => setShowCreate(false)}
-                  className="px-4 py-2 rounded border border-gray-700 text-xs font-mono text-gray-400 hover:text-gray-200 transition-colors"
-                >
-                  CANCEL
-                </button>
-              </div>
+      {/* Create panel */}
+      {showCreate && (
+        <div className="card" style={{ marginBottom: '24px' }}>
+          <div className="section-header" style={{ marginBottom: '14px' }}>
+            <span className="section-title">Create Research Case from Situation</span>
+            <div className="section-line" />
+          </div>
+          <div style={{ display: 'grid', gap: '12px' }}>
+            <div>
+              <label style={labelStyle}>Situation</label>
+              <select value={selectedSituationId} onChange={e => setSelectedSituationId(e.target.value)} style={selectStyle}>
+                <option value="">— select a situation —</option>
+                {situations.map(s => (
+                  <option key={s.id} value={s.id}>
+                    {s.company_name} ({safeStr(s.filing_type) || safeStr(s.situation_type) || 'unknown'}) — {s.status}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Initial Readiness (optional)</label>
+              <select value={createReadiness} onChange={e => setCreateReadiness(e.target.value)} style={selectStyle}>
+                <option value="">— leave blank —</option>
+                {READINESS.map(r => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Notes (optional)</label>
+              <textarea
+                value={createNotes}
+                onChange={e => setCreateNotes(e.target.value)}
+                rows={2}
+                style={{ ...selectStyle, resize: 'vertical' }}
+                placeholder="Initial observation…"
+              />
+            </div>
+            {createError && <ErrorBanner message={createError} />}
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                onClick={handleCreate}
+                disabled={creating || !selectedSituationId}
+                className="btn btn--primary btn--sm"
+              >
+                {creating ? 'Creating…' : 'Create Case'}
+              </button>
+              <button onClick={() => setShowCreate(false)} className="btn btn--ghost btn--sm">
+                Cancel
+              </button>
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Helper text */}
-        <p className="text-xs font-mono text-gray-500 mb-4">
-          Each research case is a private workspace linked to one detected special situation. Open a case to add tasks, documents, sources and research notes.
-        </p>
-
-        {/* Filters */}
-        <div className="flex flex-wrap gap-3 mb-6">
-          <div className="flex gap-1">
+      {/* Status filter tabs */}
+      {!loading && !error && (
+        <div className="filter-group" style={{ marginBottom: '20px' }}>
+          <button
+            onClick={() => setStatusFilter('')}
+            className={`filter-btn ${statusFilter === '' ? 'filter-btn--active' : ''}`}
+          >
+            All <span style={{ marginLeft: 4, opacity: 0.6 }}>{counts.all}</span>
+          </button>
+          {STATUSES.map(s => counts[s] ? (
             <button
-              onClick={() => setStatusFilter('')}
-              className={`px-3 py-1 rounded text-xs font-mono border transition-colors ${statusFilter === '' ? 'border-cyan-500 text-cyan-400 bg-cyan-900/20' : 'border-gray-700 text-gray-500 hover:text-gray-300'}`}
+              key={s}
+              onClick={() => setStatusFilter(s === statusFilter ? '' : s)}
+              className={`filter-btn ${statusFilter === s ? 'filter-btn--active' : ''}`}
             >
-              ALL ({counts.all})
+              {s.replace(/_/g, ' ')} <span style={{ marginLeft: 4, opacity: 0.6 }}>{counts[s]}</span>
             </button>
-            {STATUSES.map(s => counts[s] ? (
-              <button
-                key={s}
-                onClick={() => setStatusFilter(s === statusFilter ? '' : s)}
-                className={`px-3 py-1 rounded text-xs font-mono border transition-colors ${statusFilter === s ? 'border-cyan-500 text-cyan-400 bg-cyan-900/20' : 'border-gray-700 text-gray-500 hover:text-gray-300'}`}
-              >
-                {s.replace('_', ' ')} ({counts[s]})
-              </button>
-            ) : null)}
-          </div>
+          ) : null)}
           <select
             value={readinessFilter}
             onChange={e => setReadinessFilter(e.target.value)}
-            className="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs font-mono text-gray-400"
+            style={{ ...selectStyle, width: 'auto', marginLeft: '8px' }}
           >
             <option value="">All readiness</option>
-            {READINESS.map(r => <option key={r} value={r}>{r}</option>)}
+            {READINESS.map(r => <option key={r} value={r}>{r.replace(/_/g, ' ')}</option>)}
           </select>
         </div>
+      )}
 
-        {/* Table */}
-        {loading && <p className="text-gray-500 font-mono text-sm">Loading…</p>}
-        {error && <p className="text-red-400 font-mono text-sm">Error: {error}</p>}
+      {loading && <LoadingState label="Loading research cases…" />}
+      {error && <ErrorBanner message={error} />}
 
-        {!loading && !error && cases.length === 0 && (
-          <div className="glass-panel rounded-lg p-8 text-center">
-            <p className="text-gray-500 font-mono text-sm">No research cases found.</p>
-            <p className="text-gray-600 font-mono text-xs mt-2">
-              Create one from an existing situation using the button above.
-            </p>
-          </div>
-        )}
+      {!loading && !error && cases.length === 0 && (
+        <EmptyState
+          icon="🔬"
+          title="No research cases"
+          description={statusFilter ? `No cases with status "${statusFilter}".` : 'Create one from an existing evaluation using the button above.'}
+        />
+      )}
 
-        {!loading && cases.length > 0 && (
-          <div className="space-y-3">
-            {cases.map(rc => (
-              <Link
-                key={rc.id}
-                href={`/investment/research/${rc.id}`}
-                className="block glass-panel rounded-lg p-4 hover:border-cyan-400/40 transition-all duration-200 group"
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1 flex-wrap">
-                      <span className="px-2 py-0.5 rounded border border-gray-600 text-gray-400 text-xs font-mono">
-                        RESEARCH CASE
-                      </span>
-                      <span className={`px-2 py-0.5 rounded border text-xs font-mono ${STATUS_COLORS[rc.status] ?? 'text-gray-400 border-gray-700'}`}>
-                        {rc.status.replace('_', ' ').toUpperCase()}
-                      </span>
-                      {rc.investment_readiness && (
-                        <span className={`px-2 py-0.5 rounded border text-xs font-mono ${READINESS_COLORS[rc.investment_readiness] ?? 'text-gray-400 border-gray-700'}`}>
-                          {rc.investment_readiness.replace('_', ' ')}
-                        </span>
-                      )}
-                      {rc.brief && (
-                        <span className="px-2 py-0.5 rounded border border-violet-800 text-violet-400 text-xs font-mono">
-                          HAS BRIEF
-                        </span>
-                      )}
+      {!loading && !error && cases.length > 0 && (
+        <div style={{ display: 'grid', gap: '8px' }}>
+          {cases.map(rc => (
+            <Link
+              key={rc.id}
+              href={`/investment/research/${rc.id}`}
+              style={{ textDecoration: 'none' }}
+            >
+              <div className="card" style={{ cursor: 'pointer', transition: 'border-color 0.15s' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '6px', alignItems: 'center' }}>
+                      <StatusBadge value={rc.status} />
+                      {rc.investment_readiness && <StatusBadge value={rc.investment_readiness} />}
+                      {rc.brief && <span className="status-badge status-badge--partial">has brief</span>}
                     </div>
-                    <p className="text-xs font-mono text-gray-500 truncate">
-                      CASE {rc.id.slice(0, 8).toUpperCase()}
-                      {rc.situation_id && <span className="text-gray-500"> — Linked Situation: {rc.situation_id.slice(0, 8).toUpperCase()}</span>}
-                    </p>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-faint)', marginBottom: '4px' }}>
+                      Case {rc.id.slice(0, 8).toUpperCase()}
+                      {rc.situation_id && <span> — Situation {rc.situation_id.slice(0, 8).toUpperCase()}</span>}
+                    </div>
                     {rc.notes && (
-                      <p className="text-xs text-gray-400 mt-1 truncate"><span className="text-gray-600 font-mono">Notes: </span>{rc.notes}</p>
+                      <p style={{ fontFamily: 'var(--font-sans)', fontSize: '12px', color: 'var(--text-secondary)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {rc.notes}
+                      </p>
                     )}
                   </div>
-                  <div className="text-right flex-shrink-0">
-                    <p className="text-xs font-mono text-gray-600">
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-faint)', marginBottom: '4px' }}>
                       {rc.tasks.length}T · {rc.documents.length}D · {rc.sources.length}S
-                    </p>
-                    <p className="text-xs font-mono text-gray-700 mt-0.5">
+                    </div>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-faint)' }}>
                       {new Date(rc.created_at).toLocaleDateString('en-CH', { day: '2-digit', month: 'short', year: '2-digit' })}
-                    </p>
-                    <span className="mt-2 inline-block px-3 py-1 rounded border border-cyan-700 text-cyan-400 text-xs font-mono group-hover:bg-cyan-900/30 transition-colors">
-                      Open Research Case →
-                    </span>
+                    </div>
                   </div>
                 </div>
-              </Link>
-            ))}
-          </div>
-        )}
-
-        {/* Footer */}
-        <div className="mt-8 text-xs font-mono text-gray-700 text-center">
-          PRIVATE RESEARCH DESK — NO PUBLISHING WITHOUT MANUAL APPROVAL
+              </div>
+            </Link>
+          ))}
         </div>
+      )}
 
+      <div style={{ marginTop: '32px', fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-faint)', textAlign: 'center' }}>
+        Private research desk — no publishing without manual approval
       </div>
+
     </div>
   );
 }

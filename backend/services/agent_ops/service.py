@@ -1,3 +1,4 @@
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -14,6 +15,9 @@ from backend.models.agent_ops import (
     AgentProfile,
     AgentRoom,
 )
+from backend.services.agent_ops.activity_logger import log_agent_activity
+
+logger = logging.getLogger(__name__)
 
 
 ALLOWED_PROPOSAL_STATUSES = {
@@ -28,6 +32,7 @@ ALLOWED_PROPOSAL_STATUSES = {
 ALLOWED_TRANSITIONS = {
     "proposed": {"accepted", "rejected", "deferred", "archived"},
     "accepted": {"implemented", "archived"},
+    # rejected is terminal except archive by design; reopening requires explicit future approval.
     "rejected": {"archived"},
     "deferred": {"proposed", "rejected", "archived"},
     "implemented": {"archived"},
@@ -257,10 +262,10 @@ async def list_proposals(db: AsyncSession, filters: dict[str, Any]) -> list[Agen
 async def update_proposal_status(
     db: AsyncSession,
     proposal_id: str,
-    status: str,
+    status: str | None = None,
     reviewer_note: str | None = None,
 ) -> AgentLearningProposal:
-    if status not in ALLOWED_PROPOSAL_STATUSES:
+    if status is not None and status not in ALLOWED_PROPOSAL_STATUSES:
         raise HTTPException(status_code=400, detail="Invalid proposal status")
 
     try:
@@ -273,16 +278,27 @@ async def update_proposal_status(
     if not proposal:
         raise HTTPException(status_code=404, detail="Proposal not found")
 
-    if status != proposal.status and status not in ALLOWED_TRANSITIONS.get(proposal.status, set()):
-        raise HTTPException(status_code=409, detail="Invalid proposal status transition")
-
-    if status != proposal.status:
+    old_status = proposal.status
+    if status is not None:
+        if status != proposal.status and status not in ALLOWED_TRANSITIONS.get(proposal.status, set()):
+            raise HTTPException(status_code=409, detail="Invalid proposal status transition")
         proposal.status = status
         proposal.reviewed_at = datetime.now(timezone.utc)
     if reviewer_note is not None:
         proposal.reviewer_note = reviewer_note
     proposal.updated_at = datetime.now(timezone.utc)
     await db.flush()
+    if status is not None:
+        try:
+            await _log_proposal_review_activity(
+                db,
+                proposal=proposal,
+                old_status=old_status,
+                new_status=proposal.status,
+                reviewer_note_present=reviewer_note is not None,
+            )
+        except Exception as exc:
+            logger.warning("Agent Ops proposal review logging failed: %s", exc)
     return proposal
 
 
@@ -291,3 +307,33 @@ def _safe_limit(value: Any) -> int:
         return min(max(int(value or 50), 1), 200)
     except (TypeError, ValueError):
         return 50
+
+
+async def _log_proposal_review_activity(
+    db: AsyncSession,
+    *,
+    proposal: AgentLearningProposal,
+    old_status: str,
+    new_status: str,
+    reviewer_note_present: bool,
+) -> None:
+    await log_agent_activity(
+        db,
+        agent_id=proposal.agent_id,
+        room_id=proposal.room_id,
+        activity_type="proposal_review",
+        title="Learning proposal reviewed",
+        summary=(
+            f"Proposal '{proposal.title}' review status changed "
+            f"from {old_status} to {new_status}."
+        ),
+        severity="success" if old_status != new_status else "info",
+        status="completed",
+        related_entity_type="agent_learning_proposal",
+        related_entity_id=str(proposal.id),
+        metadata={
+            "old_status": old_status,
+            "new_status": new_status,
+            "reviewer_note_present": reviewer_note_present,
+        },
+    )

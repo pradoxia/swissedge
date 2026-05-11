@@ -1,5 +1,5 @@
 import uuid
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
@@ -60,6 +60,13 @@ from backend.services.observability import run_logger
 router = APIRouter()
 
 
+def _parse_uuid(value: str, field_name: str = "id") -> uuid.UUID:
+    try:
+        return uuid.UUID(value)
+    except ValueError:
+        raise HTTPException(status_code=422, detail=f"Invalid {field_name}: expected UUID")
+
+
 @router.post("/research-cases/from-situation/{situation_id}", response_model=ResearchCaseRead, status_code=201)
 async def create_case_from_situation(
     situation_id: str,
@@ -92,7 +99,7 @@ async def list_cases(
 
 @router.get("/research-cases/{research_case_id}", response_model=ResearchCaseRead)
 async def get_case(research_case_id: str, db: AsyncSession = Depends(get_db)):
-    rc = await get_research_case(db, uuid.UUID(research_case_id))
+    rc = await get_research_case(db, _parse_uuid(research_case_id, "research_case_id"))
     return ResearchCaseRead.from_orm(rc)
 
 

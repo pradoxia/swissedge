@@ -21,10 +21,164 @@ export interface Situation {
   prohibited_inferences_count?: number;
   missing_documents_count?: number;
   fallback_occurred?: boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   evaluation?: any;
+  methodology_workspace?: MethodologyWorkspace | null;
   notes?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
+}
+
+export interface MethodologyChecklistItem {
+  check_id: string;
+  section: string;
+  title: string;
+  description: string;
+  required_evidence_types: string[];
+  status: string;
+  human_review_required: boolean;
+  notes: string | null;
+  evidence_refs: string[];
+}
+
+export interface RequiredResourceItem {
+  resource_id: string;
+  title: string;
+  description: string;
+  source_type: string;
+  required_or_optional: string;
+  expected_source: string;
+  related_check_ids: string[];
+  status: string;
+}
+
+export interface ResourceCandidate {
+  resource_candidate_id: string;
+  title: string;
+  url: string;
+  source_type: string;
+  source_domain: string;
+  status: string;
+  confidence: string;
+  related_resource_ids: string[];
+  related_check_ids: string[];
+  discovered_by: string;
+  discovered_at: string;
+  notes: string | null;
+}
+
+export interface SearchSuggestion {
+  suggestion_id: string;
+  query: string;
+  suggestion_type: string;
+  status: string;
+  discovered_by: string;
+  created_at: string;
+}
+
+export interface MethodologyWorkspace {
+  template_key: string;
+  template_version: string;
+  source: string;
+  requires_course_review: boolean;
+  workflow_status?: string;
+  research_case_id?: string;
+  checklist: MethodologyChecklistItem[];
+  required_resources: RequiredResourceItem[];
+  resource_candidates?: ResourceCandidate[];
+  search_suggestions?: SearchSuggestion[];
+  progress: {
+    total_checks: number;
+    verified_checks: number;
+    evidence_found: number;
+    missing_required_resources: number;
+    candidate_resources?: number;
+    human_review_required_count?: number;
+  };
+}
+
+export async function addSituationResource(
+  situationId: string,
+  payload: {
+    title?: string;
+    url: string;
+    source_type: string;
+    notes?: string;
+    related_resource_ids?: string[];
+    related_check_ids?: string[];
+  },
+): Promise<{ situation: Situation; created: boolean; existing: boolean }> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/situations/${situationId}/resources`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(typeof body?.detail === 'string' ? body.detail : `HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function updateSituationWorkflowStatus(
+  situationId: string,
+  workflowStatus: string,
+): Promise<{ situation: Situation; valid_workflow_statuses: string[] }> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/situations/${situationId}/workflow-status`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ workflow_status: workflowStatus }),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(typeof body?.detail === 'string' ? body.detail : `HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function updateSituationResourceCandidate(
+  situationId: string,
+  resourceCandidateId: string,
+  payload: {
+    status?: string;
+    notes?: string;
+    related_resource_ids?: string[];
+    related_check_ids?: string[];
+  },
+): Promise<{ situation: Situation; candidate: ResourceCandidate; valid_resource_statuses: string[] }> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/investment/situations/${situationId}/resources/${resourceCandidateId}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    },
+  );
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(typeof body?.detail === 'string' ? body.detail : `HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function promoteSituationToResearchCase(
+  situationId: string,
+  payload?: {
+    title?: string;
+    initial_status?: string;
+    notes?: string;
+  },
+): Promise<{ created: boolean; research_case: ResearchCase }> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/situations/${situationId}/promote-to-research-case`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload ?? {}),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(typeof body?.detail === 'string' ? body.detail : `HTTP ${response.status}`);
+  }
+  return response.json();
 }
 
 export interface SituationsResponse {
@@ -113,6 +267,7 @@ export async function fetchSituation(id: string): Promise<Situation> {
 }
 
 export interface V2PreviewResult {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   result: any;
   usage: {
     model?: string;
@@ -1149,7 +1304,7 @@ export interface AgentOpsAgent {
   status: string;
   implementation_status: string;
   autonomy_level: string;
-  guardrails: string[] | Record<string, unknown> | null;
+  guardrails: string[] | Record<string, unknown> | string | null;
   created_at?: string | null;
   updated_at?: string | null;
 }

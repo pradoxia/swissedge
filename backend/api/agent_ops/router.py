@@ -21,7 +21,7 @@ router = APIRouter()
 
 
 class ProposalPatch(BaseModel):
-    status: str
+    status: str | None = None
     reviewer_note: str | None = None
 
 

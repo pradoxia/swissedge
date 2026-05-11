@@ -1,11 +1,17 @@
 """Phase 1B tests: ORM relationship fix, service layer, and API endpoints."""
+import os
 import uuid
 import pytest
 from datetime import datetime, timezone
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 
+if os.environ.get("DEBUG") not in {None, "", "0", "1", "true", "false", "True", "False"}:
+    os.environ["DEBUG"] = "false"
+
 from backend.main import app
+from backend.models.agent_ops import AgentProfile, AgentRoom
 from backend.models.investment_research import ResearchCase, ResearchTask, ResearchDocument, ResearchSource, HistoricalCase
 from backend.models.investment import SpecialSituation
 
@@ -97,6 +103,33 @@ def _make_db_mock(
         return result
 
     db.execute = AsyncMock(side_effect=execute_side_effect)
+    return db
+
+
+def _result_first(item):
+    result = MagicMock()
+    result.scalars.return_value.first.return_value = item
+    return result
+
+
+def _db_for_create_from_situation(situation, existing_case=None, agent=None, room=None):
+    db = AsyncMock()
+    db.add = MagicMock()
+    db.refresh = AsyncMock()
+
+    async def flush_side_effect():
+        for call in db.add.call_args_list:
+            item = call.args[0]
+            if isinstance(item, ResearchCase) and item.id is None:
+                item.id = uuid.uuid4()
+
+    db.flush = AsyncMock(side_effect=flush_side_effect)
+    db.execute = AsyncMock(side_effect=[
+        _result_first(situation),
+        _result_first(existing_case),
+        _result_first(agent),
+        _result_first(room),
+    ])
     return db
 
 
@@ -451,6 +484,111 @@ async def test_create_case_from_situation_adds_initial_tasks_and_source():
     assert sources[0].signal_quality == "high"
 
 
+@pytest.mark.asyncio
+async def test_create_case_from_situation_logs_agent_ops_activity(monkeypatch):
+    from backend.services.investment.research_cases import create_research_case_from_situation
+
+    sit_id = uuid.uuid4()
+    sit = _make_situation(sit_id)
+    sit.situation_type = "merger_arbitrage"
+    sit.filing_type = "8-K"
+    sit.filing_url = "https://www.sec.gov/Archives/edgar/data/test/raw-filing-content"
+    agent = AgentProfile(
+        id=uuid.uuid4(),
+        key="case_builder",
+        name="Case Builder",
+        room_id=uuid.uuid4(),
+        status="planned",
+        implementation_status="documented",
+        autonomy_level="observer",
+    )
+    room = AgentRoom(id=uuid.uuid4(), key="research_desk", name="Research Desk", status="active", display_order=30)
+    db = _db_for_create_from_situation(sit, agent=agent, room=room)
+    mock_log = AsyncMock(return_value=uuid.uuid4())
+    monkeypatch.setattr("backend.services.investment.research_cases.log_agent_activity", mock_log)
+
+    rc = await create_research_case_from_situation(db, sit_id)
+
+    mock_log.assert_awaited_once()
+    kwargs = mock_log.await_args.kwargs
+    assert kwargs["agent_id"] == agent.id
+    assert kwargs["room_id"] == room.id
+    assert kwargs["activity_type"] == "research_case_created"
+    assert kwargs["title"] == "ResearchCase created from Evaluation"
+    assert kwargs["severity"] == "success"
+    assert kwargs["status"] == "completed"
+    assert kwargs["related_entity_type"] == "research_case"
+    assert kwargs["related_entity_id"] == str(rc.id)
+    assert kwargs["metadata"] == {
+        "situation_id": str(sit_id),
+        "source_origin_name": "SEC EDGAR",
+        "intake_method": "evaluation_linked",
+        "evidence_level": "official_primary",
+        "official_source_status": "official_attached",
+        "situation_type": "merger_arbitrage",
+        "filing_type": "8-K",
+    }
+    assert "Test Corp" in kwargs["summary"]
+
+
+@pytest.mark.asyncio
+async def test_create_case_from_situation_succeeds_if_agent_ops_logging_fails(monkeypatch):
+    from backend.services.investment.research_cases import create_research_case_from_situation
+
+    sit_id = uuid.uuid4()
+    sit = _make_situation(sit_id)
+    db = _db_for_create_from_situation(sit)
+    mock_log = AsyncMock(side_effect=RuntimeError("agent ops logger unavailable"))
+    monkeypatch.setattr("backend.services.investment.research_cases.log_agent_activity", mock_log)
+
+    rc = await create_research_case_from_situation(db, sit_id)
+
+    assert isinstance(rc, ResearchCase)
+    mock_log.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_create_case_duplicate_does_not_log_agent_ops_activity(monkeypatch):
+    from backend.services.investment.research_cases import create_research_case_from_situation
+    from fastapi import HTTPException
+
+    sit_id = uuid.uuid4()
+    sit = _make_situation(sit_id)
+    existing_rc = _make_rc(sit_id=sit_id)
+    db = _db_for_create_from_situation(sit, existing_case=existing_rc)
+    mock_log = AsyncMock()
+    monkeypatch.setattr("backend.services.investment.research_cases.log_agent_activity", mock_log)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await create_research_case_from_situation(db, sit_id)
+
+    assert exc_info.value.status_code == 409
+    mock_log.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_create_case_agent_ops_metadata_is_safe(monkeypatch):
+    from backend.services.investment.research_cases import create_research_case_from_situation
+
+    sit_id = uuid.uuid4()
+    sit = _make_situation(sit_id)
+    sit.filing_type = "8-K"
+    sit.filing_url = "https://www.sec.gov/raw-filing-content"
+    sit.raw_filing_text = "RAW FILING CONTENT SHOULD NOT BE LOGGED"
+    db = _db_for_create_from_situation(sit)
+    mock_log = AsyncMock(return_value=uuid.uuid4())
+    monkeypatch.setattr("backend.services.investment.research_cases.log_agent_activity", mock_log)
+
+    await create_research_case_from_situation(db, sit_id)
+
+    payload = mock_log.await_args.kwargs
+    serialized = str(payload)
+    assert "raw_filing_text" not in serialized
+    assert "RAW FILING CONTENT" not in serialized
+    assert "raw-filing-content" not in serialized
+    assert "filing_url" not in serialized
+
+
 def test_create_from_situation_does_not_call_live_ai():
     import inspect
     import backend.services.investment.research_cases as svc
@@ -784,6 +922,18 @@ def test_no_scanner_imports_in_research_cases_service():
     assert "sec_edgar" not in src
     assert "evaluate_situation" not in src
     assert "scan" not in src.lower().replace("research_case", "")
+
+
+def test_no_scanner_evaluator_or_cron_imports_in_research_cases_service():
+    import_lines = [
+        line.strip().lower()
+        for line in Path("backend/services/investment/research_cases.py").read_text(encoding="utf-8").splitlines()
+        if line.strip().startswith(("import ", "from "))
+    ]
+    forbidden = ["scanner", "evaluator", "cron", "sec_edgar"]
+
+    for line in import_lines:
+        assert not any(term in line for term in forbidden), line
 
 
 def test_no_scanner_imports_in_research_cases_router():

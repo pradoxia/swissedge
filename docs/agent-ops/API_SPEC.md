@@ -340,3 +340,13 @@ This endpoint is the only initial mutating Agent Ops endpoint. It must mutate re
 ### Mutation Behavior
 
 Human review metadata only. No operational side effects.
+
+Sprint N implementation note: successful status PATCH calls create a best-effort Agent Ops activity with
+`activity_type="proposal_review"` and sanitized metadata only (`old_status`, `new_status`,
+`reviewer_note_present`). Logger failure must not block the proposal PATCH. Reviewer-note-only PATCH calls do
+not create activity records.
+
+Sprint O implementation note: manual Evaluation/SpecialSituation -> ResearchCase creation may appear in the
+activity feed as `activity_type="research_case_created"` from Case Builder / Research Desk. The record is
+observational only, stores sanitized metadata, and does not trigger scanner, evaluator, cron, source registry,
+or live AI behavior.

@@ -121,6 +121,8 @@ def detect_situation_type(filing: Filing) -> dict:
         dissolution_patterns = [
             "plan of dissolution",
             "plan of liquidation",
+            "liquidation",
+            "dissolution",
             "complete dissolution",
             "wind down",
             "liquidating distribution",

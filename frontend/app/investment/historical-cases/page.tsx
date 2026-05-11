@@ -7,14 +7,31 @@ import {
   createHistoricalCase,
   type HistoricalCase,
 } from '@/lib/api';
+import { PageHeader, StatusBadge, EmptyState, LoadingState, ErrorBanner, InfoBanner } from '@/app/components/ui';
 
 const VALID_STATUSES = ['seed', 'reconstructed', 'lessons_extracted', 'source_intel_applied'];
 
-const STATUS_COLORS: Record<string, string> = {
-  seed: 'text-gray-500',
-  reconstructed: 'text-blue-400',
-  lessons_extracted: 'text-emerald-400',
-  source_intel_applied: 'text-indigo-400',
+const inputStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '7px 10px',
+  background: 'var(--bg-subtle)',
+  border: '1px solid var(--border-default)',
+  borderRadius: '7px',
+  fontFamily: 'var(--font-mono)',
+  fontSize: '12px',
+  color: 'var(--text-primary)',
+  outline: 'none',
+};
+
+const labelStyle: React.CSSProperties = {
+  display: 'block',
+  fontFamily: 'var(--font-mono)',
+  fontSize: '10px',
+  fontWeight: 500,
+  letterSpacing: '0.1em',
+  textTransform: 'uppercase',
+  color: 'var(--text-faint)',
+  marginBottom: '6px',
 };
 
 export default function HistoricalCasesPage() {
@@ -71,143 +88,138 @@ export default function HistoricalCasesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100 p-6">
-      <div className="max-w-4xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-xl font-mono font-bold text-white">Historical Cases</h1>
-            <p className="text-xs font-mono text-gray-600 mt-0.5">
-              Manual workspace for reconstructed special situations. Educational research only.
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <Link
-              href="/investment/source-intelligence"
-              className="px-3 py-1.5 rounded border border-gray-700 hover:border-gray-500 text-xs font-mono text-gray-400 transition-colors"
-            >
-              SOURCE QUEUE
-            </Link>
-            <button
-              onClick={() => setShowCreate(!showCreate)}
-              className="px-3 py-1.5 rounded bg-indigo-900 hover:bg-indigo-800 text-xs font-mono text-indigo-100 border border-indigo-700 transition-colors"
-            >
-              + NEW HISTORICAL CASE
-            </button>
-          </div>
-        </div>
+    <div className="page-container">
 
-        {showCreate && (
-          <div className="mb-6 rounded border border-indigo-700/50 bg-indigo-950/30 p-4 space-y-3">
-            <p className="text-xs font-mono text-indigo-400 font-bold">CREATE HISTORICAL CASE</p>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-mono text-gray-500 block mb-1">Company Name *</label>
-                <input
-                  value={newCompany}
-                  onChange={e => setNewCompany(e.target.value)}
-                  className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-200 font-mono focus:outline-none focus:border-indigo-600"
-                  placeholder="e.g. Dell Technologies"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-mono text-gray-500 block mb-1">Situation Type *</label>
-                <input
-                  value={newSituationType}
-                  onChange={e => setNewSituationType(e.target.value)}
-                  className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-200 font-mono focus:outline-none focus:border-indigo-600"
-                  placeholder="e.g. spinoff, merger, tender_offer"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-mono text-gray-500 block mb-1">Event Date (approx)</label>
-                <input
-                  value={newEventDate}
-                  onChange={e => setNewEventDate(e.target.value)}
-                  className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-200 font-mono focus:outline-none focus:border-indigo-600"
-                  placeholder="e.g. 2016-Q4"
-                />
-              </div>
-            </div>
+      <PageHeader
+        title="Historical Cases"
+        subtitle="Manual workspace for reconstructed special situations. Educational research only."
+        backHref="/investment/source-intelligence"
+        backLabel="Source Intelligence"
+        actions={
+          <button onClick={() => setShowCreate(v => !v)} className="btn btn--primary btn--sm">
+            + New Historical Case
+          </button>
+        }
+      />
+
+      {/* Create form */}
+      {showCreate && (
+        <div className="card" style={{ marginBottom: '24px' }}>
+          <div className="section-header" style={{ marginBottom: '14px' }}>
+            <span className="section-title">Create Historical Case</span>
+            <div className="section-line" />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
             <div>
-              <label className="text-xs font-mono text-gray-500 block mb-1">Seed Notes</label>
-              <textarea
-                value={newNotes}
-                onChange={e => setNewNotes(e.target.value)}
-                rows={3}
-                className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-200 font-mono focus:outline-none focus:border-indigo-600 resize-none"
-                placeholder="Initial notes about the case…"
+              <label style={labelStyle}>Company Name *</label>
+              <input
+                value={newCompany}
+                onChange={e => setNewCompany(e.target.value)}
+                style={inputStyle}
+                placeholder="e.g. Dell Technologies"
               />
             </div>
-            {createError && <p className="text-xs font-mono text-red-400">{createError}</p>}
-            <div className="flex gap-3">
-              <button
-                onClick={handleCreate}
-                disabled={creating || !newCompany.trim() || !newSituationType.trim()}
-                className="px-3 py-1.5 rounded bg-indigo-900 hover:bg-indigo-800 disabled:opacity-40 text-xs font-mono text-indigo-100 border border-indigo-700 transition-colors"
-              >
-                {creating ? 'CREATING…' : 'CREATE'}
-              </button>
-              <button
-                onClick={() => setShowCreate(false)}
-                className="px-3 py-1.5 rounded border border-gray-700 text-xs font-mono text-gray-500 transition-colors"
-              >
-                CANCEL
-              </button>
+            <div>
+              <label style={labelStyle}>Situation Type *</label>
+              <input
+                value={newSituationType}
+                onChange={e => setNewSituationType(e.target.value)}
+                style={inputStyle}
+                placeholder="e.g. spinoff, merger, tender_offer"
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>Event Date (approx)</label>
+              <input
+                value={newEventDate}
+                onChange={e => setNewEventDate(e.target.value)}
+                style={inputStyle}
+                placeholder="e.g. 2016-Q4"
+              />
             </div>
           </div>
-        )}
-
-        <div className="mb-4 flex items-center gap-3">
-          <label className="text-xs font-mono text-gray-500">Filter by status:</label>
-          <select
-            value={filterStatus}
-            onChange={e => setFilterStatus(e.target.value)}
-            className="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs font-mono text-gray-300 focus:outline-none focus:border-gray-500"
-          >
-            <option value="">All</option>
-            {VALID_STATUSES.map(s => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
-        </div>
-
-        {loading && <p className="text-xs font-mono text-gray-600">Loading…</p>}
-        {error && <p className="text-xs font-mono text-red-400">{error}</p>}
-
-        {!loading && !error && cases.length === 0 && (
-          <p className="text-xs font-mono text-gray-700">No historical cases. Create one to begin.</p>
-        )}
-
-        <div className="space-y-2">
-          {cases.map((hc) => (
-            <Link
-              key={hc.id}
-              href={`/investment/historical-cases/${hc.id}`}
-              className="block rounded border border-gray-800 hover:border-gray-600 bg-gray-900/40 px-4 py-3 transition-colors"
+          <div style={{ marginBottom: '12px' }}>
+            <label style={labelStyle}>Seed Notes</label>
+            <textarea
+              value={newNotes}
+              onChange={e => setNewNotes(e.target.value)}
+              rows={3}
+              style={{ ...inputStyle, resize: 'vertical' }}
+              placeholder="Initial notes about the case…"
+            />
+          </div>
+          {createError && <ErrorBanner message={createError} />}
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              onClick={handleCreate}
+              disabled={creating || !newCompany.trim() || !newSituationType.trim()}
+              className="btn btn--primary btn--sm"
             >
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="text-sm font-mono text-gray-200">{hc.company_name}</span>
-                  <span className="text-xs font-mono text-gray-600 ml-3">{hc.situation_type}</span>
-                  {hc.event_date_approx && (
-                    <span className="text-xs font-mono text-gray-700 ml-2">{hc.event_date_approx}</span>
-                  )}
+              {creating ? 'Creating…' : 'Create'}
+            </button>
+            <button onClick={() => setShowCreate(false)} className="btn btn--ghost btn--sm">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* Filter */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
+        <label style={{ ...labelStyle, marginBottom: 0 }}>Status</label>
+        <select
+          value={filterStatus}
+          onChange={e => setFilterStatus(e.target.value)}
+          style={{ padding: '6px 10px', background: 'var(--bg-subtle)', border: '1px solid var(--border-default)', borderRadius: '7px', fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text-secondary)', outline: 'none' }}
+        >
+          <option value="">All</option>
+          {VALID_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+      </div>
+
+      {loading && <LoadingState label="Loading historical cases…" />}
+      {error && <ErrorBanner message={error} />}
+
+      {!loading && !error && cases.length === 0 && (
+        <EmptyState icon="📚" title="No historical cases" description="Create one to begin documenting reconstructed situations." />
+      )}
+
+      {!loading && !error && cases.length > 0 && (
+        <div style={{ display: 'grid', gap: '8px' }}>
+          {cases.map(hc => (
+            <Link key={hc.id} href={`/investment/historical-cases/${hc.id}`} style={{ textDecoration: 'none' }}>
+              <div className="card" style={{ cursor: 'pointer' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px', flexWrap: 'wrap' }}>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '13px', color: 'var(--text-primary)', fontWeight: 500 }}>
+                        {hc.company_name}
+                      </span>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-faint)' }}>
+                        {hc.situation_type}
+                      </span>
+                      {hc.event_date_approx && (
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-faint)' }}>
+                          {hc.event_date_approx}
+                        </span>
+                      )}
+                    </div>
+                    {hc.seed_notes && (
+                      <p style={{ fontFamily: 'var(--font-sans)', fontSize: '12px', color: 'var(--text-secondary)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {hc.seed_notes}
+                      </p>
+                    )}
+                  </div>
+                  <StatusBadge value={hc.status} />
                 </div>
-                <span className={`text-xs font-mono ${STATUS_COLORS[hc.status] ?? 'text-gray-500'}`}>
-                  {hc.status.toUpperCase()}
-                </span>
               </div>
-              {hc.seed_notes && (
-                <p className="text-xs text-gray-600 mt-1 truncate">{hc.seed_notes}</p>
-              )}
             </Link>
           ))}
         </div>
+      )}
 
-        <p className="text-xs font-mono text-gray-800 mt-6 text-center">
-          Este análisis es educativo. No es asesoramiento financiero.
-        </p>
-      </div>
+      <InfoBanner variant="guardrail" >
+        Este análisis es educativo. No es asesoramiento financiero.
+      </InfoBanner>
+
     </div>
   );
 }

@@ -3,6 +3,23 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { fetchSituations, updateSituationStatus, type Situation } from '@/lib/api';
+import { PageHeader, StatusBadge, EmptyState, LoadingState, ErrorBanner } from '@/app/components/ui';
+
+function fv(value: unknown): string {
+  if (value === null || value === undefined) return '—';
+  if (typeof value === 'number') return value.toString();
+  return String(value);
+}
+
+function recBadge(rec: string | null | undefined): string {
+  switch (rec) {
+    case 'DEEP_RESEARCH':         return 'status-badge--manual';
+    case 'HUMAN_REVIEW_REQUIRED': return 'status-badge--preview';
+    case 'WATCHLIST':             return 'status-badge--partial';
+    case 'PASS':                  return 'status-badge--readonly';
+    default:                      return 'status-badge--readonly';
+  }
+}
 
 export default function WatchlistPage() {
   const [situations, setSituations] = useState<Situation[]>([]);
@@ -29,134 +46,101 @@ export default function WatchlistPage() {
       await updateSituationStatus(id, status);
       load();
     } catch (err) {
-      alert(`Failed to update status: ${err instanceof Error ? err.message : 'Unknown error'}`);
-    }
-  };
-
-  const formatValue = (value: any) => {
-    if (value === null || value === undefined) return '-';
-    if (typeof value === 'number') return value.toString();
-    return value;
-  };
-
-  const getRecommendationBadge = (rec: string | null | undefined) => {
-    switch (rec) {
-      case 'INVESTIGATE': return 'bg-cyan-500/20 text-cyan-400 border-cyan-400 glow-cyan';
-      case 'MONITOR': return 'bg-amber-500/20 text-amber-400 border-amber-400 glow-amber';
-      case 'PASS': return 'bg-gray-700/50 text-gray-500 border-gray-600';
-      case 'STRONG_BUY':
-      case 'BUY': return 'bg-green-500/20 text-green-400 border-green-400 glow-green';
-      case 'AVOID':
-      case 'SELL': return 'bg-red-500/20 text-red-400 border-red-400 glow-red';
-      default: return 'bg-gray-700/50 text-gray-400 border-gray-600';
+      alert(`Failed to update status for "${companyName}": ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   };
 
   return (
-    <>
-      <div className="scan-line"></div>
-      <div className="min-h-screen p-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex items-center justify-between mb-6">
-            <Link href="/investment/evaluations" className="text-cyan-400 hover:text-cyan-300 text-sm font-mono">
-              ← EVALUATION QUEUE
-            </Link>
+    <div className="page-container--wide">
+
+      <PageHeader
+        title="Watchlist"
+        subtitle="Situations under active monitoring."
+        backHref="/investment/evaluations"
+        backLabel="Evaluations Queue"
+        actions={
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <Link href="/investment/research" className="btn btn--secondary btn--sm">Research Cases</Link>
           </div>
+        }
+      />
 
-          <h1 className="text-3xl font-bold mb-2 text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-green-400">
-            Watchlist
-          </h1>
-          <p className="text-gray-500 text-xs font-mono mb-8">SITUATIONS UNDER ACTIVE MONITORING</p>
+      {loading && <LoadingState label="Loading watchlist…" />}
+      {error && <ErrorBanner message={error} />}
 
-          {loading && (
-            <div className="glass-panel rounded-lg p-8 text-center border-cyan-500/30">
-              <div className="inline-block w-8 h-8 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin mb-4"></div>
-              <p className="text-gray-400 font-mono text-sm">LOADING WATCHLIST...</p>
-            </div>
-          )}
+      {!loading && !error && situations.length === 0 && (
+        <EmptyState
+          icon="👁"
+          title="No situations on watchlist"
+          description="Add situations to the watchlist from the Evaluations Queue."
+        />
+      )}
 
-          {error && (
-            <div className="glass-panel rounded-lg p-4 mb-6 border-red-500/50 glow-red">
-              <p className="text-red-400 font-mono text-sm">⚠ ERROR: {error}</p>
-            </div>
-          )}
-
-          {!loading && !error && situations.length === 0 && (
-            <div className="glass-panel rounded-lg p-8 text-center border-gray-700">
-              <p className="text-gray-500 font-mono text-sm">NO SITUATIONS ON WATCHLIST</p>
-            </div>
-          )}
-
-          {!loading && !error && situations.length > 0 && (
-            <div className="glass-panel rounded-lg overflow-hidden border-green-500/30">
-              <div className="overflow-x-auto">
-                <table className="min-w-full">
-                  <thead className="bg-gray-900/50 border-b border-green-500/30">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-mono text-green-400 uppercase tracking-wider">Company</th>
-                      <th className="px-4 py-3 text-left text-xs font-mono text-green-400 uppercase tracking-wider">Ticker</th>
-                      <th className="px-4 py-3 text-left text-xs font-mono text-green-400 uppercase tracking-wider">Filing</th>
-                      <th className="px-4 py-3 text-left text-xs font-mono text-green-400 uppercase tracking-wider">Playbook</th>
-                      <th className="px-4 py-3 text-left text-xs font-mono text-green-400 uppercase tracking-wider">Rec</th>
-                      <th className="px-4 py-3 text-left text-xs font-mono text-green-400 uppercase tracking-wider">Confidence</th>
-                      <th className="px-4 py-3 text-left text-xs font-mono text-green-400 uppercase tracking-wider">Detected</th>
-                      <th className="px-4 py-3 text-center text-xs font-mono text-green-400 uppercase tracking-wider">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-800/50">
-                    {situations.map((s) => (
-                      <tr key={s.id} className="hover:bg-green-500/5 transition-colors">
-                        <td className="px-4 py-3 text-sm font-mono">
-                          <Link
-                            href={`/investment/evaluations/${s.id}`}
-                            className="text-cyan-400 hover:text-cyan-300 hover:underline block max-w-[200px] truncate"
-                            title={s.company_name}
-                          >
-                            {s.company_name}
-                          </Link>
-                        </td>
-                        <td className="px-4 py-3 text-sm font-mono text-gray-400">{formatValue(s.ticker)}</td>
-                        <td className="px-4 py-3 text-sm font-mono text-gray-400">{formatValue(s.filing_type)}</td>
-                        <td className="px-4 py-3 text-sm font-mono text-gray-400 truncate max-w-[150px]">{formatValue(s.selected_playbook)}</td>
-                        <td className="px-4 py-3 text-sm">
-                          <span className={`px-2 py-1 rounded text-xs font-mono border ${getRecommendationBadge(s.recommendation)}`}>
-                            {formatValue(s.recommendation)}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-sm font-mono text-gray-400">{formatValue(s.evaluator_confidence)}</td>
-                        <td className="px-4 py-3 text-sm font-mono text-gray-400">
-                          {s.detected_at ? new Date(s.detected_at).toLocaleDateString() : '-'}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-center">
-                          <div className="flex gap-1 justify-center">
-                            <button
-                              onClick={() => handleStatusChange(s.id, 'reviewing', s.company_name)}
-                              className="px-2 py-1 rounded text-xs font-mono bg-blue-500/20 text-blue-400 border border-blue-400 hover:bg-blue-500/30 transition-colors"
-                            >
-                              Review
-                            </button>
-                            <button
-                              onClick={() => handleStatusChange(s.id, 'ignored', s.company_name)}
-                              className="px-2 py-1 rounded text-xs font-mono bg-gray-700/50 text-gray-500 border border-gray-600 hover:bg-gray-600/50 transition-colors"
-                            >
-                              Ignore
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="bg-gray-900/50 px-4 py-3 border-t border-green-500/30">
-                <p className="text-xs font-mono text-gray-500">
-                  WATCHLIST: {situations.length} SITUATION{situations.length !== 1 ? 'S' : ''}
-                </p>
-              </div>
-            </div>
-          )}
+      {!loading && !error && situations.length > 0 && (
+        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Company</th>
+                  <th>Ticker</th>
+                  <th>Filing</th>
+                  <th>Playbook</th>
+                  <th>Recommendation</th>
+                  <th>Confidence</th>
+                  <th>Detected</th>
+                  <th style={{ textAlign: 'center' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {situations.map(s => (
+                  <tr key={s.id}>
+                    <td>
+                      <Link
+                        href={`/investment/evaluations/${s.id}`}
+                        style={{ color: 'var(--text-primary)', fontWeight: 500, textDecoration: 'none', display: 'block', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                        title={s.company_name}
+                      >
+                        {s.company_name}
+                      </Link>
+                    </td>
+                    <td style={{ color: 'var(--text-muted)' }}>{fv(s.ticker)}</td>
+                    <td style={{ color: 'var(--text-muted)' }}>{fv(s.filing_type)}</td>
+                    <td style={{ color: 'var(--text-muted)', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fv(s.selected_playbook)}</td>
+                    <td>
+                      <span className={`status-badge ${recBadge(s.recommendation)}`}>
+                        {fv(s.recommendation)}
+                      </span>
+                    </td>
+                    <td style={{ color: 'var(--text-muted)' }}>{fv(s.evaluator_confidence)}</td>
+                    <td style={{ color: 'var(--text-muted)' }}>
+                      {s.detected_at ? new Date(s.detected_at).toLocaleDateString('en-CH', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+                        <button
+                          onClick={() => handleStatusChange(s.id, 'reviewing', s.company_name)}
+                          className="btn btn--secondary btn--sm"
+                          title="Move to reviewing"
+                        >Review</button>
+                        <button
+                          onClick={() => handleStatusChange(s.id, 'ignored', s.company_name)}
+                          className="btn btn--ghost btn--sm"
+                          title="Ignore this situation"
+                        >Ignore</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border-subtle)', fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-faint)' }}>
+            {situations.length} situation{situations.length !== 1 ? 's' : ''} on watchlist
+          </div>
         </div>
-      </div>
-    </>
+      )}
+
+    </div>
   );
 }

@@ -10,14 +10,12 @@
 
 ## Near-Term Sprints
 
-- Phase A / Sprint F: AI-Safe Context Architecture.
-- Phase B: Agent Ops + Fontana docs.
-- Phase C: Agent Ops backend foundation.
-- Phase D: `/agent-ops` UI.
-- Phase E: Fontana reports.
-- Later: SEC source-driven intake.
-- Later: external source intake.
-- Later: market monitoring.
+1. Sprint W: close out the SEC EDGAR to ResearchCase milestone and prepare GitHub sync. Dani commits/pushes manually only.
+2. Next phase: ResearchCase Evaluation Preparation / Deep Research Assist. Prepare readiness packages, missing evidence reports, source quality summaries, and manual evaluation preview design.
+3. Later: optional evaluator v2 preview only after explicit authorization. No global evaluator enablement.
+4. Later: controlled official-source discovery. Resource Scout remains manual until a separate approved sprint.
+5. Later: Fontana reports.
+6. Later: market monitoring.
 
 ## Deferred
 

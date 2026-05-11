@@ -24,21 +24,22 @@ async def log_agent_activity(
     metadata: dict[str, Any] | None = None,
 ) -> uuid.UUID | None:
     try:
-        activity = AgentActivity(
-            agent_id=agent_id,
-            room_id=room_id,
-            activity_type=activity_type,
-            title=title,
-            summary=summary,
-            severity=severity,
-            status=status,
-            related_entity_type=related_entity_type,
-            related_entity_id=related_entity_id,
-            metadata_json=metadata,
-        )
-        db.add(activity)
-        await db.flush()
-        return activity.id
+        async with db.begin_nested():
+            activity = AgentActivity(
+                agent_id=agent_id,
+                room_id=room_id,
+                activity_type=activity_type,
+                title=title,
+                summary=summary,
+                severity=severity,
+                status=status,
+                related_entity_type=related_entity_type,
+                related_entity_id=related_entity_id,
+                metadata_json=metadata,
+            )
+            db.add(activity)
+            await db.flush()
+            return activity.id
     except Exception as exc:
         logger.warning("Agent Ops activity logging failed: %s", exc)
         return None
@@ -54,16 +55,17 @@ async def log_agent_result(
     metrics: dict[str, Any] | None = None,
 ) -> uuid.UUID | None:
     try:
-        result = AgentResult(
-            activity_id=activity_id,
-            result_type=result_type,
-            summary=summary,
-            status=status,
-            metrics=metrics,
-        )
-        db.add(result)
-        await db.flush()
-        return result.id
+        async with db.begin_nested():
+            result = AgentResult(
+                activity_id=activity_id,
+                result_type=result_type,
+                summary=summary,
+                status=status,
+                metrics=metrics,
+            )
+            db.add(result)
+            await db.flush()
+            return result.id
     except Exception as exc:
         logger.warning("Agent Ops result logging failed: %s", exc)
         return None
@@ -82,20 +84,21 @@ async def create_learning_proposal(
     room_id: uuid.UUID | None = None,
 ) -> uuid.UUID | None:
     try:
-        proposal = AgentLearningProposal(
-            source_diagnostic_id=source_diagnostic_id,
-            agent_id=agent_id,
-            room_id=room_id,
-            title=title,
-            problem_statement=problem_statement,
-            proposed_change=proposed_change,
-            expected_benefit=expected_benefit,
-            risk_level=risk_level,
-            status="proposed",
-        )
-        db.add(proposal)
-        await db.flush()
-        return proposal.id
+        async with db.begin_nested():
+            proposal = AgentLearningProposal(
+                source_diagnostic_id=source_diagnostic_id,
+                agent_id=agent_id,
+                room_id=room_id,
+                title=title,
+                problem_statement=problem_statement,
+                proposed_change=proposed_change,
+                expected_benefit=expected_benefit,
+                risk_level=risk_level,
+                status="proposed",
+            )
+            db.add(proposal)
+            await db.flush()
+            return proposal.id
     except Exception as exc:
         logger.warning("Agent Ops learning proposal creation failed: %s", exc)
         return None

@@ -2,7 +2,7 @@
 
 > Full canonical state: `docs/PROJECT_STATE.md`
 > Architecture decisions: `docs/decisions.md`
-> Last updated: 2026-05-03 (Phase 5 COMPLETE AND DEPLOYED — PublicArticleDraft from ResearchCase, private editorial review workflow, Markdown/Substack-ready export, publishing checklist/manual approval gate; validated by Dani)
+> Last updated: 2026-05-11 (Sprint W closeout — SEC EDGAR to ResearchCase milestone validated)
 
 ---
 
@@ -51,7 +51,57 @@ SwissEdge is a modular AI platform with two domains:
 
 **Phase 1 COMPLETE AND DEPLOYED. Phase 2 COMPLETE AND DEPLOYED. Phase 3 COMPLETE AND DEPLOYED — validated by Dani. Phase 4 COMPLETE AND DEPLOYED — validated by Dani. Phase 5 COMPLETE AND DEPLOYED — validated by Dani. Next active track: Investment Platform V2 — Source-Driven ResearchCase Pipeline. Public Site / Brand Experience / User Documentation is paused.**
 
-**Investment Platform V2 deployed notes:** Sprint A scanner funnel diagnostics implemented and deployed. Sprint B Research Inbox read-only implemented and deployed. Sprint B.1 Research Inbox UI polish implemented and deployed. Sprint C V2 ResearchCase metadata implemented and deployed; Alembic revision `d4e5f6a7b8c9` applied. Sprint E manual create-from-situation bridge initializes V2 metadata for SEC/evaluation-linked ResearchCases locally and pending deploy. Sprint F created `swissedge-ai-context` as an AI-safe documentation layer. Sprint F: AI-Safe Context Architecture - `swissedge-ai-context` project layer created, with AI-safe context structure being completed through Sprint F.1. No runtime code changes. Sprint G created Agent Ops + Fontana architecture docs; no runtime behavior changed. Sprint G/G.1: Agent Ops + Fontana architecture docs completed, including data model, API, UI, metrics, routing audits, and ADRs. Documentation only; no runtime changes. Sprint H Agent Ops backend foundation implemented locally/pending deploy: tables, read-only API, proposal PATCH, fail-safe logger skeleton. No scanner/evaluator integration yet. Sprint H.1 fixes backend deploy allowlist for Agent Ops migration and modules. No runtime code changed. Sprint I adds initial `/agent-ops` Mission Control UI locally/pending deploy. It is read-only except proposal status review and does not connect Agent Ops to scanner/evaluator. No source-driven intake, scan behavior, cron, global v2, live AI, publishing, or Marketplace/Sales changes in any of these sprints.
+**Investment Platform V2 deployed notes:** Sprint A scanner funnel diagnostics implemented and deployed. Sprint B Research Inbox read-only implemented and deployed. Sprint B.1 Research Inbox UI polish implemented and deployed. Sprint C V2 ResearchCase metadata implemented and deployed; Alembic revision `d4e5f6a7b8c9` applied. Sprint E manual create-from-situation bridge initializes V2 metadata for SEC/evaluation-linked ResearchCases locally and pending deploy. Sprint F created `swissedge-ai-context` as an AI-safe documentation layer. Sprint F: AI-Safe Context Architecture - `swissedge-ai-context` project layer created, with AI-safe context structure being completed through Sprint F.1. No runtime code changes. Sprint G created Agent Ops + Fontana architecture docs; no runtime behavior changed. Sprint G/G.1: Agent Ops + Fontana architecture docs completed, including data model, API, UI, metrics, routing audits, and ADRs. Documentation only; no runtime changes. Sprint H Agent Ops backend foundation is deployed; Alembic revision `e5f6a7b8c9d0` was applied; API smoke tests passed with 6 rooms, 6 agents, and empty activity/diagnostics/proposals lists. Sprint I `/agent-ops` Mission Control UI is deployed and smoke-tested. It is read-only except proposal status review and does not connect Agent Ops to scanner/evaluator. No source-driven intake, scan behavior, cron, global v2, live AI, publishing, or Marketplace/Sales changes in any of these sprints.
+
+## Recent completed / local work
+
+- Sprint A: Scanner funnel diagnostics + truthful Radar Status.
+- Sprint B: Research Inbox read-only.
+- Sprint B.1: Research Inbox UI polish.
+- Sprint C: V2 ResearchCase metadata + migration.
+- Sprint C.1: deploy script and deployment notes cleanup.
+- Sprint D: V2 metadata detail panel + Internal Audit read-only.
+- Sprint E: Manual Evaluation/SpecialSituation -> V2 ResearchCase bridge.
+- Sprint F/F.1: AI-Safe Context Architecture completed.
+- Sprint G/G.1: Agent Ops + Fontana architecture docs completed.
+- Sprint H: Agent Ops backend foundation deployed; migration `e5f6a7b8c9d0` applied; API smoke tests passed.
+- Sprint I: `/agent-ops` Mission Control UI deployed and smoke-tested.
+- Sprint J: Agent Ops backend PATCH behavior and logger fail-safe tests hardened locally; no scanner/evaluator integration.
+- Sprint K: Agent Ops logger failures isolated from caller transactions with nested transactions/SAVEPOINTs before future runtime wiring; scanner/evaluator integration remains not approved.
+- Sprint L: Agent Ops UI hygiene improved locally with refresh button, safer guardrails rendering, and friendlier activity/diagnostic labels. Frontend-only.
+- Sprint M: Agent Ops backend/frontend verification closeout documented. Backend and `/agent-ops` UI are treated as deployed and smoke-tested; local endpoint verification was unavailable because no backend was listening locally.
+- Sprint N: Agent Ops proposal status review now logs safe Agent Ops activity with the fail-safe logger. Reviewer-note-only PATCH does not create activity. No scanner/evaluator, SEC EDGAR, ResearchCase, cron, source registry, or investment runtime integration was added.
+- Sprint O: Manual Evaluation/SpecialSituation -> ResearchCase creation now logs safe Agent Ops activity as a runtime observer. No scanner/evaluator, SEC EDGAR intake, cron, source registry, live AI, or automatic ResearchCase creation behavior was added.
+- Sprint Q: SEC EDGAR Detection Core implemented and production manual validation completed. It detects P1 official SEC signals (`SC TO-T`, `SC TO-I`, `Form 10`, and 8-K liquidation/dissolution metadata signals), enforces lookback locally, deduplicates repeated findings, creates/updates minimal `SpecialSituation` detection records, and returns a run summary. `SpecialSituation` is the initial detection object. Detected does not mean evaluated. No `/scan` production call, live AI, evaluator v2 global enablement, public drafts, ResearchCase auto-creation, Marketplace/Sales, or external sources.
+- Sprint Q.1: manual cleanup tool added for historical false SEC detections from the pre-Hotfix-2 validation bug. Cleanup is dry-run by default and delete requires explicit confirmation.
+- Sprint R: scheduled SEC EDGAR intake is enabled through cron after Dani manual approval. It uses `scripts/run_sec_edgar_detection.sh` for twice-daily runs at 07:00/19:00 UTC with `python -m backend.cli.sec_edgar_detect --hours-back 168`. Rate limit remains one request every five seconds and dedupe prevents repeated creation. No `/scan`, live AI, evaluator v2 global enablement, ResearchCase auto-creation, public publishing, document body fetching, or external sources.
+- Sprint S: SpecialSituation methodology workspace foundation implemented locally. New SEC detections attach `evaluation.methodology_workspace` snapshots with fixed checklist and required-resource templates for P1 signals. Existing SEC detections can be backfilled manually with `python -m backend.cli.special_situation_attach_methodology --dry-run` then `--apply`. Frontend route `/investment/situations/[id]` displays detection summary, checklist, resources, progress, and planned next actions. Templates are based on processed artifacts and marked `requires_course_review=true`. No live AI, web crawling, PDF download, document body fetching, automatic verification, ResearchCase auto-creation, public publishing, cron change, or `/scan`.
+- Sprint T: Resource Scout v1 implemented locally as a manual CLI and safe manual resource endpoint. It stores `resource_candidates` and `search_suggestions` inside `evaluation.methodology_workspace`, creates candidates from existing SEC metadata, updates clearly mapped required resources to `candidate_found`, and never marks checklist items verified. No broad web discovery, crawling, PDF download, SEC document body fetching, article text storage, cron/autonomous scouting, live AI, ResearchCase auto-creation, public publishing, or `/scan`.
+- Sprint U: Kanban Actions + Evidence Mapping implemented locally. Workflow status is stored in `evaluation.methodology_workspace.workflow_status`; manual resource review can link candidates to required resources/checklist items and mark linked material `evidence_found`. `evidence_found` does not mean verified, evaluated, or recommended. No cron modification, `/scan`, live AI, evaluator v2 global enablement, ResearchCase auto-creation, web crawling, PDF download, document body fetching, public publishing, or Marketplace/Sales changes.
+- Sprint V: manual SpecialSituation -> ResearchCase promotion implemented and production-validated after hotfix. Endpoint `POST /api/investment/situations/{id}/promote-to-research-case` creates an idempotent ResearchCase for deeper research, stores `research_case_id` in `evaluation.methodology_workspace`, snapshots detection/workspace context into `ResearchCase.brief`, and creates conservative initial tasks/sources. Promotion is manual only and does not evaluate, recommend, publish, create public drafts, call live AI, enable evaluator v2 globally, crawl, download PDFs, fetch document bodies, modify cron, or call `/scan`.
+- Sprint W: SEC EDGAR to ResearchCase milestone closeout and GitHub sync preparation. Current active flow is `SEC EDGAR cron -> SpecialSituation -> Kanban -> checklist/resources -> evidence mapping -> manual ResearchCase promotion`. Next recommended phase is ResearchCase Evaluation Preparation / Deep Research Assist, without automatic evaluation.
+
+## Current blockers / warnings
+
+- Agent Ops logger isolation exists from Sprint K, but scanner/evaluator integration is still not approved.
+- Agent Ops activity may contain narrow observer events from proposal review and manual ResearchCase creation if Sprint N/O are deployed; diagnostics/proposals may still be empty unless manually created.
+- Agent Ops Scoreboard and Fontana reports remain placeholders.
+- SEC EDGAR manual detection is validated and scheduled SEC EDGAR intake is enabled through cron. Sprint S/T/U/V methodology, resource, Kanban, evidence-mapping, and manual ResearchCase promotion features are complete and production-validated through manual promotion. EDGAR is operational.
+- Resource Scout v1 is manual only. It stores candidates/search suggestions but does not browse the web, crawl, download PDFs, or verify evidence.
+- ResearchCase promotion is manual only. Detection does not auto-create ResearchCases, and promotion does not evaluate, recommend, publish, or create public drafts.
+- `investment_sources` still does not control scanner execution.
+- Evaluator v2 remains not globally enabled.
+- Cron must not be changed without approval.
+- `/scan` must not be called unless explicitly requested.
+- Browser DevTools may show a CSP `unsafe-eval` warning; this is known low-priority and CSP must not be relaxed unless functionality is actually broken.
+
+## Next recommended sprints
+
+1. Sprint W GitHub sync after final review: commit/push only when Dani chooses to run it.
+2. ResearchCase Evaluation Preparation / Deep Research Assist: build a safe readiness package, missing evidence report, and manual evaluation preview design before any AI/evaluator activation.
+3. Optional controlled official-source discovery only after explicit approval; Resource Scout remains manual until then.
+4. Fontana report runtime after explicit approval.
+5. Market monitoring after source-driven intake stabilizes.
 
 **Phase 3 summary (all validated by Dani):**
 - 3A: Document/Source UI enrichment live (doc_type, signal_quality, metadata-only labels, snippet, notes)
@@ -89,7 +139,7 @@ SwissEdge is a modular AI platform with two domains:
 | `/` | Mission Control home | DEPLOYED |
 | `/investment/evaluations` | Evaluation queue | DEPLOYED |
 | `/investment/evaluations/[id]` | Evaluation detail + Research Case panel | DEPLOYED |
-| `/investment/research-inbox` | Research Inbox read-only — existing ResearchCases with V2 metadata when present and legacy/manual fallback labels | IMPLEMENTED LOCALLY — pending deploy |
+| `/investment/research-inbox` | Research Inbox read-only — existing ResearchCases with V2 metadata when present and legacy/manual fallback labels | DEPLOYED per Sprint B/B.1 summaries — verify manually if needed |
 | `/investment/research` | Research Cases list | DEPLOYED |
 | `/investment/research/[id]` | Research Case detail + workspace + AI Brief Preview + Quality Assist + Source Intelligence Panel (save/approve/reject) | DEPLOYED |
 | `/investment/watchlist` | Watchlist (status filter) | DEPLOYED |
@@ -184,18 +234,33 @@ V2 focus:
 - Keep analytical output grounded in processed course methodology artifacts.
 - Preserve current private research and publishing workflows while Public Site work remains paused.
 
-**Next recommended sprint:** Agent Ops backend foundation after review.
+**Next recommended sprint:** Review Sprint S/T/U/V together, then Dani-approved manual deploy, backfill, Resource Scout dry-run, evidence-mapping smoke test, and one manual promotion smoke test.
 
-V2 sprint history (all deployed except Sprint D which is local/pending):
+V2 sprint history:
 - Sprint A: scanner funnel diagnostics, UI truthfulness, SEC EDGAR 429 fix.
 - Sprint B: `/investment/research-inbox` read-only page over existing ResearchCases; legacy/V2 fallback labels.
 - Sprint B.1: Research Inbox UI polish.
 - Sprint C: V2 ResearchCase metadata additive migration (`d4e5f6a7b8c9`); 14 nullable fields on `research_cases`; frontend inbox prefers real V2 metadata with legacy fallback.
 - Sprint C.1: deploy script updated to include Sprint C migration file; deployment notes added.
-- Sprint D: ResearchCase detail V2 metadata read-only panel added; `/investment/internal-audit` read-only page created; Internal Audit card added to Mission Control; nav link added to Research Inbox. Local — pending deploy.
-- Sprint E: existing manual `SpecialSituation` / Evaluation -> Create ResearchCase flow initializes V2 metadata, initial verification tasks, and a metadata-only source for SEC/evaluation-linked cases. Local — pending deploy.
-- Sprint F: `swissedge-ai-context` AI-safe documentation layer created. Local — pending deploy/review.
-- Sprint G: `docs/agent-ops` architecture docs and `docs/ADR` decision records created for Agent Ops + Fontana. Local — pending deploy/review.
+- Sprint D: ResearchCase detail V2 metadata read-only panel added; `/investment/internal-audit` read-only page created; Internal Audit card added to Mission Control; nav link added to Research Inbox.
+- Sprint E: existing manual `SpecialSituation` / Evaluation -> Create ResearchCase flow initializes V2 metadata, initial verification tasks, and a metadata-only source for SEC/evaluation-linked cases.
+- Sprint F: `swissedge-ai-context` AI-safe documentation layer created.
+- Sprint G: `docs/agent-ops` architecture docs and `docs/ADR` decision records created for Agent Ops + Fontana.
+- Sprint H: Agent Ops backend foundation deployed; migration `e5f6a7b8c9d0` applied per 2026-05-10 closeout docs.
+- Sprint I: `/agent-ops` Mission Control UI deployed and smoke-tested per 2026-05-10 closeout docs.
+- Sprint J: proposal PATCH behavior and fail-safe logger tests hardened locally.
+- Sprint K: logger writes isolated with nested transactions/SAVEPOINTs locally; scanner/evaluator integration remains not approved.
+- Sprint L: `/agent-ops` UI hygiene improved locally.
+- Sprint M: Agent Ops deployed-state verification documented.
+- Sprint N: proposal review creates narrow observer activity when deployed; reviewer-note-only PATCH does not create activity.
+- Sprint O: manual Evaluation/SpecialSituation -> ResearchCase bridge creates narrow observer activity when deployed.
+- Sprint Q: manual SEC EDGAR Detection Core implemented and production manual validation completed; creates minimal `SpecialSituation` detections for P1 signals only (`SC TO-T`, `SC TO-I`, `Form 10`, 8-K liquidation/dissolution metadata signals). Detected does not mean evaluated; no evaluator call and no ResearchCase creation.
+- Sprint Q.1: manual cleanup tool for historical false detections from the pre-Hotfix-2 validation bug.
+- Sprint R: scheduler wrapper deployed and cron enabled manually for twice-daily SEC EDGAR detection with 168-hour lookback.
+- Sprint S: methodology checklist/resource snapshots attach to SEC-detected `SpecialSituation` records.
+- Sprint T: Resource Scout v1 stores official SEC candidates, manual URL candidates, and search suggestions in the methodology workspace. Automated web discovery remains future work.
+- Sprint U: manual Kanban movement, resource review, manual resource add, resource-to-checklist linking, and `evidence_found` progress updates. Verification remains human-controlled and ResearchCase promotion remains future work.
+- Sprint V: manual idempotent promotion from SpecialSituation to ResearchCase with detection/workspace snapshot, initial verification tasks, metadata-only sources, and `research_case_id` stored in the methodology workspace.
 
 **Deferred / future cleanup:**
 - Phase 4D — Apply Approved Proposals to Case Sources.

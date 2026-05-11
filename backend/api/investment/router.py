@@ -12,6 +12,20 @@ from backend.services.investment.sources.sec_edgar import SECEdgarAdapter
 from backend.services.investment.sources.base import Filing
 from backend.services.investment.evaluator import evaluate_situation
 from backend.services.investment.course_index import load_master_index
+from backend.services.investment.methodology_workspace import ALLOWED_WORKFLOW_STATUSES, WORKSPACE_KEY
+from backend.services.investment.resource_scout import (
+    VALID_RESOURCE_REVIEW_STATUSES,
+    VALID_SOURCE_TYPES,
+    add_manual_resource_candidate,
+    update_resource_candidate_review,
+    update_workflow_status,
+)
+from backend.services.investment.research_cases import (
+    PromoteSpecialSituationPayload,
+    ResearchCaseRead,
+    get_research_case,
+    promote_special_situation_to_research_case,
+)
 from backend.services.observability import run_logger
 
 router = APIRouter()
@@ -79,6 +93,26 @@ class FilingInput(BaseModel):
     save_to_db: bool = False
 
 
+class WorkflowStatusPatch(BaseModel):
+    workflow_status: str
+
+
+class ResourceCandidateCreate(BaseModel):
+    title: str | None = None
+    url: str
+    source_type: str
+    notes: str | None = None
+    related_resource_ids: list[str] = []
+    related_check_ids: list[str] = []
+
+
+class ResourceCandidatePatch(BaseModel):
+    status: str | None = None
+    notes: str | None = None
+    related_resource_ids: list[str] | None = None
+    related_check_ids: list[str] | None = None
+
+
 # ── Serializers ───────────────────────────────────────────────────────────────
 
 def _extract_v2_fields(evaluation: dict | None) -> dict:
@@ -113,6 +147,7 @@ def _serialize(s: SpecialSituation) -> dict:
         "detected_at": s.detected_at.isoformat() if s.detected_at else None,
         "status": s.status,
         "evaluation": s.evaluation,
+        "methodology_workspace": (s.evaluation or {}).get(WORKSPACE_KEY) if isinstance(s.evaluation, dict) else None,
         "strengths": s.strengths,
         "weaknesses": s.weaknesses,
         "risks": s.risks,
@@ -551,6 +586,117 @@ async def update_situation(
     await db.commit()
     await db.refresh(sit)
     return _serialize(sit)
+
+
+@router.post("/situations/{situation_id}/resources")
+async def add_situation_resource(
+    situation_id: str,
+    body: ResourceCandidateCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(SpecialSituation).where(SpecialSituation.id == uuid.UUID(situation_id))
+    )
+    sit = result.scalars().first()
+    if not sit:
+        raise HTTPException(status_code=404, detail="Situation not found")
+    try:
+        result_payload = add_manual_resource_candidate(
+            sit,
+            title=body.title,
+            url=body.url,
+            source_type=body.source_type,
+            notes=body.notes,
+            related_resource_ids=body.related_resource_ids,
+            related_check_ids=body.related_check_ids,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    await db.commit()
+    await db.refresh(sit)
+    return {
+        **result_payload,
+        "situation": _serialize(sit),
+        "valid_source_types": sorted(VALID_SOURCE_TYPES),
+    }
+
+
+@router.patch("/situations/{situation_id}/workflow-status")
+async def patch_situation_workflow_status(
+    situation_id: str,
+    body: WorkflowStatusPatch,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(SpecialSituation).where(SpecialSituation.id == uuid.UUID(situation_id))
+    )
+    sit = result.scalars().first()
+    if not sit:
+        raise HTTPException(status_code=404, detail="Situation not found")
+    try:
+        update_workflow_status(sit, body.workflow_status)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    sit.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(sit)
+    return {
+        "situation": _serialize(sit),
+        "valid_workflow_statuses": sorted(ALLOWED_WORKFLOW_STATUSES),
+    }
+
+
+@router.patch("/situations/{situation_id}/resources/{resource_candidate_id}")
+async def patch_situation_resource(
+    situation_id: str,
+    resource_candidate_id: str,
+    body: ResourceCandidatePatch,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(SpecialSituation).where(SpecialSituation.id == uuid.UUID(situation_id))
+    )
+    sit = result.scalars().first()
+    if not sit:
+        raise HTTPException(status_code=404, detail="Situation not found")
+    try:
+        result_payload = update_resource_candidate_review(
+            sit,
+            resource_candidate_id=resource_candidate_id,
+            status=body.status,
+            notes=body.notes,
+            related_resource_ids=body.related_resource_ids,
+            related_check_ids=body.related_check_ids,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    sit.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(sit)
+    return {
+        **result_payload,
+        "situation": _serialize(sit),
+        "valid_resource_statuses": sorted(VALID_RESOURCE_REVIEW_STATUSES),
+    }
+
+
+@router.post("/situations/{situation_id}/promote-to-research-case")
+async def promote_situation_to_research_case(
+    situation_id: str,
+    body: PromoteSpecialSituationPayload | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    rc, created = await promote_special_situation_to_research_case(
+        db,
+        uuid.UUID(situation_id),
+        body,
+    )
+    await db.commit()
+    rc = await get_research_case(db, rc.id)
+    return {
+        "created": created,
+        "research_case": ResearchCaseRead.from_orm(rc).model_dump(),
+    }
 
 
 @router.get("/follow-up")

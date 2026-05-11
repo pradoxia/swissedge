@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime, timezone
+from typing import Any
 
 from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -45,7 +46,8 @@ class AgentProfile(Base):
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="planned")
     implementation_status: Mapped[str] = mapped_column(String(50), nullable=False, default="documented")
     autonomy_level: Mapped[str] = mapped_column(String(50), nullable=False, default="observer")
-    guardrails: Mapped[dict | None] = mapped_column(JSONB)
+    # JSONB stores sanitized guardrails as a list, dict, or null; seed data uses a list of strings.
+    guardrails: Mapped[list[Any] | dict[str, Any] | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
