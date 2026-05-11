@@ -660,6 +660,57 @@ export interface ResearchCase {
   sources: ResearchSource[];
 }
 
+export interface EvaluationPrepAction {
+  label: string;
+  reason: string;
+  priority: 'high' | 'medium' | 'low';
+  manual_only: boolean;
+}
+
+export interface EvaluationPrepBucket {
+  total: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  missing: any[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  candidate_found: any[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  evidence_found: any[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  verified: any[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  rejected: any[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  human_review_required: any[];
+}
+
+export interface EvaluationPrepPackage {
+  research_case_id: string;
+  case_title: string | null;
+  status: string;
+  investment_readiness: string | null;
+  origin: {
+    intake_method: string | null;
+    situation_id: string | null;
+    source: string;
+  };
+  readiness: {
+    level: 'not_ready' | 'needs_more_evidence' | 'ready_for_manual_evaluation';
+    score: number;
+    blocking_reasons: string[];
+    warnings: string[];
+  };
+  required_resources: EvaluationPrepBucket;
+  checklist: EvaluationPrepBucket;
+  source_quality: {
+    official_sources_count: number;
+    metadata_only_sources_count: number;
+    manual_sources_count: number;
+    issues: string[];
+  };
+  suggested_next_actions: EvaluationPrepAction[];
+  guardrails: string[];
+}
+
 export interface ResearchCasesResponse {
   count: number;
   research_cases: ResearchCase[];
@@ -682,6 +733,12 @@ export async function fetchResearchCases(params?: {
 export async function fetchResearchCase(id: string): Promise<ResearchCase> {
   const response = await fetch(`${API_BASE_URL}/api/investment/research-cases/${id}`);
   if (!response.ok) throw new Error(`Failed to fetch research case: ${response.statusText}`);
+  return response.json();
+}
+
+export async function fetchResearchCaseEvaluationPrep(id: string): Promise<EvaluationPrepPackage> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/research-cases/${id}/evaluation-prep`);
+  if (!response.ok) throw new Error(`Failed to fetch evaluation preparation: ${response.statusText}`);
   return response.json();
 }
 

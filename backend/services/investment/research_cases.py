@@ -335,6 +335,51 @@ class ResearchCaseUpdate(BaseModel):
     model_used: str | None = None
 
 
+class EvaluationPrepReadiness(BaseModel):
+    level: str
+    score: int
+    blocking_reasons: list[str]
+    warnings: list[str]
+
+
+class EvaluationPrepBucket(BaseModel):
+    total: int
+    missing: list[dict]
+    candidate_found: list[dict] = []
+    evidence_found: list[dict] = []
+    verified: list[dict] = []
+    rejected: list[dict] = []
+    human_review_required: list[dict] = []
+
+
+class EvaluationPrepSourceQuality(BaseModel):
+    official_sources_count: int
+    metadata_only_sources_count: int
+    manual_sources_count: int
+    issues: list[str]
+
+
+class EvaluationPrepAction(BaseModel):
+    label: str
+    reason: str
+    priority: str
+    manual_only: bool = True
+
+
+class EvaluationPrepPackage(BaseModel):
+    research_case_id: str
+    case_title: str | None
+    status: str
+    investment_readiness: str | None
+    origin: dict
+    readiness: EvaluationPrepReadiness
+    required_resources: EvaluationPrepBucket
+    checklist: EvaluationPrepBucket
+    source_quality: EvaluationPrepSourceQuality
+    suggested_next_actions: list[EvaluationPrepAction]
+    guardrails: list[str]
+
+
 class ResearchTaskCreate(BaseModel):
     description: str
     priority: int = 3
@@ -713,6 +758,214 @@ async def _lookup_room_id(db: AsyncSession, key: str) -> uuid.UUID | None:
     return room.id if isinstance(room, AgentRoom) else None
 
 
+def _brief_title(rc: ResearchCase) -> str | None:
+    brief = rc.brief if isinstance(rc.brief, dict) else {}
+    title = brief.get("title")
+    if isinstance(title, str) and title.strip():
+        return title.strip()
+    detection = brief.get("detection_summary")
+    if isinstance(detection, dict):
+        parts = [
+            str(value).strip()
+            for value in (detection.get("company_name"), detection.get("filing_type"))
+            if isinstance(value, str) and value.strip()
+        ]
+        if parts:
+            return " - ".join(parts)
+    return None
+
+
+def _workspace_snapshot_from_research_case(rc: ResearchCase) -> dict:
+    brief = rc.brief if isinstance(rc.brief, dict) else {}
+    snapshot = brief.get("methodology_workspace_snapshot")
+    return snapshot if isinstance(snapshot, dict) else {}
+
+
+def _status_bucket(items: list, *, verified_statuses: set[str] | None = None) -> dict[str, list[dict]]:
+    verified_statuses = verified_statuses or {"verified"}
+    buckets = {
+        "missing": [],
+        "candidate_found": [],
+        "evidence_found": [],
+        "verified": [],
+        "rejected": [],
+        "human_review_required": [],
+    }
+    for raw in items:
+        if not isinstance(raw, dict):
+            continue
+        item = deepcopy(raw)
+        status = str(item.get("status") or "missing")
+        if status in verified_statuses:
+            buckets["verified"].append(item)
+        elif status == "evidence_found":
+            buckets["evidence_found"].append(item)
+        elif status == "candidate_found":
+            buckets["candidate_found"].append(item)
+        elif status == "rejected":
+            buckets["rejected"].append(item)
+        elif status in {"not_applicable", "unknown"}:
+            pass
+        else:
+            buckets["missing"].append(item)
+        if item.get("human_review_required") is True:
+            buckets["human_review_required"].append(item)
+    return buckets
+
+
+def _coverage_score(*, total: int, evidence: int, verified: int, candidates: int = 0) -> float:
+    if total <= 0:
+        return 0.0
+    return min(1.0, ((evidence + verified) + (candidates * 0.5)) / total)
+
+
+def _official_source_count(rc: ResearchCase) -> int:
+    count = 0
+    if rc.official_source_status == "official_attached":
+        count += 1
+    for source in getattr(rc, "sources", []) or []:
+        url = (source.source_url or "").lower()
+        name = (source.source_name or "").lower()
+        if "sec.gov" in url or "sec edgar" in name:
+            count += 1
+    for document in getattr(rc, "documents", []) or []:
+        if "sec.gov" in (document.url or "").lower():
+            count += 1
+    return count
+
+
+def build_evaluation_prep_package(rc: ResearchCase) -> EvaluationPrepPackage:
+    workspace = _workspace_snapshot_from_research_case(rc)
+    required_resources = workspace.get("required_resources") if isinstance(workspace.get("required_resources"), list) else []
+    checklist = workspace.get("checklist") if isinstance(workspace.get("checklist"), list) else []
+
+    resource_buckets = _status_bucket(required_resources)
+    checklist_buckets = _status_bucket(checklist)
+
+    required_total = len([item for item in required_resources if isinstance(item, dict)])
+    checklist_total = len([item for item in checklist if isinstance(item, dict)])
+    required_missing = len(resource_buckets["missing"])
+    required_evidence = len(resource_buckets["evidence_found"])
+    required_verified = len(resource_buckets["verified"])
+    required_candidates = len(resource_buckets["candidate_found"])
+    checklist_missing = len(checklist_buckets["missing"])
+    checklist_evidence = len(checklist_buckets["evidence_found"])
+    checklist_verified = len(checklist_buckets["verified"])
+
+    blocking_reasons: list[str] = []
+    warnings: list[str] = []
+    if not workspace:
+        blocking_reasons.append("No promoted methodology snapshot is available on this ResearchCase.")
+    if required_total == 0:
+        blocking_reasons.append("No required-resource snapshot is available.")
+    if checklist_total == 0:
+        blocking_reasons.append("No methodology checklist snapshot is available.")
+    if required_total and required_missing / required_total > 0.5:
+        blocking_reasons.append("Most required resources are still missing.")
+    if checklist_total and (checklist_evidence + checklist_verified) / checklist_total < 0.25:
+        warnings.append("Checklist evidence coverage is still low.")
+    if resource_buckets["rejected"]:
+        warnings.append("One or more required resources were rejected and need manual review.")
+
+    resource_score = _coverage_score(
+        total=required_total,
+        evidence=required_evidence,
+        verified=required_verified,
+        candidates=required_candidates,
+    )
+    checklist_score = _coverage_score(
+        total=checklist_total,
+        evidence=checklist_evidence,
+        verified=checklist_verified,
+    )
+    official_sources_count = _official_source_count(rc)
+    source_score = 1.0 if official_sources_count else 0.0
+    score = round((resource_score * 45) + (checklist_score * 40) + (source_score * 15))
+
+    if blocking_reasons:
+        level = "not_ready"
+    elif required_missing <= 1 and resource_score >= 0.75 and checklist_score >= 0.5 and official_sources_count:
+        level = "ready_for_manual_evaluation"
+    else:
+        level = "needs_more_evidence"
+
+    source_quality_issues: list[str] = []
+    if official_sources_count == 0:
+        source_quality_issues.append("No official SEC or primary source metadata is attached.")
+    if required_candidates and required_evidence == 0:
+        source_quality_issues.append("Resources are present as candidates, but evidence has not been marked found.")
+    if len(getattr(rc, "sources", []) or []) == 0 and len(getattr(rc, "documents", []) or []) == 0:
+        source_quality_issues.append("No ResearchCase documents or sources have been added yet.")
+
+    actions: list[EvaluationPrepAction] = []
+    if required_missing:
+        actions.append(EvaluationPrepAction(
+            label="Collect missing required resources",
+            reason=f"{required_missing} required resource(s) are still missing.",
+            priority="high",
+        ))
+    if required_candidates:
+        actions.append(EvaluationPrepAction(
+            label="Review candidate resources",
+            reason=f"{required_candidates} resource candidate(s) need manual evidence review.",
+            priority="medium",
+        ))
+    if checklist_missing:
+        actions.append(EvaluationPrepAction(
+            label="Map evidence to checklist gaps",
+            reason=f"{checklist_missing} checklist item(s) are not yet supported by evidence.",
+            priority="high" if checklist_evidence == 0 else "medium",
+        ))
+    if official_sources_count == 0:
+        actions.append(EvaluationPrepAction(
+            label="Confirm official source metadata",
+            reason="A primary official source should be attached before deeper manual evaluation.",
+            priority="high",
+        ))
+    if not actions:
+        actions.append(EvaluationPrepAction(
+            label="Manual evaluation review",
+            reason="Preparation thresholds are met, but evaluation still requires human review.",
+            priority="medium",
+        ))
+
+    return EvaluationPrepPackage(
+        research_case_id=str(rc.id),
+        case_title=_brief_title(rc),
+        status=rc.status,
+        investment_readiness=rc.investment_readiness,
+        origin={
+            "intake_method": rc.intake_method,
+            "situation_id": str(rc.situation_id) if rc.situation_id else None,
+            "source": "special_situation_promotion" if rc.intake_method == "special_situation_promotion" else (rc.source_origin_name or "unknown"),
+        },
+        readiness=EvaluationPrepReadiness(
+            level=level,
+            score=max(0, min(100, score)),
+            blocking_reasons=blocking_reasons,
+            warnings=warnings,
+        ),
+        required_resources=EvaluationPrepBucket(total=required_total, **resource_buckets),
+        checklist=EvaluationPrepBucket(total=checklist_total, **checklist_buckets),
+        source_quality=EvaluationPrepSourceQuality(
+            official_sources_count=official_sources_count,
+            metadata_only_sources_count=len(getattr(rc, "sources", []) or []) + len(getattr(rc, "documents", []) or []),
+            manual_sources_count=len([
+                source for source in (getattr(rc, "sources", []) or [])
+                if "manual" in ((source.notes or "") + " " + (source.source_name or "")).lower()
+            ]),
+            issues=source_quality_issues,
+        ),
+        suggested_next_actions=actions,
+        guardrails=[
+            "This is not an evaluation.",
+            "No investment recommendation is generated.",
+            "Evidence found does not mean verified.",
+            "Preparation does not publish or create public drafts.",
+        ],
+    )
+
+
 async def get_research_case(db: AsyncSession, research_case_id: uuid.UUID) -> ResearchCase:
     result = await db.execute(
         select(ResearchCase)
@@ -727,6 +980,11 @@ async def get_research_case(db: AsyncSession, research_case_id: uuid.UUID) -> Re
     if not rc:
         raise HTTPException(status_code=404, detail="Research case not found")
     return rc
+
+
+async def get_evaluation_prep_package(db: AsyncSession, research_case_id: uuid.UUID) -> EvaluationPrepPackage:
+    rc = await get_research_case(db, research_case_id)
+    return build_evaluation_prep_package(rc)
 
 
 async def list_research_cases(

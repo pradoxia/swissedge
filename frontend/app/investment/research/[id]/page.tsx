@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   fetchResearchCase,
+  fetchResearchCaseEvaluationPrep,
   updateResearchCase,
   addResearchTask,
   updateResearchTask,
@@ -22,6 +23,7 @@ import {
   createPublicDraftFromResearchCase,
   fetchPublicDrafts,
   type ResearchCase,
+  type EvaluationPrepPackage,
   type ResearchTask,
   type ResearchDocument,
   type ResearchSource,
@@ -1358,11 +1360,215 @@ function V2MetadataPanel({ rc }: { rc: ResearchCase }) {
   );
 }
 
+function prepItemTitle(item: unknown): string {
+  if (!item || typeof item !== 'object') return 'Untitled item';
+  const record = item as Record<string, unknown>;
+  const value = record.title ?? record.description ?? record.resource_id ?? record.check_id;
+  return typeof value === 'string' && value.trim() ? value.trim() : 'Untitled item';
+}
+
+function ReadinessBadge({ level }: { level: EvaluationPrepPackage['readiness']['level'] }) {
+  const styles: Record<EvaluationPrepPackage['readiness']['level'], string> = {
+    not_ready: 'text-red-300 border-red-900 bg-red-950/20',
+    needs_more_evidence: 'text-amber-300 border-amber-900 bg-amber-950/20',
+    ready_for_manual_evaluation: 'text-green-300 border-green-900 bg-green-950/20',
+  };
+  return (
+    <span className={`rounded border px-2 py-0.5 text-xs font-mono ${styles[level]}`}>
+      {level.replace(/_/g, ' ').toUpperCase()}
+    </span>
+  );
+}
+
+function EvaluationPrepPanel({
+  prep,
+  loading,
+  error,
+  onRefresh,
+}: {
+  prep: EvaluationPrepPackage | null;
+  loading: boolean;
+  error: string | null;
+  onRefresh: () => Promise<void>;
+}) {
+  const [refreshing, setRefreshing] = useState(false);
+
+  async function refresh() {
+    setRefreshing(true);
+    try {
+      await onRefresh();
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  if (loading) {
+    return <p className="text-xs font-mono text-gray-600">Loading preparation package…</p>;
+  }
+  if (error) {
+    return (
+      <div className="space-y-2">
+        <p className="text-xs font-mono text-red-400">Preparation unavailable: {error}</p>
+        <button onClick={refresh} className="text-xs font-mono text-cyan-700 hover:text-cyan-400">REFRESH PREPARATION</button>
+      </div>
+    );
+  }
+  if (!prep) {
+    return <p className="text-xs font-mono text-gray-600 italic">No preparation package loaded.</p>;
+  }
+
+  const missingResources = prep.required_resources.missing.slice(0, 6);
+  const checklistGaps = prep.checklist.missing.slice(0, 6);
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded border border-amber-900/60 bg-amber-950/10 p-3">
+        <p className="text-xs font-mono text-amber-300">
+          Preparation only — no AI evaluation, no recommendation, no publishing.
+        </p>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <ReadinessBadge level={prep.readiness.level} />
+        <span className="text-xs font-mono text-gray-500">SCORE {prep.readiness.score}/100</span>
+        <button
+          onClick={refresh}
+          disabled={refreshing}
+          className="ml-auto text-xs font-mono text-cyan-700 hover:text-cyan-400 disabled:opacity-40"
+        >
+          {refreshing ? 'REFRESHING…' : 'REFRESH PREPARATION'}
+        </button>
+      </div>
+
+      {(prep.readiness.blocking_reasons.length > 0 || prep.readiness.warnings.length > 0) && (
+        <div className="grid gap-3 md:grid-cols-2">
+          <div>
+            <p className="mb-1 text-xs font-mono uppercase tracking-wide text-gray-600">Blocking Reasons</p>
+            {prep.readiness.blocking_reasons.length > 0 ? (
+              <ul className="space-y-1">
+                {prep.readiness.blocking_reasons.map(reason => (
+                  <li key={reason} className="text-xs text-red-300">• {reason}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-xs text-gray-600">None.</p>
+            )}
+          </div>
+          <div>
+            <p className="mb-1 text-xs font-mono uppercase tracking-wide text-gray-600">Warnings</p>
+            {prep.readiness.warnings.length > 0 ? (
+              <ul className="space-y-1">
+                {prep.readiness.warnings.map(warning => (
+                  <li key={warning} className="text-xs text-amber-300">• {warning}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-xs text-gray-600">None.</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="grid gap-3 md:grid-cols-4">
+        <div className="rounded border border-gray-800 p-3">
+          <p className="text-xs font-mono text-gray-600">REQUIRED</p>
+          <p className="text-lg font-mono text-gray-200">{prep.required_resources.total}</p>
+        </div>
+        <div className="rounded border border-gray-800 p-3">
+          <p className="text-xs font-mono text-gray-600">MISSING</p>
+          <p className="text-lg font-mono text-red-300">{prep.required_resources.missing.length}</p>
+        </div>
+        <div className="rounded border border-gray-800 p-3">
+          <p className="text-xs font-mono text-gray-600">CANDIDATES</p>
+          <p className="text-lg font-mono text-amber-300">{prep.required_resources.candidate_found.length}</p>
+        </div>
+        <div className="rounded border border-gray-800 p-3">
+          <p className="text-xs font-mono text-gray-600">EVIDENCE</p>
+          <p className="text-lg font-mono text-green-300">{prep.required_resources.evidence_found.length + prep.required_resources.verified.length}</p>
+        </div>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <div>
+          <p className="mb-2 text-xs font-mono uppercase tracking-wide text-gray-600">Missing Required Resources</p>
+          {missingResources.length > 0 ? (
+            <ul className="space-y-1">
+              {missingResources.map((item, index) => (
+                <li key={`${prepItemTitle(item)}-${index}`} className="text-xs text-gray-300">• {prepItemTitle(item)}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-xs text-gray-600">No missing required resources in the snapshot.</p>
+          )}
+        </div>
+        <div>
+          <p className="mb-2 text-xs font-mono uppercase tracking-wide text-gray-600">Checklist Gaps</p>
+          {checklistGaps.length > 0 ? (
+            <ul className="space-y-1">
+              {checklistGaps.map((item, index) => (
+                <li key={`${prepItemTitle(item)}-${index}`} className="text-xs text-gray-300">• {prepItemTitle(item)}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-xs text-gray-600">No unsupported checklist gaps in the snapshot.</p>
+          )}
+        </div>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <div>
+          <p className="mb-2 text-xs font-mono uppercase tracking-wide text-gray-600">Source Quality</p>
+          <div className="space-y-1 text-xs text-gray-400">
+            <p>Official sources: {prep.source_quality.official_sources_count}</p>
+            <p>Metadata-only sources: {prep.source_quality.metadata_only_sources_count}</p>
+            <p>Manual sources: {prep.source_quality.manual_sources_count}</p>
+          </div>
+          {prep.source_quality.issues.length > 0 && (
+            <ul className="mt-2 space-y-1">
+              {prep.source_quality.issues.map(issue => (
+                <li key={issue} className="text-xs text-amber-300">• {issue}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <div>
+          <p className="mb-2 text-xs font-mono uppercase tracking-wide text-gray-600">Next Manual Actions</p>
+          <div className="space-y-2">
+            {prep.suggested_next_actions.map(action => (
+              <div key={`${action.label}-${action.reason}`} className="rounded border border-gray-800 p-2">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-mono text-cyan-300">{action.label}</p>
+                  <span className="text-[10px] font-mono text-gray-600">{action.priority.toUpperCase()}</span>
+                </div>
+                <p className="mt-1 text-xs text-gray-500">{action.reason}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="border-t border-gray-800 pt-3">
+        <p className="mb-1 text-xs font-mono uppercase tracking-wide text-gray-600">Guardrails</p>
+        <div className="flex flex-wrap gap-2">
+          {prep.guardrails.map(guardrail => (
+            <span key={guardrail} className="rounded border border-gray-800 px-2 py-0.5 text-[10px] font-mono text-gray-500">
+              {guardrail}
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ResearchDetailPage() {
   const params = useParams();
   const id = params.id as string;
 
   const [rc, setRc] = useState<ResearchCase | null>(null);
+  const [evaluationPrep, setEvaluationPrep] = useState<EvaluationPrepPackage | null>(null);
+  const [prepLoading, setPrepLoading] = useState(true);
+  const [prepError, setPrepError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -1420,7 +1626,23 @@ export default function ResearchDetailPage() {
     }
   }
 
-  useEffect(() => { load(); }, [id]);
+  async function loadEvaluationPrep() {
+    try {
+      setPrepLoading(true);
+      setPrepError(null);
+      const data = await fetchResearchCaseEvaluationPrep(id);
+      setEvaluationPrep(data);
+    } catch (err) {
+      setPrepError(err instanceof Error ? err.message : 'Failed to load evaluation preparation');
+    } finally {
+      setPrepLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    load();
+    loadEvaluationPrep();
+  }, [id]);
 
   async function saveField(payload: Parameters<typeof updateResearchCase>[1], successMsg: string) {
     if (!rc) return;
@@ -1681,6 +1903,16 @@ export default function ResearchDetailPage() {
             }}
           />
           <PublicDraftPanel caseId={rc.id} />
+        </Section>
+
+        {/* ── Evaluation Preparation ── */}
+        <Section title="Evaluation Preparation" hint="Read-only readiness package for manual evaluation planning. No AI, no recommendation, no publishing.">
+          <EvaluationPrepPanel
+            prep={evaluationPrep}
+            loading={prepLoading}
+            error={prepError}
+            onRefresh={loadEvaluationPrep}
+          />
         </Section>
 
         {/* ── Notes ── */}

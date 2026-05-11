@@ -6,6 +6,7 @@ from backend.db.database import get_db
 from backend.services.investment.research_cases import (
     ResearchCaseRead,
     ResearchCaseUpdate,
+    EvaluationPrepPackage,
     ResearchTaskRead,
     ResearchTaskCreate,
     ResearchTaskUpdate,
@@ -17,6 +18,7 @@ from backend.services.investment.research_cases import (
     ResearchSourceUpdate,
     create_research_case_from_situation,
     get_research_case,
+    get_evaluation_prep_package,
     list_research_cases,
     update_research_case,
     create_task,
@@ -101,6 +103,11 @@ async def list_cases(
 async def get_case(research_case_id: str, db: AsyncSession = Depends(get_db)):
     rc = await get_research_case(db, _parse_uuid(research_case_id, "research_case_id"))
     return ResearchCaseRead.from_orm(rc)
+
+
+@router.get("/research-cases/{research_case_id}/evaluation-prep", response_model=EvaluationPrepPackage)
+async def get_case_evaluation_prep(research_case_id: str, db: AsyncSession = Depends(get_db)):
+    return await get_evaluation_prep_package(db, _parse_uuid(research_case_id, "research_case_id"))
 
 
 @router.patch("/research-cases/{research_case_id}", response_model=ResearchCaseRead)
