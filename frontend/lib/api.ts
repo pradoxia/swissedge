@@ -786,6 +786,46 @@ export interface EvaluationPrepPackage {
   guardrails: string[];
 }
 
+export interface IntelligenceScoreComponent {
+  key: 'detection' | 'structuring' | 'risk_discipline';
+  label: string;
+  score: number;
+  max_score: number;
+  signals: string[];
+  gaps: string[];
+}
+
+export interface IntelligenceScorePackage {
+  research_case_id: string;
+  total_score: number;
+  grade: 'APPROVABLE' | 'USEFUL_INCOMPLETE' | 'REVIEW_PIPELINE';
+  grade_explanation: string;
+  components: IntelligenceScoreComponent[];
+  evaluation_prep_summary: {
+    level: string;
+    score: number;
+    blocking_reasons: string[];
+    warnings: string[];
+    required_resources_total: number;
+    required_resources_missing: number;
+    checklist_total: number;
+    checklist_missing: number;
+  };
+  evidence_links_summary: {
+    total_links: number;
+    sec_links: number;
+    manual_links: number;
+    research_source_links: number;
+    research_document_links: number;
+    metadata_only_links: number;
+    missing_link_items: string[];
+  };
+  strengths: string[];
+  warnings: string[];
+  suggested_next_actions: string[];
+  guardrails: string[];
+}
+
 export interface ResearchCasesResponse {
   count: number;
   research_cases: ResearchCase[];
@@ -820,6 +860,12 @@ export async function fetchResearchCaseEvaluationPrep(id: string): Promise<Evalu
 export async function fetchResearchCaseEvidenceLinks(id: string): Promise<ResearchCaseEvidenceLinksPackage> {
   const response = await fetch(`${API_BASE_URL}/api/investment/research-cases/${id}/evidence-links`);
   if (!response.ok) throw new Error(`Failed to fetch research traceability: ${response.statusText}`);
+  return response.json();
+}
+
+export async function fetchResearchCaseIntelligenceScore(id: string): Promise<IntelligenceScorePackage> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/research-cases/${id}/intelligence-score`);
+  if (!response.ok) throw new Error(`Failed to fetch intelligence score: ${response.statusText}`);
   return response.json();
 }
 

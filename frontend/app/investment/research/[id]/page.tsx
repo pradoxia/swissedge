@@ -4,10 +4,12 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { EvidenceLinksPanel } from '@/app/components/EvidenceLinksPanel';
+import { IntelligenceScoreCard } from '@/app/components/IntelligenceScoreCard';
 import {
   fetchResearchCase,
   fetchResearchCaseEvidenceLinks,
   fetchResearchCaseEvaluationPrep,
+  fetchResearchCaseIntelligenceScore,
   updateResearchCase,
   addResearchTask,
   updateResearchTask,
@@ -27,6 +29,7 @@ import {
   type ResearchCase,
   type ResearchCaseEvidenceLinksPackage,
   type EvaluationPrepPackage,
+  type IntelligenceScorePackage,
   type ResearchTask,
   type ResearchDocument,
   type ResearchSource,
@@ -1583,9 +1586,12 @@ export default function ResearchDetailPage() {
   const [rc, setRc] = useState<ResearchCase | null>(null);
   const [evaluationPrep, setEvaluationPrep] = useState<EvaluationPrepPackage | null>(null);
   const [evidenceLinks, setEvidenceLinks] = useState<ResearchCaseEvidenceLinksPackage | null>(null);
+  const [intelligenceScore, setIntelligenceScore] = useState<IntelligenceScorePackage | null>(null);
   const [prepLoading, setPrepLoading] = useState(true);
+  const [scoreLoading, setScoreLoading] = useState(true);
   const [prepError, setPrepError] = useState<string | null>(null);
   const [evidenceLinksError, setEvidenceLinksError] = useState<string | null>(null);
+  const [scoreError, setScoreError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -1662,9 +1668,23 @@ export default function ResearchDetailPage() {
     }
   }
 
+  async function loadIntelligenceScore() {
+    try {
+      setScoreLoading(true);
+      setScoreError(null);
+      const scoreData = await fetchResearchCaseIntelligenceScore(id);
+      setIntelligenceScore(scoreData);
+    } catch (err) {
+      setScoreError(err instanceof Error ? err.message : 'Failed to load intelligence score');
+    } finally {
+      setScoreLoading(false);
+    }
+  }
+
   useEffect(() => {
     load();
     loadEvaluationPrep();
+    loadIntelligenceScore();
   }, [id]);
 
   async function saveField(payload: Parameters<typeof updateResearchCase>[1], successMsg: string) {
@@ -1935,6 +1955,16 @@ export default function ResearchDetailPage() {
             loading={prepLoading}
             error={prepError}
             onRefresh={loadEvaluationPrep}
+          />
+        </Section>
+
+        {/* ── Intelligence Score ── */}
+        <Section title="Intelligence Score" hint="Read-only IA Score for preparation quality, safety, and usefulness. Manual review remains mandatory.">
+          <IntelligenceScoreCard
+            score={intelligenceScore}
+            loading={scoreLoading}
+            error={scoreError}
+            onRefresh={loadIntelligenceScore}
           />
         </Section>
 

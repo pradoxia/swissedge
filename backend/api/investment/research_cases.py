@@ -58,6 +58,10 @@ from backend.services.investment.research_cases import (
     render_public_article_markdown,
 )
 from backend.services.investment.evidence_links import build_research_case_evidence_links
+from backend.services.investment.intelligence_score import (
+    IntelligenceScorePackage,
+    build_intelligence_score_package,
+)
 from backend.services.observability import run_logger
 
 router = APIRouter()
@@ -115,6 +119,12 @@ async def get_case_evaluation_prep(research_case_id: str, db: AsyncSession = Dep
 async def get_case_evidence_links(research_case_id: str, db: AsyncSession = Depends(get_db)):
     rc = await get_research_case(db, _parse_uuid(research_case_id, "research_case_id"))
     return build_research_case_evidence_links(rc).model_dump()
+
+
+@router.get("/research-cases/{research_case_id}/intelligence-score", response_model=IntelligenceScorePackage)
+async def get_case_intelligence_score(research_case_id: str, db: AsyncSession = Depends(get_db)):
+    rc = await get_research_case(db, _parse_uuid(research_case_id, "research_case_id"))
+    return build_intelligence_score_package(rc)
 
 
 @router.patch("/research-cases/{research_case_id}", response_model=ResearchCaseRead)
