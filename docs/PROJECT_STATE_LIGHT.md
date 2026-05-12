@@ -2,7 +2,7 @@
 
 > Full canonical state: `docs/PROJECT_STATE.md`
 > Architecture decisions: `docs/decisions.md`
-> Last updated: 2026-05-11 (Sprint Y local — Evidence Links & Research Traceability)
+> Last updated: 2026-05-12 (Sprint ZA local — Agent Rooms 2.0)
 
 ---
 
@@ -83,6 +83,8 @@ SwissEdge is a modular AI platform with two domains:
 - Sprint X-A: Compact Kanban Overview implemented for `/investment/situations`. The page now defaults to a compact responsive Kanban overview with phase counts, top cases per phase, preserved filters, and a detailed board toggle. Frontend-only; no backend, migration, cron, scanner, live AI, evaluator, ResearchCase automation, publishing, or Marketplace/Sales changes.
 - Sprint X-B: ResearchCase Evaluation Preparation / Deep Research Assist implemented locally. New read-only endpoint `GET /api/investment/research-cases/{id}/evaluation-prep` returns a deterministic metadata-only readiness package for promoted ResearchCases. Frontend `/investment/research/[id]` shows an Evaluation Preparation panel with readiness level, missing required resources, checklist gaps, source quality notes, and next manual actions. Preparation only: no live AI, no evaluator v2 global enablement, no automatic evaluation, no recommendations, no publishing, no crawling/PDF/document body fetching, no `/scan`, and no cron change.
 - Sprint Y: Evidence Links & Research Traceability implemented locally. New read-only traceability endpoints show original SEC source links, resource candidate links, required-resource/checklist support links, ResearchCase source/document links, and metadata-only guardrails in `/investment/situations/[id]` and `/investment/research/[id]`. It does not fetch document bodies, crawl, download PDFs, evaluate, verify evidence automatically, recommend, publish, call `/scan`, change cron, or enable evaluator v2 globally.
+- Sprint Z: Intelligence Scoring Foundation implemented locally. New read-only endpoint `GET /api/investment/research-cases/{id}/intelligence-score` returns a deterministic 0-100 IA Score with Detection (40), Structuring (40), and Risk Discipline (20) components. `/investment/research/[id]` now shows an Intelligence Score card integrated with Evaluation Preparation and Evidence Links. `APPROVABLE` means structurally approvable for manual review only, not investment approval. No DB writes, migration, live AI, external calls, evaluator activation, automatic evaluation, ResearchCase auto-creation, publishing, crawling, PDF download, document body fetching, cron change, or `/scan`.
+- Sprint ZA: Agent Rooms 2.0 implemented locally as a frontend-only Agent Ops expansion. `/agent-ops/rooms/[id]` opens navigable room detail pages with room metrics, agents, deterministic avatars, selected-agent logs, diagnostics, related ResearchCase/SpecialSituation links when present, conceptual interaction maps, and derived read-only operational indicators. `/agent-ops` room cards now link to room details. Profile name/avatar editing is deferred because no safe AgentProfile PATCH endpoint exists. No backend endpoints, DB migration, scanner/evaluator integration, live AI, cron changes, automation, publishing, recommendations, or Marketplace/Sales changes.
 
 ## Current blockers / warnings
 
@@ -100,8 +102,8 @@ SwissEdge is a modular AI platform with two domains:
 
 ## Next recommended sprints
 
-1. Sprint W GitHub sync after final review: commit/push only when Dani chooses to run it.
-2. Claude review of Sprint X-B ResearchCase Evaluation Preparation.
+1. Sprint X-B/Y/Z/ZA GitHub sync after final review: commit/push only when Dani chooses to run it.
+2. Claude review of Sprint X-B/Y/Z/ZA.
 3. Optional controlled official-source discovery only after explicit approval; Resource Scout remains manual until then.
 4. Fontana report runtime after explicit approval.
 5. Market monitoring after source-driven intake stabilizes.
@@ -140,11 +142,13 @@ SwissEdge is a modular AI platform with two domains:
 | Route | Description | Status |
 |---|---|---|
 | `/` | Mission Control home | DEPLOYED |
+| `/agent-ops` | Agent Ops Mission Control UI + room links | DEPLOYED + Sprint ZA local |
+| `/agent-ops/rooms/[id]` | Agent Ops room detail with agents, logs, diagnostics, related objects, and derived operational indicators | Sprint ZA local |
 | `/investment/evaluations` | Evaluation queue | DEPLOYED |
 | `/investment/evaluations/[id]` | Evaluation detail + Research Case panel | DEPLOYED |
 | `/investment/research-inbox` | Research Inbox read-only — existing ResearchCases with V2 metadata when present and legacy/manual fallback labels | DEPLOYED per Sprint B/B.1 summaries — verify manually if needed |
 | `/investment/research` | Research Cases list | DEPLOYED |
-| `/investment/research/[id]` | Research Case detail + workspace + AI Brief Preview + Quality Assist + Source Intelligence Panel (save/approve/reject) | DEPLOYED |
+| `/investment/research/[id]` | Research Case detail + workspace + Evaluation Prep + Evidence Links + Intelligence Score + AI Brief Preview + Quality Assist + Source Intelligence Panel (save/approve/reject) | DEPLOYED + Sprint Z local |
 | `/investment/watchlist` | Watchlist (status filter) | DEPLOYED |
 | `/investment/radar-status` | Scanner observability (read-only) | DEPLOYED |
 | `/investment/sources` | Source registry + toggles | DEPLOYED |
@@ -168,6 +172,7 @@ SwissEdge is a modular AI platform with two domains:
 | Investment Situations | `/api/investment/situations`, `/api/investment/sources`, `/api/investment/scan`, `/api/investment/evaluate-v2` | Live |
 | Research Cases | `/api/investment/research-cases`, `/api/investment/research-tasks` | Live |
 | Research Brief Preview | `POST /api/investment/research-cases/{id}/generate-brief-preview` | Live |
+| Intelligence Score | `GET /api/investment/research-cases/{id}/intelligence-score` | Local — Sprint Z read-only |
 | Research Quality Preview | `POST /api/investment/research-cases/{id}/quality-preview` | Live |
 | Document Analysis Preview | `POST /api/investment/research-documents/{id}/analysis-preview` | Live |
 | Document/Source PATCH | `PATCH /api/investment/research-cases/{id}/documents/{doc_id}`, `PATCH .../sources/{src_id}` | Live |
@@ -237,7 +242,7 @@ V2 focus:
 - Keep analytical output grounded in processed course methodology artifacts.
 - Preserve current private research and publishing workflows while Public Site work remains paused.
 
-**Next recommended sprint:** Review Sprint S/T/U/V together, then Dani-approved manual deploy, backfill, Resource Scout dry-run, evidence-mapping smoke test, and one manual promotion smoke test.
+**Next recommended sprint:** Claude review of Sprint X-B/Y/Z/ZA, then Dani-approved manual deploy/smoke test if accepted.
 
 V2 sprint history:
 - Sprint A: scanner funnel diagnostics, UI truthfulness, SEC EDGAR 429 fix.

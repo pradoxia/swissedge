@@ -41,6 +41,8 @@ SwissEdge is moving toward:
 - Sprint X-A: Compact Kanban Overview implemented for `/investment/situations`. The page now defaults to a compact responsive Kanban overview with phase counts, top cases per phase, preserved filters, and a detailed board toggle. Frontend-only; no backend, migration, cron, scanner, live AI, evaluator, ResearchCase automation, publishing, or Marketplace/Sales changes.
 - Sprint X-B: ResearchCase Evaluation Preparation / Deep Research Assist implemented locally. New read-only endpoint `GET /api/investment/research-cases/{id}/evaluation-prep` returns a deterministic metadata-only readiness package. Frontend `/investment/research/[id]` shows readiness level, missing required resources, checklist gaps, source quality notes, and manual next actions. This is preparation only: no live AI, no evaluator v2 global enablement, no automatic evaluation, no recommendations, no publishing, no crawling/PDF/document body fetching, no `/scan`, and no cron change.
 - Sprint Y: Evidence Links & Research Traceability implemented locally. New read-only traceability endpoints show original SEC source links, resource candidate links, required-resource/checklist support links, ResearchCase source/document links, and metadata-only guardrails in `/investment/situations/[id]` and `/investment/research/[id]`. It does not fetch document bodies, crawl, download PDFs, evaluate, verify evidence automatically, recommend, publish, call `/scan`, change cron, or enable evaluator v2 globally.
+- Sprint Z: Intelligence Scoring Foundation implemented locally. New read-only endpoint `GET /api/investment/research-cases/{id}/intelligence-score` returns a deterministic 0-100 IA Score with Detection (40), Structuring (40), and Risk Discipline (20) components. `/investment/research/[id]` shows an Intelligence Score card integrated with Evaluation Preparation and Evidence Links. `APPROVABLE` means structurally approvable for manual review only, not investment approval. No DB writes, migration, live AI, external calls, evaluator activation, automatic evaluation, ResearchCase auto-creation, publishing, crawling, PDF download, document body fetching, cron change, or `/scan`.
+- Sprint ZA: Agent Rooms 2.0 implemented locally as a frontend-only Agent Ops expansion. `/agent-ops/rooms/[id]` opens room detail pages with room metrics, agents, deterministic avatar placeholders, selected-agent logs, diagnostics, related ResearchCase/SpecialSituation links when present, conceptual interaction maps, and derived read-only operational indicators. `/agent-ops` room cards now link to room details. Profile name/avatar editing is deferred because no safe AgentProfile PATCH endpoint exists. No backend endpoints, DB migration, scanner/evaluator integration, live AI, cron changes, automation, publishing, recommendations, or Marketplace/Sales changes.
 
 ## Current Status Summary
 
@@ -49,6 +51,7 @@ SwissEdge is moving toward:
 - Playbook and evaluator files in AI-safe context are placeholders and need future sanitization before implementation use.
 - Agent Ops + Fontana documentation is complete enough to guide backend/UI work.
 - Agent Ops backend foundation and `/agent-ops` UI are documented deployed and smoke-tested.
+- Sprint ZA room detail pages are local frontend-only Agent Ops work; profile customization and Fontana runtime remain deferred.
 - Agent Ops migration `e5f6a7b8c9d0` is documented as applied in the 2026-05-10 closeout docs.
 - Agent Ops activity may contain narrow observer events from proposal review and manual ResearchCase creation if Sprint N/O are deployed; diagnostics/proposals may still be empty unless manually created.
 - SEC EDGAR manual detection is validated and scheduled SEC EDGAR intake is enabled through cron. Sprint S/T/U/V methodology, resource, Kanban, evidence-mapping, and manual ResearchCase promotion features are complete and production-validated through manual promotion. EDGAR is operational.
@@ -58,7 +61,7 @@ SwissEdge is moving toward:
 
 ## Current Operating Model
 
-`SEC EDGAR cron -> SpecialSituation -> Kanban -> checklist/resources -> evidence mapping -> manual ResearchCase promotion -> ResearchCase deep research`
+`SEC EDGAR cron -> SpecialSituation -> Kanban -> checklist/resources -> evidence mapping -> manual ResearchCase promotion -> Evaluation Preparation -> Evidence Links -> Intelligence Score -> manual review`
 
 The current system has an operational SEC-driven detection path. Evaluation remains manual/preparatory: source-driven detection creates `SpecialSituation` records, and ResearchCase promotion is a separate manual action.
 
@@ -75,6 +78,6 @@ The current system has an operational SEC-driven detection path. Evaluation rema
 
 ## Next Strategic Sprints
 
-- Sprint W/X-B GitHub sync after final review: commit/push only when Dani chooses to run it.
-- Claude review of Sprint X-B ResearchCase Evaluation Preparation and Sprint Y Evidence Links & Research Traceability.
+- Sprint X-B/Y/Z/ZA GitHub sync after final review: commit/push only when Dani chooses to run it.
+- Claude review of Sprint X-B ResearchCase Evaluation Preparation, Sprint Y Evidence Links & Research Traceability, Sprint Z Intelligence Scoring, and Sprint ZA Agent Rooms 2.0.
 - Later: controlled official-source discovery, SEC intake observability, external manual intake, Fontana CTO reports, market monitoring.

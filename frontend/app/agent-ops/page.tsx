@@ -276,6 +276,30 @@ export default function AgentOpsPage() {
     return counts;
   }, [agents]);
 
+  const roomCounts = useMemo(() => {
+    const counts = new Map<string, { activity: number; diagnostics: number; proposals: number }>();
+    for (const room of rooms) counts.set(room.key, { activity: 0, diagnostics: 0, proposals: 0 });
+    for (const item of activity) {
+      if (!item.room_key) continue;
+      const row = counts.get(item.room_key) ?? { activity: 0, diagnostics: 0, proposals: 0 };
+      row.activity += 1;
+      counts.set(item.room_key, row);
+    }
+    for (const item of diagnostics) {
+      if (!item.room_key) continue;
+      const row = counts.get(item.room_key) ?? { activity: 0, diagnostics: 0, proposals: 0 };
+      row.diagnostics += 1;
+      counts.set(item.room_key, row);
+    }
+    for (const item of proposals) {
+      if (!item.room_key) continue;
+      const row = counts.get(item.room_key) ?? { activity: 0, diagnostics: 0, proposals: 0 };
+      row.proposals += 1;
+      counts.set(item.room_key, row);
+    }
+    return counts;
+  }, [activity, diagnostics, proposals, rooms]);
+
   async function reviewProposal(proposal: AgentOpsProposal, status: AgentOpsProposalStatus) {
     setUpdatingProposal(proposal.id);
     setProposalErrors(prev => ({ ...prev, [proposal.id]: '' }));
@@ -386,9 +410,19 @@ export default function AgentOpsPage() {
                         <Badge value={room.status} />
                       </div>
                       <p className="min-h-12 text-sm leading-6 text-slate-600">{room.description ?? 'No description.'}</p>
-                      <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3 text-xs text-slate-500">
+                      <div className="mt-4 grid grid-cols-2 gap-2 border-t border-slate-100 pt-3 text-xs text-slate-500 md:grid-cols-4">
                         <span>{agentCountByRoom.get(room.key) ?? 0} agent(s)</span>
-                        <span>Display order {room.display_order}</span>
+                        <span>{roomCounts.get(room.key)?.activity ?? 0} activity</span>
+                        <span>{roomCounts.get(room.key)?.diagnostics ?? 0} diagnostics</span>
+                        <span>{roomCounts.get(room.key)?.proposals ?? 0} proposals</span>
+                      </div>
+                      <div className="mt-4 flex justify-end">
+                        <Link
+                          href={`/agent-ops/rooms/${room.key}`}
+                          className="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+                        >
+                          Open room
+                        </Link>
                       </div>
                     </div>
                   ))}
