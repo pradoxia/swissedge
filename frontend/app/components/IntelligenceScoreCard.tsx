@@ -12,6 +12,10 @@ function label(value: string): string {
   return value.replace(/_/g, ' ').toUpperCase();
 }
 
+function componentByKey(score: IntelligenceScorePackage, key: IntelligenceScorePackage['components'][number]['key']) {
+  return score.components.find(component => component.key === key);
+}
+
 export function IntelligenceScoreCard({
   score,
   loading,
@@ -42,6 +46,10 @@ export function IntelligenceScoreCard({
     return <p className="text-xs font-mono text-gray-600 italic">No intelligence score loaded.</p>;
   }
 
+  const detection = componentByKey(score, 'detection');
+  const structuring = componentByKey(score, 'structuring');
+  const riskDiscipline = componentByKey(score, 'risk_discipline');
+
   return (
     <div className="space-y-4">
       <div className="rounded border border-amber-900/60 bg-amber-950/10 p-3">
@@ -60,6 +68,13 @@ export function IntelligenceScoreCard({
         </span>
         <button onClick={onRefresh} className="ml-auto text-xs font-mono text-cyan-700 hover:text-cyan-400">
           REFRESH SCORE
+        </button>
+        <button
+          type="button"
+          onClick={() => document.querySelector('#case-completion-workbench')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+          className="text-xs font-mono text-cyan-700 hover:text-cyan-400"
+        >
+          OPEN COMPLETION PLAN
         </button>
       </div>
 
@@ -110,6 +125,43 @@ export function IntelligenceScoreCard({
           ) : (
             <p className="text-xs text-gray-600">No score-specific actions.</p>
           )}
+        </div>
+      </div>
+
+      <div className="rounded border border-gray-800 bg-gray-950/40 p-3">
+        <p className="mb-2 text-xs font-mono uppercase tracking-wide text-gray-600">How to improve this score</p>
+        <p className="text-xs leading-5 text-gray-500">
+          The score measures preparation quality, documentation quality, and manual review readiness. It does not measure investment attractiveness.
+        </p>
+        <div className="mt-3 grid gap-3 md:grid-cols-3">
+          <div>
+            <p className="text-xs font-mono text-cyan-300">Detection ({detection?.score ?? 0}/{detection?.max_score ?? 40})</p>
+            <ul className="mt-2 space-y-1 text-xs text-gray-400">
+              <li>- Add or confirm the SEC source link.</li>
+              <li>- Make filing type, company, date, CIK, and accession clear.</li>
+              <li>- Link the case back to its SpecialSituation when available.</li>
+              <li>- Keep source traceability visible.</li>
+            </ul>
+          </div>
+          <div>
+            <p className="text-xs font-mono text-cyan-300">Structuring ({structuring?.score ?? 0}/{structuring?.max_score ?? 40})</p>
+            <ul className="mt-2 space-y-1 text-xs text-gray-400">
+              <li>- Map required resources and reduce missing resources.</li>
+              <li>- After manual review, mark useful candidates as evidence_found.</li>
+              <li>- Link each source to a required resource or checklist item.</li>
+              <li>- Add missing offer documents, press releases, or letters of transmittal.</li>
+              <li>- Reject noisy source candidates.</li>
+            </ul>
+          </div>
+          <div>
+            <p className="text-xs font-mono text-cyan-300">Risk discipline ({riskDiscipline?.score ?? 0}/{riskDiscipline?.max_score ?? 20})</p>
+            <ul className="mt-2 space-y-1 text-xs text-gray-400">
+              <li>- Keep human review flags visible where needed.</li>
+              <li>- Avoid unsafe assumptions.</li>
+              <li>- Do not treat evidence_found as verified evidence.</li>
+              <li>- Keep manual review mandatory before promotion or publishing.</li>
+            </ul>
+          </div>
         </div>
       </div>
 

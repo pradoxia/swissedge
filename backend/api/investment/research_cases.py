@@ -7,7 +7,7 @@ from sqlalchemy.orm import selectinload
 from backend.db.database import get_db
 from backend.models.agent_ops import AgentActivity
 from backend.models.investment import SpecialSituation
-from backend.models.investment_research import ResearchCase
+from backend.models.investment_research import HistoricalCase, ResearchCase
 from backend.services.investment.research_cases import (
     ResearchCaseRead,
     ResearchCaseUpdate,
@@ -79,6 +79,14 @@ from backend.services.investment.case_activity import (
 from backend.services.investment.official_source_finder import (
     OfficialSourceFinderPackage,
     build_research_case_official_source_finder,
+)
+from backend.services.investment.historical_analogues import (
+    HistoricalAnaloguesPackage,
+    build_research_case_historical_analogues,
+)
+from backend.services.investment.case_completion import (
+    CaseCompletionPackage,
+    build_research_case_completion_workbench,
 )
 from backend.services.observability import run_logger
 
@@ -207,6 +215,67 @@ async def get_case_official_source_finder(research_case_id: str, db: AsyncSessio
         rc,
         evidence_links=evidence_links,
         source_situation=source_situation,
+    )
+
+
+@router.get("/research-cases/{research_case_id}/historical-analogues", response_model=HistoricalAnaloguesPackage)
+async def get_case_historical_analogues(research_case_id: str, db: AsyncSession = Depends(get_db)):
+    rc_id = _parse_uuid(research_case_id, "research_case_id")
+    result = await db.execute(
+        select(ResearchCase)
+        .where(ResearchCase.id == rc_id)
+        .options(
+            selectinload(ResearchCase.tasks),
+            selectinload(ResearchCase.documents),
+            selectinload(ResearchCase.sources),
+        )
+    )
+    rc = result.scalars().first()
+    if not rc:
+        raise HTTPException(status_code=404, detail="Research case not found")
+
+    source_situation = None
+    if rc.situation_id:
+        sit_result = await db.execute(
+            select(SpecialSituation).where(SpecialSituation.id == rc.situation_id)
+        )
+        source_situation = sit_result.scalars().first()
+
+    historical_result = await db.execute(
+        select(HistoricalCase).options(
+            selectinload(HistoricalCase.documents),
+            selectinload(HistoricalCase.sources),
+        )
+    )
+    return build_research_case_historical_analogues(
+        rc,
+        historical_cases=list(historical_result.scalars().all()),
+        source_situation=source_situation,
+    )
+
+
+@router.get("/research-cases/{research_case_id}/completion-workbench", response_model=CaseCompletionPackage)
+async def get_case_completion_workbench(research_case_id: str, db: AsyncSession = Depends(get_db)):
+    rc_id = _parse_uuid(research_case_id, "research_case_id")
+    result = await db.execute(
+        select(ResearchCase)
+        .where(ResearchCase.id == rc_id)
+        .options(
+            selectinload(ResearchCase.tasks),
+            selectinload(ResearchCase.documents),
+            selectinload(ResearchCase.sources),
+        )
+    )
+    rc = result.scalars().first()
+    if not rc:
+        raise HTTPException(status_code=404, detail="Research case not found")
+
+    evaluation_prep = build_evaluation_prep_package(rc)
+    intelligence_score = build_intelligence_score_package(rc)
+    return build_research_case_completion_workbench(
+        rc,
+        intelligence_score=intelligence_score,
+        evaluation_prep=evaluation_prep,
     )
 
 

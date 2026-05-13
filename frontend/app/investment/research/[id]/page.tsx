@@ -7,12 +7,16 @@ import { CaseActivityTimeline } from '@/app/components/CaseActivityTimeline';
 import { EvidenceLinksPanel } from '@/app/components/EvidenceLinksPanel';
 import { IntelligenceScoreCard } from '@/app/components/IntelligenceScoreCard';
 import { OfficialSourceFinderPanel } from '@/app/components/OfficialSourceFinderPanel';
+import { HistoricalAnaloguesPanel } from '@/app/components/HistoricalAnaloguesPanel';
+import { CaseCompletionWorkbench } from '@/app/components/CaseCompletionWorkbench';
 import {
   fetchResearchCase,
   fetchResearchCaseActivityTimeline,
+  fetchResearchCaseCompletionWorkbench,
   fetchResearchCaseEvidenceLinks,
   fetchResearchCaseDocumentationGuide,
   fetchResearchCaseEvaluationPrep,
+  fetchResearchCaseHistoricalAnalogues,
   fetchResearchCaseIntelligenceScore,
   fetchResearchCaseOfficialSourceFinder,
   updateResearchCase,
@@ -33,9 +37,11 @@ import {
   fetchPublicDrafts,
   type ResearchCase,
   type CaseActivityTimelinePackage,
+  type CaseCompletionPackage,
   type ResearchCaseEvidenceLinksPackage,
   type CaseDocumentationGuidePackage,
   type EvaluationPrepPackage,
+  type HistoricalAnaloguesPackage,
   type IntelligenceScorePackage,
   type OfficialSourceFinderPackage,
   type ResearchTask,
@@ -1720,9 +1726,14 @@ function DocumentationGuidePanel({
 }) {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
-  function copyQuery(query: string, key: string) {
-    navigator.clipboard.writeText(query).catch(() => {});
-    setCopiedKey(key);
+  async function copyQuery(query: string, key: string) {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
+      await navigator.clipboard.writeText(query);
+      setCopiedKey(key);
+    } catch {
+      setCopiedKey('copy-failed');
+    }
     setTimeout(() => setCopiedKey(null), 1500);
   }
 
@@ -1841,7 +1852,10 @@ function DocumentationGuidePanel({
           <p className="mb-2 text-xs font-mono uppercase tracking-wide text-gray-600">Manual search suggestions</p>
           <p className="mb-2 text-xs text-gray-500">
             Stored prompts for a human researcher. They are not fetched automatically, not evidence, and not verified.
-            Copy a query and paste it into Google, SEC search, or the company IR site.
+            Paste this into Google, SEC search, or company IR. SwissEdge has not run this search automatically.
+            {copiedKey === 'copy-failed' && (
+              <span className="mt-1 block text-amber-400">Copy failed - select the query text manually.</span>
+            )}
           </p>
           {guide.search_plan.copyable_queries.length === 0 ? (
             <p className="text-xs text-gray-600">No stored search suggestions yet.</p>
@@ -1894,7 +1908,9 @@ export default function ResearchDetailPage() {
   const [evidenceLinks, setEvidenceLinks] = useState<ResearchCaseEvidenceLinksPackage | null>(null);
   const [intelligenceScore, setIntelligenceScore] = useState<IntelligenceScorePackage | null>(null);
   const [documentationGuide, setDocumentationGuide] = useState<CaseDocumentationGuidePackage | null>(null);
+  const [completionWorkbench, setCompletionWorkbench] = useState<CaseCompletionPackage | null>(null);
   const [officialSourceFinder, setOfficialSourceFinder] = useState<OfficialSourceFinderPackage | null>(null);
+  const [historicalAnalogues, setHistoricalAnalogues] = useState<HistoricalAnaloguesPackage | null>(null);
   const [activityTimeline, setActivityTimeline] = useState<CaseActivityTimelinePackage | null>(null);
   const [prepLoading, setPrepLoading] = useState(true);
   const [scoreLoading, setScoreLoading] = useState(true);
@@ -1903,7 +1919,11 @@ export default function ResearchDetailPage() {
   const [evidenceLinksError, setEvidenceLinksError] = useState<string | null>(null);
   const [scoreError, setScoreError] = useState<string | null>(null);
   const [documentationGuideError, setDocumentationGuideError] = useState<string | null>(null);
+  const [completionWorkbenchError, setCompletionWorkbenchError] = useState<string | null>(null);
+  const [completionWorkbenchLoading, setCompletionWorkbenchLoading] = useState(false);
   const [officialSourceFinderError, setOfficialSourceFinderError] = useState<string | null>(null);
+  const [historicalAnaloguesError, setHistoricalAnaloguesError] = useState<string | null>(null);
+  const [historicalAnaloguesLoading, setHistoricalAnaloguesLoading] = useState(false);
   const [activityTimelineError, setActivityTimelineError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -2009,6 +2029,19 @@ export default function ResearchDetailPage() {
     }
   }
 
+  async function loadCompletionWorkbench() {
+    try {
+      setCompletionWorkbenchLoading(true);
+      setCompletionWorkbenchError(null);
+      const completionData = await fetchResearchCaseCompletionWorkbench(id);
+      setCompletionWorkbench(completionData);
+    } catch (err) {
+      setCompletionWorkbenchError(err instanceof Error ? err.message : 'Failed to load completion workbench');
+    } finally {
+      setCompletionWorkbenchLoading(false);
+    }
+  }
+
   async function loadOfficialSourceFinder() {
     try {
       setOfficialSourceFinderLoading(true);
@@ -2022,6 +2055,19 @@ export default function ResearchDetailPage() {
     }
   }
 
+  async function loadHistoricalAnalogues() {
+    try {
+      setHistoricalAnaloguesLoading(true);
+      setHistoricalAnaloguesError(null);
+      const analogueData = await fetchResearchCaseHistoricalAnalogues(id);
+      setHistoricalAnalogues(analogueData);
+    } catch (err) {
+      setHistoricalAnaloguesError(err instanceof Error ? err.message : 'Failed to load historical analogues');
+    } finally {
+      setHistoricalAnaloguesLoading(false);
+    }
+  }
+
   async function loadActivityTimeline() {
     try {
       setActivityTimelineError(null);
@@ -2032,9 +2078,14 @@ export default function ResearchDetailPage() {
     }
   }
 
-  function copyOfficialSourceQuery(text: string, key: string) {
-    navigator.clipboard.writeText(text).catch(() => {});
-    setOfficialSourceCopiedKey(key);
+  async function copyOfficialSourceQuery(text: string, key: string) {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
+      await navigator.clipboard.writeText(text);
+      setOfficialSourceCopiedKey(key);
+    } catch {
+      setOfficialSourceCopiedKey('copy-failed');
+    }
     setTimeout(() => setOfficialSourceCopiedKey(null), 1500);
   }
 
@@ -2044,7 +2095,9 @@ export default function ResearchDetailPage() {
     loadEvidenceLinks();
     loadIntelligenceScore();
     loadDocumentationGuide();
+    loadCompletionWorkbench();
     loadOfficialSourceFinder();
+    loadHistoricalAnalogues();
     loadActivityTimeline();
   }, [id]);
 
@@ -2293,12 +2346,24 @@ export default function ResearchDetailPage() {
 
         <DocumentationGuidePanel guide={documentationGuide} error={documentationGuideError} />
 
+        <CaseCompletionWorkbench
+          workbench={completionWorkbench}
+          loading={completionWorkbenchLoading}
+          error={completionWorkbenchError}
+        />
+
         <OfficialSourceFinderPanel
           finder={officialSourceFinder}
           loading={officialSourceFinderLoading}
           error={officialSourceFinderError}
           copiedKey={officialSourceCopiedKey}
           onCopy={copyOfficialSourceQuery}
+        />
+
+        <HistoricalAnaloguesPanel
+          analogues={historicalAnalogues}
+          loading={historicalAnaloguesLoading}
+          error={historicalAnaloguesError}
         />
 
         <div className="grid gap-4 lg:grid-cols-2">

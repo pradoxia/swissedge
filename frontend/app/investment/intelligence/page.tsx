@@ -117,6 +117,14 @@ export default function IntelligenceDashboardPage() {
         manual locator steps, and copyable queries. SwissEdge does not run those searches automatically.
       </InfoBanner>
 
+      <InfoBanner variant="info">
+        Low-quality or incomplete cases should also be compared manually against Historical Cases and processed course patterns.
+        Analogues are methodology context only; they do not predict outcomes or evaluate the case.
+        <Link href="/investment/historical-cases" className="btn btn--ghost btn--sm" style={{ marginLeft: 8 }}>
+          Open Historical Cases
+        </Link>
+      </InfoBanner>
+
       {error && <ErrorBanner message={error} />}
       {loading && <LoadingState label="Loading Intelligence KPIs..." />}
 

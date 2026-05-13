@@ -9,6 +9,8 @@ from sqlalchemy.orm import selectinload
 from backend.db.database import get_db
 from backend.models.agent_ops import AgentActivity
 from backend.models.investment import SpecialSituation, SituationHistory, InvestmentSource
+from backend.models.investment_research import HistoricalCase
+from backend.models.investment_research import ResearchCase
 from backend.services.investment.sources.sec_edgar import SECEdgarAdapter
 from backend.services.investment.sources.base import Filing
 from backend.services.investment.evaluator import evaluate_situation
@@ -36,6 +38,16 @@ from backend.services.investment.official_source_finder import (
     OfficialSourceFinderPackage,
     build_situation_official_source_finder,
 )
+from backend.services.investment.historical_analogues import (
+    HistoricalAnaloguesPackage,
+    build_situation_historical_analogues,
+)
+from backend.services.investment.case_completion import (
+    CaseCompletionPackage,
+    build_situation_completion_workbench,
+)
+from backend.services.investment.intelligence_score import build_intelligence_score_package
+from backend.services.investment.research_cases import build_evaluation_prep_package
 from backend.services.investment.research_cases import (
     PromoteSpecialSituationPayload,
     ResearchCaseRead,
@@ -612,6 +624,63 @@ async def get_situation_official_source_finder(situation_id: str, db: AsyncSessi
         raise HTTPException(status_code=404, detail="Situation not found")
     evidence_links = build_situation_evidence_links(sit)
     return build_situation_official_source_finder(sit, evidence_links)
+
+
+@router.get("/situations/{situation_id}/historical-analogues", response_model=HistoricalAnaloguesPackage)
+async def get_situation_historical_analogues(situation_id: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(SpecialSituation).where(SpecialSituation.id == uuid.UUID(situation_id))
+    )
+    sit = result.scalars().first()
+    if not sit:
+        raise HTTPException(status_code=404, detail="Situation not found")
+    historical_result = await db.execute(
+        select(HistoricalCase).options(
+            selectinload(HistoricalCase.documents),
+            selectinload(HistoricalCase.sources),
+        )
+    )
+    return build_situation_historical_analogues(
+        sit,
+        historical_cases=list(historical_result.scalars().all()),
+    )
+
+
+@router.get("/situations/{situation_id}/completion-workbench", response_model=CaseCompletionPackage)
+async def get_situation_completion_workbench(situation_id: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(SpecialSituation).where(SpecialSituation.id == uuid.UUID(situation_id))
+    )
+    sit = result.scalars().first()
+    if not sit:
+        raise HTTPException(status_code=404, detail="Situation not found")
+
+    workspace = sit.evaluation.get(WORKSPACE_KEY, {}) if isinstance(sit.evaluation, dict) else {}
+    rc_id = workspace.get("research_case_id") if isinstance(workspace, dict) else None
+    linked_rc = None
+    score = None
+    prep = None
+    if rc_id:
+        rc_result = await db.execute(
+            select(ResearchCase)
+            .where(ResearchCase.id == uuid.UUID(str(rc_id)))
+            .options(
+                selectinload(ResearchCase.tasks),
+                selectinload(ResearchCase.documents),
+                selectinload(ResearchCase.sources),
+            )
+        )
+        linked_rc = rc_result.scalars().first()
+        if linked_rc:
+            prep = build_evaluation_prep_package(linked_rc)
+            score = build_intelligence_score_package(linked_rc)
+
+    return build_situation_completion_workbench(
+        sit,
+        linked_research_case=linked_rc,
+        intelligence_score=score,
+        evaluation_prep=prep,
+    )
 
 
 @router.get("/situations/{situation_id}/activity-timeline", response_model=CaseActivityTimelinePackage)

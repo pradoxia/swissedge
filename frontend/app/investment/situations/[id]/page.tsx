@@ -15,11 +15,15 @@ import {
 import { EvidenceLinksPanel } from '@/app/components/EvidenceLinksPanel';
 import { CaseActivityTimeline } from '@/app/components/CaseActivityTimeline';
 import { OfficialSourceFinderPanel } from '@/app/components/OfficialSourceFinderPanel';
+import { HistoricalAnaloguesPanel } from '@/app/components/HistoricalAnaloguesPanel';
+import { CaseCompletionWorkbench } from '@/app/components/CaseCompletionWorkbench';
 import {
   addSituationResource,
   fetchSituationActivityTimeline,
   fetchSituationDocumentationGuide,
   fetchSituationEvidenceLinks,
+  fetchSituationCompletionWorkbench,
+  fetchSituationHistoricalAnalogues,
   fetchSituationOfficialSourceFinder,
   fetchSituation,
   promoteSituationToResearchCase,
@@ -32,6 +36,8 @@ import {
   type Situation,
   type CaseDocumentationGuidePackage,
   type CaseActivityTimelinePackage,
+  type CaseCompletionPackage,
+  type HistoricalAnaloguesPackage,
   type OfficialSourceFinderPackage,
   type SituationEvidenceLinksPackage,
 } from '@/lib/api';
@@ -352,7 +358,10 @@ function CaseDocumentationGuidePanel({
           <div style={MONO_LABEL}>Manual search suggestions</div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 8 }}>
             Stored prompts for a human researcher. They are not fetched automatically, not evidence, and not verified.
-            Copy a query and paste it into Google, SEC search, or the company IR site.
+            Paste this into Google, SEC search, or company IR. SwissEdge has not run this search automatically.
+            {copiedKey === 'copy-failed' && (
+              <span style={{ display: 'block', marginTop: 4, color: '#b45309' }}>Copy failed - select the query text manually.</span>
+            )}
           </div>
           {guide.search_plan.copyable_queries.length === 0 ? (
             <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>No stored search suggestions yet.</div>
@@ -448,9 +457,15 @@ export default function SpecialSituationMethodologyPage() {
   const [evidenceLinksError, setEvidenceLinksError] = useState<string | null>(null);
   const [documentationGuide, setDocumentationGuide] = useState<CaseDocumentationGuidePackage | null>(null);
   const [documentationGuideError, setDocumentationGuideError] = useState<string | null>(null);
+  const [completionWorkbench, setCompletionWorkbench] = useState<CaseCompletionPackage | null>(null);
+  const [completionWorkbenchError, setCompletionWorkbenchError] = useState<string | null>(null);
+  const [completionWorkbenchLoading, setCompletionWorkbenchLoading] = useState(false);
   const [officialSourceFinder, setOfficialSourceFinder] = useState<OfficialSourceFinderPackage | null>(null);
   const [officialSourceFinderError, setOfficialSourceFinderError] = useState<string | null>(null);
   const [officialSourceFinderLoading, setOfficialSourceFinderLoading] = useState(false);
+  const [historicalAnalogues, setHistoricalAnalogues] = useState<HistoricalAnaloguesPackage | null>(null);
+  const [historicalAnaloguesError, setHistoricalAnaloguesError] = useState<string | null>(null);
+  const [historicalAnaloguesLoading, setHistoricalAnaloguesLoading] = useState(false);
   const [activityTimeline, setActivityTimeline] = useState<CaseActivityTimelinePackage | null>(null);
   const [activityTimelineError, setActivityTimelineError] = useState<string | null>(null);
   const [activityTimelineLoading, setActivityTimelineLoading] = useState(false);
@@ -488,6 +503,18 @@ export default function SpecialSituationMethodologyPage() {
         setDocumentationGuideError(err instanceof Error ? err.message : 'Failed to load documentation guide');
       }
     }
+    async function loadCompletionWorkbench() {
+      try {
+        setCompletionWorkbenchLoading(true);
+        setCompletionWorkbenchError(null);
+        const completionData = await fetchSituationCompletionWorkbench(id);
+        setCompletionWorkbench(completionData);
+      } catch (err) {
+        setCompletionWorkbenchError(err instanceof Error ? err.message : 'Failed to load completion workbench');
+      } finally {
+        setCompletionWorkbenchLoading(false);
+      }
+    }
     async function loadOfficialSourceFinder() {
       try {
         setOfficialSourceFinderLoading(true);
@@ -498,6 +525,18 @@ export default function SpecialSituationMethodologyPage() {
         setOfficialSourceFinderError(err instanceof Error ? err.message : 'Failed to load official source finder');
       } finally {
         setOfficialSourceFinderLoading(false);
+      }
+    }
+    async function loadHistoricalAnalogues() {
+      try {
+        setHistoricalAnaloguesLoading(true);
+        setHistoricalAnaloguesError(null);
+        const analogueData = await fetchSituationHistoricalAnalogues(id);
+        setHistoricalAnalogues(analogueData);
+      } catch (err) {
+        setHistoricalAnaloguesError(err instanceof Error ? err.message : 'Failed to load historical analogues');
+      } finally {
+        setHistoricalAnaloguesLoading(false);
       }
     }
     async function loadActivityTimeline() {
@@ -515,7 +554,9 @@ export default function SpecialSituationMethodologyPage() {
     if (id) load();
     if (id) loadEvidenceLinks();
     if (id) loadDocumentationGuide();
+    if (id) loadCompletionWorkbench();
     if (id) loadOfficialSourceFinder();
+    if (id) loadHistoricalAnalogues();
     if (id) loadActivityTimeline();
   }, [id]);
 
@@ -534,9 +575,14 @@ export default function SpecialSituationMethodologyPage() {
   const workflowStatus = workspace?.workflow_status ?? (situation?.status === 'detected' ? 'new_detection' : situation?.status ?? 'new_detection');
   const researchCaseId = workspace?.research_case_id;
 
-  function copyText(text: string, key: string) {
-    navigator.clipboard.writeText(text).catch(() => {});
-    setCopiedKey(key);
+  async function copyText(text: string, key: string) {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
+      await navigator.clipboard.writeText(text);
+      setCopiedKey(key);
+    } catch {
+      setCopiedKey('copy-failed');
+    }
     setTimeout(() => setCopiedKey(null), 1500);
   }
 
@@ -675,12 +721,24 @@ export default function SpecialSituationMethodologyPage() {
         copiedKey={copiedKey}
       />
 
+      <CaseCompletionWorkbench
+        workbench={completionWorkbench}
+        loading={completionWorkbenchLoading}
+        error={completionWorkbenchError}
+      />
+
       <OfficialSourceFinderPanel
         finder={officialSourceFinder}
         loading={officialSourceFinderLoading}
         error={officialSourceFinderError}
         copiedKey={copiedKey}
         onCopy={copyText}
+      />
+
+      <HistoricalAnaloguesPanel
+        analogues={historicalAnalogues}
+        loading={historicalAnaloguesLoading}
+        error={historicalAnaloguesError}
       />
 
       {/* Compact top summary strip */}
@@ -1101,7 +1159,10 @@ export default function SpecialSituationMethodologyPage() {
                 <>
                   <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 8 }}>
                     Stored manual search suggestions. They are not fetched automatically, not evidence, and not verified.
-                    Copy a query and paste it into Google, SEC search, or the company IR site.
+                    Paste this into Google, SEC search, or company IR. SwissEdge has not run this search automatically.
+                    {copiedKey === 'copy-failed' && (
+                      <span style={{ display: 'block', marginTop: 4, color: '#b45309' }}>Copy failed - select the query text manually.</span>
+                    )}
                   </div>
                   <button
                     className="btn btn--ghost btn--sm"
@@ -1131,15 +1192,6 @@ export default function SpecialSituationMethodologyPage() {
                           >
                             {copiedKey === suggestion.suggestion_id ? 'Copied' : 'Copy query'}
                           </button>
-                          <a
-                            className="btn btn--secondary btn--sm"
-                            href={`https://www.google.com/search?q=${encodeURIComponent(suggestion.query)}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            style={{ flexShrink: 0 }}
-                          >
-                            Search ↗
-                          </a>
                         </div>
                       ))}
                     </div>

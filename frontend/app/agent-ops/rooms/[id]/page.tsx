@@ -29,8 +29,8 @@ type AgentMetrics = {
 
 const ROOM_CHAINS: Record<string, string[]> = {
   radar_room: ['Edgar Scout', 'Router Analyst', 'Signal Filter', 'Quality Sentinel', 'Fontana'],
-  evidence_lab: ['Resource Scout', 'Official Source Finder', 'Evidence Mapper', 'Missing Evidence Hunter', 'Quality Sentinel', 'Playbook Scribe'],
-  research_desk: ['Case Builder', 'Missing Evidence Hunter', 'Intelligence Scorer', 'Fontana'],
+  evidence_lab: ['Resource Scout', 'Official Source Finder', 'Pattern Analyst', 'Evidence Mapper', 'Missing Evidence Hunter', 'Quality Sentinel', 'Playbook Scribe'],
+  research_desk: ['Case Builder', 'Case Completion Coach', 'Missing Evidence Hunter', 'Intelligence Scorer', 'Fontana'],
   quality_court: ['Quality Sentinel', 'Risk Discipline Checker', 'Human Review Gate', 'Fontana'],
   playbook_workshop: ['Playbook Scribe', 'Coverage Analyst', 'Drift Watcher', 'Fontana'],
   agent_ops: ['Agent Ops Registry', 'Activity Logger', 'Diagnostics Reader', 'Fontana'],
@@ -102,6 +102,17 @@ const AGENT_IDENTITIES: AgentIdentity[] = [
     scheduler: 'disabled in this sprint',
   },
   {
+    name: 'Pattern Analyst',
+    keyHint: 'pattern',
+    title: 'Historical analogue mapper',
+    mission: 'Maps live cases to historical examples and sanitized course/playbook patterns for manual comparison.',
+    watches: ['situation type', 'filing type', 'selected playbook', 'historical cases', 'checklist gaps'],
+    outputs: ['matched patterns', 'historical analogues', 'manual comparison checklist'],
+    currentMode: 'manual / observer-only',
+    futureMode: 'expanded historical comparison after approval',
+    scheduler: 'disabled in this sprint',
+  },
+  {
     name: 'Evidence Mapper',
     keyHint: 'evidence',
     title: 'Traceability mapper',
@@ -121,6 +132,17 @@ const AGENT_IDENTITIES: AgentIdentity[] = [
     outputs: ['missing evidence list', 'manual search plan', 'documentation gaps', 'suggested next actions'],
     currentMode: 'manual / observer-only',
     futureMode: 'frequent missing-evidence checks after explicit approval',
+    scheduler: 'disabled in this sprint',
+  },
+  {
+    name: 'Case Completion Coach',
+    keyHint: 'completion',
+    title: 'Manual completion guide',
+    mission: 'Turns documentation, evidence, and score gaps into manual next steps for case completion.',
+    watches: ['missing required resources', 'candidate sources', 'checklist gaps', 'Intelligence Score gaps', 'review readiness'],
+    outputs: ['completion level', 'blocking items', 'manual next actions', 'score improvement plan'],
+    currentMode: 'manual / observer-only',
+    futureMode: 'guided workflow agent after approval',
     scheduler: 'disabled in this sprint',
   },
   {
@@ -214,7 +236,7 @@ function badgeClass(value: string): string {
 
 function Badge({ value }: { value: string }) {
   return (
-    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${badgeClass(value)}`}>
+    <span className={`inline-flex max-w-full items-center rounded-full border px-2 py-0.5 text-left text-[11px] font-medium leading-4 ${badgeClass(value)}`} style={{ overflowWrap: 'anywhere' }}>
       {formatLabel(value)}
     </span>
   );
@@ -476,7 +498,7 @@ export default function AgentOpsRoomDetailPage() {
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 {roomChain.map((name, index) => (
                   <div key={`${name}-${index}`} className="flex items-center gap-2">
-                    <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">{name}</div>
+                    <div className="max-w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700" style={{ overflowWrap: 'anywhere' }}>{name}</div>
                     {index < roomChain.length - 1 && <span className="text-slate-300">-&gt;</span>}
                   </div>
                 ))}
@@ -507,12 +529,12 @@ export default function AgentOpsRoomDetailPage() {
                           </div>
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
-                              <p className="font-semibold text-slate-950">{identity.name}</p>
+                              <p className="font-semibold text-slate-950" style={{ overflowWrap: 'anywhere' }}>{identity.name}</p>
                               <Badge value={agent.status} />
                             </div>
-                            <p className="mt-1 font-mono text-xs text-slate-400">{agent.key}</p>
-                            <p className="mt-1 text-xs font-medium uppercase tracking-wide text-slate-500">{identity.title}</p>
-                            <p className="mt-2 text-sm leading-6 text-slate-600">{identity.mission}</p>
+                            <p className="mt-1 font-mono text-xs text-slate-400" style={{ overflowWrap: 'anywhere' }}>{agent.key}</p>
+                            <p className="mt-1 text-xs font-medium uppercase tracking-wide text-slate-500" style={{ overflowWrap: 'anywhere' }}>{identity.title}</p>
+                            <p className="mt-2 text-sm leading-6 text-slate-600" style={{ overflowWrap: 'anywhere' }}>{identity.mission}</p>
                           </div>
                         </div>
                         <div className="mt-3 grid gap-2 text-xs text-slate-600 md:grid-cols-2">
@@ -556,9 +578,9 @@ export default function AgentOpsRoomDetailPage() {
                         {initials(identity.name)}
                       </div>
                       <div>
-                        <p className="font-semibold text-slate-950">{identity.name}</p>
-                        <p className="mt-1 text-xs font-medium uppercase tracking-wide text-slate-500">{identity.title}</p>
-                        <p className="font-mono text-xs text-slate-400">{selectedAgent.key}</p>
+                        <p className="font-semibold text-slate-950" style={{ overflowWrap: 'anywhere' }}>{identity.name}</p>
+                        <p className="mt-1 text-xs font-medium uppercase tracking-wide text-slate-500" style={{ overflowWrap: 'anywhere' }}>{identity.title}</p>
+                        <p className="font-mono text-xs text-slate-400" style={{ overflowWrap: 'anywhere' }}>{selectedAgent.key}</p>
                       </div>
                     </div>
                     <div className="mt-4 space-y-3 text-sm text-slate-600">

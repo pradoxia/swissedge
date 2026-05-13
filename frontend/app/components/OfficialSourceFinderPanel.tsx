@@ -46,6 +46,8 @@ export function OfficialSourceFinderPanel({
   copiedKey?: string | null;
   onCopy: (text: string, key: string) => void;
 }) {
+  const copyFailed = copiedKey === 'copy-failed';
+
   if (loading) {
     return (
       <div className="card">
@@ -183,6 +185,11 @@ export function OfficialSourceFinderPanel({
 
       <div style={{ marginTop: 16 }}>
         <div style={labelStyle}>Copyable manual queries</div>
+        <div style={{ marginTop: 4, fontSize: 12, color: copyFailed ? '#b45309' : 'var(--text-muted)' }}>
+          {copyFailed
+            ? 'Copy failed - select the query text manually.'
+            : 'Paste this into Google, SEC search, or company IR. SwissEdge has not run this search automatically.'}
+        </div>
         <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
           {finder.copyable_queries.length === 0 ? (
             <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>No stored manual queries yet.</div>

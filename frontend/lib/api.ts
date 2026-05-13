@@ -252,6 +252,102 @@ export interface OfficialSourceFinderPackage {
   guardrails: string[];
 }
 
+export interface HistoricalAnaloguesPackage {
+  case_id: string;
+  case_type: 'special_situation' | 'research_case';
+  case_summary: {
+    company_name: string | null;
+    ticker: string | null;
+    filing_type: string | null;
+    situation_type: string | null;
+    selected_playbook: string | null;
+    methodology_status: string;
+  };
+  matched_patterns: Array<{
+    pattern_id: string;
+    title: string;
+    source: string;
+    similarity_reason: string;
+    applies_because: string[];
+    manual_checks: string[];
+    risk_notes: string[];
+    confidence: 'high' | 'medium' | 'low';
+    not_evaluation: boolean;
+  }>;
+  historical_case_matches: Array<{
+    historical_case_id: string;
+    title: string;
+    situation_type: string | null;
+    similarity_score: number;
+    similarity_reasons: string[];
+    key_differences: string[];
+    manual_comparison_steps: string[];
+    source: string;
+    not_evaluation: boolean;
+  }>;
+  course_methodology_links: Array<{
+    label: string;
+    playbook: string;
+    section: string;
+    safe_summary: string;
+    human_review_required: boolean;
+  }>;
+  comparison_checklist: Array<{
+    label: string;
+    status: string;
+    why_it_matters: string;
+    related_required_resource_ids: string[];
+    related_check_ids: string[];
+  }>;
+  warnings: string[];
+  guardrails: string[];
+}
+
+export interface CaseCompletionPackage {
+  case_id: string;
+  case_type: 'special_situation' | 'research_case';
+  completion_level: 'blocked' | 'needs_sources' | 'needs_evidence_mapping' | 'ready_for_manual_review' | 'promoted';
+  completion_score: number;
+  summary: {
+    missing_required_resources: number;
+    candidate_sources_to_review: number;
+    checklist_items_needing_evidence: number;
+    evidence_found_not_verified: number;
+    rejected_or_noisy_sources: number;
+    manual_review_required: boolean;
+    research_case_exists: boolean;
+  };
+  blocking_items: Array<{
+    id: string;
+    label: string;
+    reason: string;
+    severity: 'high' | 'medium' | 'low';
+    related_section: string;
+    anchor: string;
+  }>;
+  next_manual_actions: Array<{
+    id: string;
+    label: string;
+    description: string;
+    priority: 'high' | 'medium' | 'low';
+    action_type: string;
+    manual_only: boolean;
+    improves: string[];
+    target_anchor: string;
+  }>;
+  score_improvement_plan: {
+    detection: string[];
+    structuring: string[];
+    risk_discipline: string[];
+  };
+  section_status: Array<{
+    section: string;
+    status: 'ok' | 'needs_work' | 'missing';
+    anchor: string;
+  }>;
+  guardrails: string[];
+}
+
 export interface CaseActivityEvent {
   id: string;
   timestamp: string | null;
@@ -506,6 +602,18 @@ export async function fetchSituationDocumentationGuide(id: string): Promise<Case
 export async function fetchSituationOfficialSourceFinder(id: string): Promise<OfficialSourceFinderPackage> {
   const response = await fetch(`${API_BASE_URL}/api/investment/situations/${id}/official-source-finder`);
   if (!response.ok) throw new Error(`Failed to fetch situation official source finder: ${response.statusText}`);
+  return response.json();
+}
+
+export async function fetchSituationHistoricalAnalogues(id: string): Promise<HistoricalAnaloguesPackage> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/situations/${id}/historical-analogues`);
+  if (!response.ok) throw new Error(`Failed to fetch situation historical analogues: ${response.statusText}`);
+  return response.json();
+}
+
+export async function fetchSituationCompletionWorkbench(id: string): Promise<CaseCompletionPackage> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/situations/${id}/completion-workbench`);
+  if (!response.ok) throw new Error(`Failed to fetch situation completion workbench: ${response.statusText}`);
   return response.json();
 }
 
@@ -1144,6 +1252,18 @@ export async function fetchResearchCaseDocumentationGuide(id: string): Promise<C
 export async function fetchResearchCaseOfficialSourceFinder(id: string): Promise<OfficialSourceFinderPackage> {
   const response = await fetch(`${API_BASE_URL}/api/investment/research-cases/${id}/official-source-finder`);
   if (!response.ok) throw new Error(`Failed to fetch research case official source finder: ${response.statusText}`);
+  return response.json();
+}
+
+export async function fetchResearchCaseHistoricalAnalogues(id: string): Promise<HistoricalAnaloguesPackage> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/research-cases/${id}/historical-analogues`);
+  if (!response.ok) throw new Error(`Failed to fetch research case historical analogues: ${response.statusText}`);
+  return response.json();
+}
+
+export async function fetchResearchCaseCompletionWorkbench(id: string): Promise<CaseCompletionPackage> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/research-cases/${id}/completion-workbench`);
+  if (!response.ok) throw new Error(`Failed to fetch research case completion workbench: ${response.statusText}`);
   return response.json();
 }
 

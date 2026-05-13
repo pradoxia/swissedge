@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   ErrorBanner,
@@ -143,6 +143,33 @@ function sourceFinderSnapshotFor(s: Situation): { hasSecLink: boolean; missingOf
   };
 }
 
+function patternLabelFor(s: Situation): string {
+  const filing = (s.filing_type ?? s.evaluation?.sec_detection?.detected_form_type ?? '').toLowerCase();
+  const situationType = (s.evaluation?.sec_detection?.situation_type ?? s.situation_type ?? '').toLowerCase();
+  if (filing.includes('sc to-i')) return 'self-tender';
+  if (filing.includes('sc to-t')) return 'tender';
+  if (filing.includes('form 10') || situationType.includes('spin')) return 'spin-off';
+  if (filing.includes('8-k') && (situationType.includes('liquidation') || situationType.includes('dissolution'))) return 'liquidation';
+  return 'general';
+}
+
+function completionLevelFor(s: Situation): string {
+  const workspace = s.methodology_workspace ?? (s.evaluation?.methodology_workspace as Situation['methodology_workspace'] | undefined);
+  if (workspace?.research_case_id || workflowFor(s) === 'promoted_to_research_case') return 'promoted';
+  const required = workspace?.required_resources ?? [];
+  const checklist = workspace?.checklist ?? [];
+  const candidates = workspace?.resource_candidates ?? [];
+  if (required.some(item => ['missing', 'needs_evidence', 'not_started'].includes(item.status))) return 'needs sources';
+  if (
+    candidates.some(item => item.status === 'candidate_found') ||
+    checklist.some(item => ['missing', 'needs_evidence', 'not_started', 'open'].includes(item.status))
+  ) {
+    return 'needs mapping';
+  }
+  if (required.length || checklist.length) return 'ready for review';
+  return 'blocked';
+}
+
 function MiniCaseRow({ situation: s }: { situation: Situation }) {
   const [hovered, setHovered] = useState(false);
   const name = s.company_name.length > 34 ? s.company_name.slice(0, 32) + '…' : s.company_name;
@@ -150,6 +177,8 @@ function MiniCaseRow({ situation: s }: { situation: Situation }) {
   const workspace = s.methodology_workspace ?? (s.evaluation?.methodology_workspace as Situation['methodology_workspace'] | undefined);
   const progress = workspace?.progress;
   const situationType = s.evaluation?.sec_detection?.situation_type ?? s.situation_type;
+  const pattern = patternLabelFor(s);
+  const completion = completionLevelFor(s);
 
   return (
     <Link href={`/investment/situations/${s.id}`} style={{ textDecoration: 'none', display: 'block' }}>
@@ -193,6 +222,8 @@ function MiniCaseRow({ situation: s }: { situation: Situation }) {
           {workspace?.research_case_id && (
             <span className="status-badge status-badge--active" style={{ fontSize: 9 }}>RC</span>
           )}
+          <span className="status-badge status-badge--readonly" style={{ fontSize: 9 }}>Pattern: {pattern}</span>
+          <span className="status-badge status-badge--readonly" style={{ fontSize: 9 }}>Completion: {completion}</span>
         </div>
       </div>
     </Link>
@@ -298,6 +329,7 @@ function SituationCard({
   moving: boolean;
   onMove: (situation: Situation, workflowStatus: string) => void;
 }) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const secDetection = s.evaluation?.sec_detection;
   const workspace = s.methodology_workspace ?? (s.evaluation?.methodology_workspace as Situation['methodology_workspace'] | undefined);
   const hasWorkspace = !!workspace;
@@ -310,10 +342,11 @@ function SituationCard({
   const sourceFinder = sourceFinderSnapshotFor(s);
   const latestActivity = latestActivityFor(s);
   const attention = latestActivity.status === 'needs_attention' || latestActivity.status === 'manual_review_required';
-  const showMissingHunter = hasWorkspace || documentation.missing > 0 || documentation.level !== 'needs links';
+  const pattern = patternLabelFor(s);
+  const completion = completionLevelFor(s);
 
   return (
-    <div className="card" style={{ padding: '11px 13px' }}>
+    <div className="card" style={{ padding: '12px 13px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 5 }}>
           <Link
             href={`/investment/situations/${s.id}`}
@@ -331,25 +364,12 @@ function SituationCard({
         <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 8 }}>
           {s.filing_type && <span className="status-badge status-badge--readonly" style={{ fontSize: 10 }}>{s.filing_type}</span>}
           {secDetection?.situation_type && <span className="status-badge status-badge--readonly" style={{ fontSize: 10 }}>{secDetection.situation_type}</span>}
-          {hasWorkspace && <span className="status-badge status-badge--partial" style={{ fontSize: 10 }}>workspace</span>}
-          {s.evaluation?.detected_only === true && <span className="status-badge status-badge--preview" style={{ fontSize: 10 }}>Detected only</span>}
-          {workspace?.research_case_id && <span className="status-badge status-badge--active" style={{ fontSize: 10 }}>ResearchCase</span>}
-          <span className="status-badge status-badge--readonly" style={{ fontSize: 10 }}>Docs: {documentation.level}</span>
-          <span className={`status-badge ${sourceFinder.status === 'ready' ? 'status-badge--readonly' : 'status-badge--preview'}`} style={{ fontSize: 10 }}>Source finder: {sourceFinder.status}</span>
-          <span className="status-badge status-badge--readonly" style={{ fontSize: 10 }}>SEC link: {sourceFinder.hasSecLink ? 'yes' : 'no'}</span>
           <span className={`status-badge ${documentation.missing > 0 ? 'status-badge--preview' : 'status-badge--readonly'}`} style={{ fontSize: 10 }}>Missing: {documentation.missing}</span>
-          {showMissingHunter && <span className="status-badge status-badge--partial" style={{ fontSize: 10 }}>Agent: Missing Evidence Hunter</span>}
+          <span className="status-badge status-badge--partial" style={{ fontSize: 10 }}>Evidence: {evidenceFound}</span>
+          <span className="status-badge status-badge--readonly" style={{ fontSize: 10 }}>Completion: {completion}</span>
+          <span className="status-badge status-badge--readonly" style={{ fontSize: 10 }}>Pattern: {pattern}</span>
+          {workspace?.research_case_id && <span className="status-badge status-badge--active" style={{ fontSize: 10 }}>ResearchCase</span>}
         </div>
-        {hasWorkspace && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 5, marginBottom: 8 }}>
-            {([['Official docs', sourceFinder.missingOfficialDocs], ['Queries', sourceFinder.queries], ['Evidence', evidenceFound]] as [string, number][]).map(([label, value]) => (
-              <div key={label} style={{ background: 'var(--bg-subtle)', borderRadius: 5, padding: '5px 6px' }}>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-faint)', textTransform: 'uppercase' }}>{label}</div>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-primary)' }}>{value}</div>
-              </div>
-            ))}
-          </div>
-        )}
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
           <Link href={`/investment/situations/${s.id}`} className="btn btn--secondary btn--sm">
             Open case
@@ -364,7 +384,19 @@ function SituationCard({
               ResearchCase
             </Link>
           )}
+          {hasWorkspace && (
+            <button type="button" className="btn btn--ghost btn--sm" onClick={() => setDetailsOpen(open => !open)}>
+              {detailsOpen ? 'Hide details' : 'Details'}
+            </button>
+          )}
         </div>
+        {detailsOpen && hasWorkspace && (
+          <div style={{ display: 'grid', gap: 5, marginBottom: 8, fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-muted)' }}>
+            <span>Docs: {documentation.level}</span>
+            <span>Source finder: {sourceFinder.status} / SEC link {sourceFinder.hasSecLink ? 'yes' : 'no'}</span>
+            <span>Official docs missing: {sourceFinder.missingOfficialDocs} / Manual queries: {sourceFinder.queries}</span>
+          </div>
+        )}
         {hasWorkspace && (
           <select
             value={workflow}
@@ -413,10 +445,12 @@ export default function SpecialSituationsPage() {
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('');
   const [filterFiling, setFilterFiling] = useState('');
+  const [filterWorkflow, setFilterWorkflow] = useState('');
   const [hideEmpty, setHideEmpty] = useState(false);
   const [compactView, setCompactView] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [movingId, setMovingId] = useState<string | null>(null);
+  const boardRef = useRef<HTMLDivElement | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -438,7 +472,7 @@ export default function SpecialSituationsPage() {
 
   const typeOptions = useMemo(() => {
     const types = new Set(
-      situations.map(s => s.situation_type ?? s.v2_situation_type ?? '').filter(Boolean),
+      situations.map(s => s.evaluation?.sec_detection?.situation_type ?? s.situation_type ?? s.v2_situation_type ?? '').filter(Boolean),
     );
     return Array.from(types).sort();
   }, [situations]);
@@ -451,17 +485,18 @@ export default function SpecialSituationsPage() {
   const filtered = useMemo(() => {
     return situations.filter(s => {
       if (filterType) {
-        const st = s.situation_type ?? s.v2_situation_type ?? '';
+        const st = s.evaluation?.sec_detection?.situation_type ?? s.situation_type ?? s.v2_situation_type ?? '';
         if (st !== filterType) return false;
       }
       if (filterFiling && (s.filing_type ?? '') !== filterFiling) return false;
+      if (filterWorkflow && workflowFor(s) !== filterWorkflow) return false;
       if (search) {
         const q = search.toLowerCase();
         if (!s.company_name.toLowerCase().includes(q) && !(s.ticker ?? '').toLowerCase().includes(q)) return false;
       }
       return true;
     });
-  }, [situations, filterType, filterFiling, search]);
+  }, [situations, filterType, filterFiling, filterWorkflow, search]);
 
   const columnMap = useMemo(() => {
     const map: Record<string, Situation[]> = {};
@@ -485,7 +520,14 @@ export default function SpecialSituationsPage() {
   const promotedCount = situations.filter(s => workflowFor(s) === 'promoted_to_research_case').length;
   const watchlistCount = situations.filter(s => workflowFor(s) === 'watchlist').length;
 
-  const hasFilters = !!(search || filterType || filterFiling);
+  const hasFilters = !!(search || filterType || filterFiling || filterWorkflow);
+  const boardColumnCount = visibleColumns.length;
+
+  function scrollBoard(direction: -1 | 1) {
+    const el = boardRef.current;
+    if (!el) return;
+    el.scrollBy({ left: direction * Math.max(320, el.clientWidth * 0.75), behavior: 'smooth' });
+  }
 
   async function moveSituation(situation: Situation, workflowStatus: string) {
     try {
@@ -558,10 +600,14 @@ export default function SpecialSituationsPage() {
               {filingOptions.map(f => <option key={f} value={f}>{f}</option>)}
             </select>
           )}
+          <select value={filterWorkflow} onChange={e => setFilterWorkflow(e.target.value)} style={FILTER_INPUT_STYLE}>
+            <option value="">All workflow phases</option>
+            {WORKFLOW_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
           {hasFilters && (
             <button
               className="btn btn--ghost btn--sm"
-              onClick={() => { setSearch(''); setFilterType(''); setFilterFiling(''); }}
+              onClick={() => { setSearch(''); setFilterType(''); setFilterFiling(''); setFilterWorkflow(''); }}
             >
               Clear filters
             </button>
@@ -629,6 +675,13 @@ export default function SpecialSituationsPage() {
 
       {loading ? (
         <LoadingState label="Loading situations…" />
+      ) : visibleColumns.length === 0 ? (
+        <div className="card" style={{ padding: 24, textAlign: 'center' }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>No visible phases match the current filters.</div>
+          <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text-muted)' }}>
+            Hide Empty Phases is on and all filtered columns are empty. Clear filters or turn the toggle off to see every workflow phase.
+          </div>
+        </div>
       ) : compactView ? (
         /* ── Compact overview board ── */
         <div style={{
@@ -642,14 +695,24 @@ export default function SpecialSituationsPage() {
         </div>
       ) : (
         /* ── Pipeline board (horizontal scroll; expands on ultrawide screens) ── */
-        <div style={{ overflowX: 'auto', paddingBottom: 16 }}>
+        <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-faint)' }}>
+            Scroll horizontally to move across phases. Use arrows or the visible scrollbar.
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button type="button" className="btn btn--ghost btn--sm" onClick={() => scrollBoard(-1)} aria-label="Scroll left">Scroll left</button>
+            <button type="button" className="btn btn--ghost btn--sm" onClick={() => scrollBoard(1)} aria-label="Scroll right">Scroll right</button>
+          </div>
+        </div>
+        <div ref={boardRef} style={{ overflowX: 'scroll', paddingBottom: 16, scrollbarWidth: 'auto' }}>
           <div style={{
             display: 'grid',
-            gridTemplateColumns: `repeat(${COLUMNS.length}, minmax(260px, 1fr))`,
+            gridTemplateColumns: `repeat(${boardColumnCount}, minmax(260px, 1fr))`,
             gap: 10,
-            minWidth: `${COLUMNS.length * 270}px`,
+            minWidth: `${boardColumnCount * 270}px`,
           }}>
-            {COLUMNS.map(col => {
+            {visibleColumns.map(col => {
               const cards = columnMap[col.key] ?? [];
               return (
                 <div key={col.key} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -702,6 +765,7 @@ export default function SpecialSituationsPage() {
               );
             })}
           </div>
+        </div>
         </div>
       )}
 

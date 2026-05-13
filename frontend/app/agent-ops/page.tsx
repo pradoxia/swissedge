@@ -54,8 +54,8 @@ const TOP_NAV_LINKS = [
 
 const ROOM_CHAINS: Record<string, string[]> = {
   radar_room: ['EDGAR Scout', 'Router Analyst', 'Signal Filter', 'Quality Sentinel', 'Fontana'],
-  evidence_lab: ['Resource Scout', 'Official Source Finder', 'Evidence Mapper', 'Missing Evidence Hunter', 'Quality Sentinel', 'Playbook Scribe'],
-  research_desk: ['Case Builder', 'Missing Evidence Hunter', 'Intelligence Scorer', 'Fontana'],
+  evidence_lab: ['Resource Scout', 'Official Source Finder', 'Pattern Analyst', 'Evidence Mapper', 'Missing Evidence Hunter', 'Quality Sentinel', 'Playbook Scribe'],
+  research_desk: ['Case Builder', 'Case Completion Coach', 'Missing Evidence Hunter', 'Intelligence Scorer', 'Fontana'],
   quality_court: ['Quality Sentinel', 'Risk Discipline Checker', 'Human Review Gate', 'Fontana'],
   playbook_workshop: ['Playbook Scribe', 'Coverage Analyst', 'Drift Watcher', 'Fontana'],
   agent_ops: ['Registry', 'Activity Logger', 'Diagnostics Reader', 'Fontana'],
@@ -67,8 +67,10 @@ const AGENT_CALLSIGNS: Record<string, string> = {
   quality: 'Guardrail judge',
   resource: 'Evidence finder',
   official: 'SEC locator',
+  pattern: 'Analogue mapper',
   evidence: 'Traceability mapper',
   case: 'Case assembler',
+  completion: 'Completion coach',
   evaluation: 'Manual prep officer',
   intelligence: 'Scorekeeper',
   fontana: 'CTO observer',
@@ -137,6 +139,18 @@ const AGENT_IDENTITIES: AgentIdentity[] = [
     scheduler: 'disabled in this sprint',
   },
   {
+    name: 'Pattern Analyst',
+    keyHint: 'pattern',
+    room: 'evidence_lab',
+    title: 'Historical analogue mapper',
+    mission: 'Maps live cases to historical examples and sanitized course/playbook patterns for manual comparison.',
+    watches: ['situation type', 'filing type', 'selected playbook', 'historical cases', 'checklist gaps'],
+    outputs: ['matched patterns', 'historical analogues', 'manual comparison checklist'],
+    currentMode: 'manual / observer-only',
+    futureMode: 'expanded historical comparison after approval',
+    scheduler: 'disabled in this sprint',
+  },
+  {
     name: 'Evidence Mapper',
     keyHint: 'evidence',
     room: 'evidence_lab',
@@ -158,6 +172,18 @@ const AGENT_IDENTITIES: AgentIdentity[] = [
     outputs: ['missing evidence list', 'manual search plan', 'documentation gaps', 'suggested next actions'],
     currentMode: 'manual / observer-only',
     futureMode: 'frequent missing-evidence checks after explicit approval',
+    scheduler: 'disabled in this sprint',
+  },
+  {
+    name: 'Case Completion Coach',
+    keyHint: 'completion',
+    room: 'research_desk',
+    title: 'Manual completion guide',
+    mission: 'Turns documentation, evidence, and score gaps into manual next steps for case completion.',
+    watches: ['missing required resources', 'candidate sources', 'checklist gaps', 'Intelligence Score gaps', 'review readiness'],
+    outputs: ['completion level', 'blocking items', 'manual next actions', 'score improvement plan'],
+    currentMode: 'manual / observer-only',
+    futureMode: 'guided workflow agent after approval',
     scheduler: 'disabled in this sprint',
   },
   {
@@ -290,7 +316,7 @@ function badgeClass(value: string): string {
 
 function Badge({ value }: { value: string }) {
   return (
-    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${badgeClass(value)}`}>
+    <span className={`inline-flex max-w-full items-center rounded-full border px-2 py-0.5 text-left text-[11px] font-medium leading-4 ${badgeClass(value)}`} style={{ overflowWrap: 'anywhere' }}>
       {value}
     </span>
   );
@@ -581,6 +607,25 @@ export default function AgentOpsPage() {
       .slice(0, 3);
   }, [activity, diagnostics]);
 
+  const agentWorkload = useMemo(() => {
+    return agents
+      .map(agent => {
+        const logs = activityCountForAgent(agent, activity);
+        const problems = problemCountForAgent(agent, diagnostics);
+        const caseRows = caseActivityCountForAgent(agent, activity, diagnostics);
+        return { agent, identity: identityForAgent(agent), logs, problems, caseRows, load: logs + problems * 2 + caseRows };
+      })
+      .sort((a, b) => b.load - a.load)
+      .slice(0, 5);
+  }, [activity, agents, diagnostics]);
+
+  const nextManualActions = [
+    'Open case-related diagnostic rows and resolve missing evidence gaps manually.',
+    'Use Official Source Finder queries from case pages; SwissEdge does not run them.',
+    'Reject noisy candidates and map manually reviewed sources to resources/checklist items.',
+    'Review Fontana bottlenecks before planning the next sprint.',
+  ];
+
   async function reviewProposal(proposal: AgentOpsProposal, status: AgentOpsProposalStatus) {
     setUpdatingProposal(proposal.id);
     setProposalErrors(prev => ({ ...prev, [proposal.id]: '' }));
@@ -684,11 +729,11 @@ export default function AgentOpsPage() {
                       </div>
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <p className="font-semibold text-slate-950">{identity.name}</p>
+                          <p className="min-w-0 font-semibold text-slate-950" style={{ overflowWrap: 'anywhere' }}>{identity.name}</p>
                           <Badge value={agent.autonomy_level} />
                         </div>
-                        <p className="mt-1 text-xs font-medium uppercase tracking-wide text-slate-400">{identity.title}</p>
-                        <p className="mt-2 text-sm leading-6 text-slate-600">{identity.mission}</p>
+                        <p className="mt-1 text-xs font-medium uppercase tracking-wide text-slate-400" style={{ overflowWrap: 'anywhere' }}>{identity.title}</p>
+                        <p className="mt-2 text-sm leading-6 text-slate-600" style={{ overflowWrap: 'anywhere' }}>{identity.mission}</p>
                       </div>
                     </div>
                     <div className="mt-3 grid grid-cols-2 gap-2 text-xs md:grid-cols-4">
@@ -705,24 +750,44 @@ export default function AgentOpsPage() {
           </section>
 
           <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 className="text-sm font-semibold text-slate-950">Scheduler / Frequency Status</h2>
-            <p className="mt-1 text-sm leading-6 text-slate-500">
-              No schedules are changed here. This panel only states current operational posture for manual review.
-            </p>
-            <div className="mt-4 grid gap-3">
-              {[
-                ['Live AI', 'Off'],
-                ['Cron changes', 'Blocked'],
-                ['Scan trigger', 'Absent'],
-                ['Evaluation', 'Manual only'],
-                ['Agent scheduler', 'Disabled'],
-                ['Future frequency', 'Approved sprint required'],
-              ].map(([label, value]) => (
-                <div key={label} className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
-                  <span className="text-sm text-slate-600">{label}</span>
-                  <span className="text-xs font-semibold uppercase tracking-wide text-slate-900">{value}</span>
-                </div>
-              ))}
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-950">Agent Workload & Next Manual Actions</h2>
+                <p className="mt-1 text-sm leading-6 text-slate-500">
+                  Derived from loaded Agent Ops rows only. Scheduler remains disabled; future frequency changes require an approved sprint.
+                </p>
+              </div>
+              <Badge value="observer/manual-only" />
+            </div>
+            {agentWorkload.length === 0 ? (
+              <EmptyState title="No workload rows yet." description="Agent activity and diagnostics will appear after safe logging is present." />
+            ) : (
+              <div className="grid gap-2">
+                {agentWorkload.map(({ agent, identity, logs, problems, caseRows }) => (
+                  <div key={agent.id} className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-slate-900" style={{ overflowWrap: 'anywhere' }}>{identity.name}</p>
+                        <p className="mt-0.5 text-xs text-slate-500" style={{ overflowWrap: 'anywhere' }}>{identity.title}</p>
+                      </div>
+                      <Badge value={identity.currentMode} />
+                    </div>
+                    <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
+                      <SmallStat label="Logs" value={logs} />
+                      <SmallStat label="Problems" value={problems} />
+                      <SmallStat label="Case rows" value={caseRows} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="mt-4 rounded-md border border-slate-200 bg-white p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Next manual actions</p>
+              <ul className="mt-2 space-y-1">
+                {nextManualActions.map(action => (
+                  <li key={action} className="text-sm leading-6 text-slate-600">{action}</li>
+                ))}
+              </ul>
             </div>
           </section>
         </div>
@@ -880,7 +945,7 @@ export default function AgentOpsPage() {
                         </div>
                         <Badge value={room.status} />
                       </div>
-                      <p className="min-h-12 text-sm leading-6 text-slate-600">{room.description ?? 'No description.'}</p>
+                      <p className="min-h-12 text-sm leading-6 text-slate-600" style={{ overflowWrap: 'anywhere' }}>{room.description ?? 'No description.'}</p>
                       <div className="mt-3 grid grid-cols-2 gap-2 text-xs md:grid-cols-4">
                         <SmallStat label="Ops Score" value={`${roomScore(roomCounts.get(room.key))}%`} />
                         <SmallStat label="Mode" value="observer" />
@@ -896,7 +961,7 @@ export default function AgentOpsPage() {
                       <div className="mt-4 flex flex-wrap items-center gap-2 rounded-md border border-slate-100 bg-slate-50 p-2">
                         {(ROOM_CHAINS[room.key] ?? [room.name]).map((name, index, chain) => (
                           <span key={`${room.key}-${name}-${index}`} className="inline-flex items-center gap-2">
-                            <span className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-600">{name}</span>
+                            <span className="max-w-full rounded border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-600" style={{ overflowWrap: 'anywhere' }}>{name}</span>
                             {index < chain.length - 1 && <span className="text-slate-300">-&gt;</span>}
                           </span>
                         ))}
@@ -928,8 +993,8 @@ export default function AgentOpsPage() {
                       {agents.map(agent => (
                         <tr key={agent.id} className="align-top hover:bg-slate-50">
                           <td className="px-4 py-4">
-                            <div className="text-sm font-semibold text-slate-900">{agent.name}</div>
-                            <div className="font-mono text-xs text-slate-400">{agent.key}</div>
+                            <div className="text-sm font-semibold text-slate-900" style={{ overflowWrap: 'anywhere' }}>{agent.name}</div>
+                            <div className="font-mono text-xs text-slate-400" style={{ overflowWrap: 'anywhere' }}>{agent.key}</div>
                           </td>
                           <td className="px-4 py-4 text-sm text-slate-600">{safeText(agent.room_key)}</td>
                           <td className="max-w-xs px-4 py-4 text-sm leading-6 text-slate-600">{agent.role ?? '-'}</td>
