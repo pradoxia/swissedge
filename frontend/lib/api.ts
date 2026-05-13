@@ -193,6 +193,65 @@ export interface CaseDocumentationGuidePackage {
   guardrails: string[];
 }
 
+export interface OfficialSourceFinderPackage {
+  case_id: string;
+  case_type: 'special_situation' | 'research_case';
+  source_context: {
+    source: string;
+    company_name: string | null;
+    ticker: string | null;
+    cik: string | null;
+    accession_number: string | null;
+    filing_type: string | null;
+    filing_date: string | null;
+    situation_type: string | null;
+    selected_playbook: string | null;
+    stored_filing_url: string | null;
+  };
+  official_links: Array<{
+    label: string;
+    url: string | null;
+    link_type: string;
+    metadata_only: boolean;
+    verified: boolean;
+    supports: string[];
+    notes: string | null;
+  }>;
+  manual_locator_steps: Array<{
+    step: number;
+    title: string;
+    description: string;
+    link_url: string | null;
+    supports_required_resources: string[];
+    supports_checklist_items: string[];
+  }>;
+  missing_document_targets: Array<{
+    title: string;
+    required_resource_id: string | null;
+    checklist_item_id: string | null;
+    priority: 'high' | 'medium' | 'low';
+    why_needed: string;
+    where_to_search: string[];
+    manual_queries: string[];
+  }>;
+  copyable_queries: Array<{
+    query: string;
+    purpose: string;
+    where_to_use: string;
+    supports_required_resources: string[];
+    supports_checklist_items: string[];
+    not_executed_by_swissedge: boolean;
+  }>;
+  coverage: {
+    stored_official_links_count: number;
+    missing_required_documents_count: number;
+    manual_queries_count: number;
+    candidate_sources_count: number;
+    evidence_found_count: number;
+  };
+  guardrails: string[];
+}
+
 export interface CaseActivityEvent {
   id: string;
   timestamp: string | null;
@@ -444,9 +503,98 @@ export async function fetchSituationDocumentationGuide(id: string): Promise<Case
   return response.json();
 }
 
+export async function fetchSituationOfficialSourceFinder(id: string): Promise<OfficialSourceFinderPackage> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/situations/${id}/official-source-finder`);
+  if (!response.ok) throw new Error(`Failed to fetch situation official source finder: ${response.statusText}`);
+  return response.json();
+}
+
 export async function fetchSituationActivityTimeline(id: string): Promise<CaseActivityTimelinePackage> {
   const response = await fetch(`${API_BASE_URL}/api/investment/situations/${id}/activity-timeline`);
   if (!response.ok) throw new Error(`Failed to fetch situation activity timeline: ${response.statusText}`);
+  return response.json();
+}
+
+export interface IntelligenceKpiCaseLink {
+  id: string;
+  case_type: 'research_case' | 'special_situation';
+  title: string;
+  href: string;
+  score?: number;
+  grade?: string;
+  missing_items?: number;
+}
+
+export interface IntelligenceKpiPackage {
+  generated_at: string;
+  case_counts: {
+    research_cases_total: number;
+    special_situations_total: number;
+    sec_detected: number;
+    promoted_to_research_case: number;
+    ready_for_manual_review: number;
+    missing_evidence: number;
+  };
+  intelligence: {
+    average_score: number;
+    approvable_count: number;
+    useful_incomplete_count: number;
+    review_pipeline_count: number;
+    lowest_scoring_cases: IntelligenceKpiCaseLink[];
+    cases_needing_manual_work: IntelligenceKpiCaseLink[];
+  };
+  documentation: {
+    average_documentation_quality: number;
+    good_count: number;
+    needs_links_count: number;
+    needs_required_resources_count: number;
+    needs_evidence_mapping_count: number;
+  };
+  evidence: {
+    required_resources_total: number;
+    missing_required_resources_total: number;
+    candidate_found_total: number;
+    evidence_found_total: number;
+    rejected_total: number;
+    evidence_links_total: number;
+  };
+  agent_ops: {
+    rooms_count: number;
+    agents_count: number;
+    activity_rows_count: number;
+    diagnostics_count: number;
+    missing_evidence_hunter_load: number;
+    rooms: Array<{ id: string; key: string; name: string; href: string }>;
+  };
+  bottlenecks: Array<{ key: string; label: string; severity: string; count: number }>;
+  manual_next_actions: Array<{ label: string; reason: string; target_href: string }>;
+  missing_evidence_cases: IntelligenceKpiCaseLink[];
+  guardrails: string[];
+}
+
+export interface FontanaDiagnosticReport {
+  title: string;
+  mode: 'deterministic_observer';
+  generated_at: string;
+  summary: string;
+  system_health: string[];
+  case_bottlenecks: string[];
+  evidence_gaps: string[];
+  agent_ops_findings: string[];
+  recommended_manual_next_steps: string[];
+  suggested_future_sprints: string[];
+  guardrails: string[];
+}
+
+export async function fetchIntelligenceKpis(): Promise<IntelligenceKpiPackage> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/intelligence/kpis`);
+  if (!response.ok) throw new Error(`Failed to fetch Intelligence KPIs: ${response.statusText}`);
+  return response.json();
+}
+
+export async function fetchFontanaReport(): Promise<FontanaDiagnosticReport> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/intelligence/fontana-report`);
+  if (!response.ok) throw new Error(`Failed to fetch Fontana report: ${response.statusText}`);
   return response.json();
 }
 
@@ -990,6 +1138,12 @@ export async function fetchResearchCaseIntelligenceScore(id: string): Promise<In
 export async function fetchResearchCaseDocumentationGuide(id: string): Promise<CaseDocumentationGuidePackage> {
   const response = await fetch(`${API_BASE_URL}/api/investment/research-cases/${id}/documentation-guide`);
   if (!response.ok) throw new Error(`Failed to fetch research case documentation guide: ${response.statusText}`);
+  return response.json();
+}
+
+export async function fetchResearchCaseOfficialSourceFinder(id: string): Promise<OfficialSourceFinderPackage> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/research-cases/${id}/official-source-finder`);
+  if (!response.ok) throw new Error(`Failed to fetch research case official source finder: ${response.statusText}`);
   return response.json();
 }
 

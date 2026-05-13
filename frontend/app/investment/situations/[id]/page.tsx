@@ -14,11 +14,13 @@ import {
 } from '@/app/components/ui';
 import { EvidenceLinksPanel } from '@/app/components/EvidenceLinksPanel';
 import { CaseActivityTimeline } from '@/app/components/CaseActivityTimeline';
+import { OfficialSourceFinderPanel } from '@/app/components/OfficialSourceFinderPanel';
 import {
   addSituationResource,
   fetchSituationActivityTimeline,
   fetchSituationDocumentationGuide,
   fetchSituationEvidenceLinks,
+  fetchSituationOfficialSourceFinder,
   fetchSituation,
   promoteSituationToResearchCase,
   updateSituationResourceCandidate,
@@ -30,6 +32,7 @@ import {
   type Situation,
   type CaseDocumentationGuidePackage,
   type CaseActivityTimelinePackage,
+  type OfficialSourceFinderPackage,
   type SituationEvidenceLinksPackage,
 } from '@/lib/api';
 
@@ -110,6 +113,7 @@ function SituationQuickLinks({
 }) {
   const links = [
     { label: 'Kanban board', href: '/investment/situations', external: false },
+    { label: 'Intelligence KPIs', href: '/investment/intelligence', external: false },
     { label: 'Evaluation detail', href: `/investment/evaluations/${situation.id}`, external: false },
     ...(researchCaseId ? [{ label: 'ResearchCase', href: `/investment/research/${researchCaseId}`, external: false }] : []),
     ...(situation.filing_url ? [{ label: 'SEC filing', href: situation.filing_url, external: true }] : []),
@@ -444,6 +448,9 @@ export default function SpecialSituationMethodologyPage() {
   const [evidenceLinksError, setEvidenceLinksError] = useState<string | null>(null);
   const [documentationGuide, setDocumentationGuide] = useState<CaseDocumentationGuidePackage | null>(null);
   const [documentationGuideError, setDocumentationGuideError] = useState<string | null>(null);
+  const [officialSourceFinder, setOfficialSourceFinder] = useState<OfficialSourceFinderPackage | null>(null);
+  const [officialSourceFinderError, setOfficialSourceFinderError] = useState<string | null>(null);
+  const [officialSourceFinderLoading, setOfficialSourceFinderLoading] = useState(false);
   const [activityTimeline, setActivityTimeline] = useState<CaseActivityTimelinePackage | null>(null);
   const [activityTimelineError, setActivityTimelineError] = useState<string | null>(null);
   const [activityTimelineLoading, setActivityTimelineLoading] = useState(false);
@@ -481,6 +488,18 @@ export default function SpecialSituationMethodologyPage() {
         setDocumentationGuideError(err instanceof Error ? err.message : 'Failed to load documentation guide');
       }
     }
+    async function loadOfficialSourceFinder() {
+      try {
+        setOfficialSourceFinderLoading(true);
+        setOfficialSourceFinderError(null);
+        const finderData = await fetchSituationOfficialSourceFinder(id);
+        setOfficialSourceFinder(finderData);
+      } catch (err) {
+        setOfficialSourceFinderError(err instanceof Error ? err.message : 'Failed to load official source finder');
+      } finally {
+        setOfficialSourceFinderLoading(false);
+      }
+    }
     async function loadActivityTimeline() {
       try {
         setActivityTimelineLoading(true);
@@ -496,6 +515,7 @@ export default function SpecialSituationMethodologyPage() {
     if (id) load();
     if (id) loadEvidenceLinks();
     if (id) loadDocumentationGuide();
+    if (id) loadOfficialSourceFinder();
     if (id) loadActivityTimeline();
   }, [id]);
 
@@ -653,6 +673,14 @@ export default function SpecialSituationMethodologyPage() {
         error={documentationGuideError}
         onCopy={copyText}
         copiedKey={copiedKey}
+      />
+
+      <OfficialSourceFinderPanel
+        finder={officialSourceFinder}
+        loading={officialSourceFinderLoading}
+        error={officialSourceFinderError}
+        copiedKey={copiedKey}
+        onCopy={copyText}
       />
 
       {/* Compact top summary strip */}

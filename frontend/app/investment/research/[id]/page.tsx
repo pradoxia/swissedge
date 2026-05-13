@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { CaseActivityTimeline } from '@/app/components/CaseActivityTimeline';
 import { EvidenceLinksPanel } from '@/app/components/EvidenceLinksPanel';
 import { IntelligenceScoreCard } from '@/app/components/IntelligenceScoreCard';
+import { OfficialSourceFinderPanel } from '@/app/components/OfficialSourceFinderPanel';
 import {
   fetchResearchCase,
   fetchResearchCaseActivityTimeline,
@@ -13,6 +14,7 @@ import {
   fetchResearchCaseDocumentationGuide,
   fetchResearchCaseEvaluationPrep,
   fetchResearchCaseIntelligenceScore,
+  fetchResearchCaseOfficialSourceFinder,
   updateResearchCase,
   addResearchTask,
   updateResearchTask,
@@ -35,6 +37,7 @@ import {
   type CaseDocumentationGuidePackage,
   type EvaluationPrepPackage,
   type IntelligenceScorePackage,
+  type OfficialSourceFinderPackage,
   type ResearchTask,
   type ResearchDocument,
   type ResearchSource,
@@ -1891,16 +1894,20 @@ export default function ResearchDetailPage() {
   const [evidenceLinks, setEvidenceLinks] = useState<ResearchCaseEvidenceLinksPackage | null>(null);
   const [intelligenceScore, setIntelligenceScore] = useState<IntelligenceScorePackage | null>(null);
   const [documentationGuide, setDocumentationGuide] = useState<CaseDocumentationGuidePackage | null>(null);
+  const [officialSourceFinder, setOfficialSourceFinder] = useState<OfficialSourceFinderPackage | null>(null);
   const [activityTimeline, setActivityTimeline] = useState<CaseActivityTimelinePackage | null>(null);
   const [prepLoading, setPrepLoading] = useState(true);
   const [scoreLoading, setScoreLoading] = useState(true);
+  const [officialSourceFinderLoading, setOfficialSourceFinderLoading] = useState(false);
   const [prepError, setPrepError] = useState<string | null>(null);
   const [evidenceLinksError, setEvidenceLinksError] = useState<string | null>(null);
   const [scoreError, setScoreError] = useState<string | null>(null);
   const [documentationGuideError, setDocumentationGuideError] = useState<string | null>(null);
+  const [officialSourceFinderError, setOfficialSourceFinderError] = useState<string | null>(null);
   const [activityTimelineError, setActivityTimelineError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [officialSourceCopiedKey, setOfficialSourceCopiedKey] = useState<string | null>(null);
 
   // Edit state
   const [editingStatus, setEditingStatus] = useState(false);
@@ -2002,6 +2009,19 @@ export default function ResearchDetailPage() {
     }
   }
 
+  async function loadOfficialSourceFinder() {
+    try {
+      setOfficialSourceFinderLoading(true);
+      setOfficialSourceFinderError(null);
+      const finderData = await fetchResearchCaseOfficialSourceFinder(id);
+      setOfficialSourceFinder(finderData);
+    } catch (err) {
+      setOfficialSourceFinderError(err instanceof Error ? err.message : 'Failed to load official source finder');
+    } finally {
+      setOfficialSourceFinderLoading(false);
+    }
+  }
+
   async function loadActivityTimeline() {
     try {
       setActivityTimelineError(null);
@@ -2012,12 +2032,19 @@ export default function ResearchDetailPage() {
     }
   }
 
+  function copyOfficialSourceQuery(text: string, key: string) {
+    navigator.clipboard.writeText(text).catch(() => {});
+    setOfficialSourceCopiedKey(key);
+    setTimeout(() => setOfficialSourceCopiedKey(null), 1500);
+  }
+
   useEffect(() => {
     load();
     loadEvaluationPrep();
     loadEvidenceLinks();
     loadIntelligenceScore();
     loadDocumentationGuide();
+    loadOfficialSourceFinder();
     loadActivityTimeline();
   }, [id]);
 
@@ -2175,6 +2202,12 @@ export default function ResearchDetailPage() {
 
             {/* Status + Readiness editors */}
             <div className="flex gap-2 flex-wrap">
+              <Link href="/investment/situations" className="px-2 py-0.5 rounded border border-gray-700 text-xs font-mono text-gray-400 hover:text-cyan-300">
+                KANBAN
+              </Link>
+              <Link href="/investment/intelligence" className="px-2 py-0.5 rounded border border-gray-700 text-xs font-mono text-gray-400 hover:text-cyan-300">
+                KPIS
+              </Link>
               {editingStatus ? (
                 <div className="flex items-center gap-2">
                   <select
@@ -2259,6 +2292,14 @@ export default function ResearchDetailPage() {
         </div>
 
         <DocumentationGuidePanel guide={documentationGuide} error={documentationGuideError} />
+
+        <OfficialSourceFinderPanel
+          finder={officialSourceFinder}
+          loading={officialSourceFinderLoading}
+          error={officialSourceFinderError}
+          copiedKey={officialSourceCopiedKey}
+          onCopy={copyOfficialSourceQuery}
+        />
 
         <div className="grid gap-4 lg:grid-cols-2">
           {/* ── Intelligence Score ── */}

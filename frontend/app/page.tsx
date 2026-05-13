@@ -56,6 +56,140 @@ function ModuleGrid({ modules }: { modules: ModuleCard[] }) {
   );
 }
 
+const workflowSteps = [
+  { label: "SEC EDGAR", href: "/investment/radar-status", helper: "Stored official-source detection metadata" },
+  { label: "SpecialSituation", href: "/investment/situations", helper: "Detected case candidate" },
+  { label: "Kanban", href: "/investment/situations", helper: "Manual triage and evidence mapping" },
+  { label: "Missing Evidence Hunter", href: "/agent-ops", helper: "Observer/manual documentation gaps" },
+  { label: "ResearchCase", href: "/investment/research", helper: "Manual promotion target" },
+  { label: "Evaluation Preparation", href: "/investment/research", helper: "Preparation readiness only" },
+  { label: "Evidence Links", href: "/investment/research", helper: "Metadata-only traceability" },
+  { label: "Intelligence Score", href: "/investment/research", helper: "Preparation quality score" },
+  { label: "Intelligence KPIs", href: "/investment/intelligence", helper: "Platform quality metrics" },
+  { label: "Fontana", href: "/agent-ops#fontana", helper: "Deterministic observer report" },
+] as const;
+
+const quickLinks = [
+  ["Open Kanban", "/investment/situations"],
+  ["Open Research Inbox", "/investment/research-inbox"],
+  ["Open ResearchCases", "/investment/research"],
+  ["Open Intelligence KPIs", "/investment/intelligence"],
+  ["Open Agent Ops", "/agent-ops"],
+  ["Open Radar Status", "/investment/radar-status"],
+  ["Open Sources", "/investment/sources"],
+] as const;
+
+const backendChecklist = [
+  "Health ping",
+  "ResearchCases endpoint",
+  "Situations endpoint",
+  "Agent Ops rooms endpoint",
+  "Documentation Guide endpoint",
+  "Activity Timeline endpoint",
+  "Intelligence Score endpoint",
+  "Intelligence KPIs endpoint",
+  "Fontana report endpoint",
+] as const;
+
+const frontendChecklist = [
+  "/",
+  "/investment/situations",
+  "/investment/situations/{id}",
+  "/investment/research/{id}",
+  "/investment/intelligence",
+  "/agent-ops",
+  "/agent-ops/rooms/{id}",
+] as const;
+
+function ResearchCommandCenter() {
+  return (
+    <div className="card mb-10 animate-fade-in-2">
+      <div className="card-header" style={{ alignItems: 'flex-start', gap: 16 }}>
+        <div>
+          <div className="card-title">Research Command Center</div>
+          <div className="card-desc" style={{ marginTop: 4 }}>
+            Active SEC-driven workflow, QA posture, and next manual navigation in one place.
+          </div>
+        </div>
+        <span className="status-badge status-badge--readonly">READ-ONLY</span>
+      </div>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 18 }}>
+        {workflowSteps.map((step, index) => (
+          <div key={step.label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {index > 0 && <span style={{ color: 'var(--text-faint)', fontSize: 12 }}>-&gt;</span>}
+            <Link
+              href={step.href}
+              className="status-badge status-badge--manual"
+              title={step.helper}
+              style={{ textDecoration: 'none' }}
+            >
+              {step.label}
+            </Link>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 10, marginTop: 18 }}>
+        {[
+          "Detected does not mean evaluated.",
+          "Evidence found does not mean verified.",
+          "Scores measure preparation quality, not investment attractiveness.",
+          "Fontana is deterministic observer only.",
+        ].map(note => (
+          <div key={note} style={{ border: '1px solid var(--border-subtle)', borderRadius: 8, padding: 12, color: 'var(--text-muted)', fontSize: 12, lineHeight: 1.5 }}>
+            {note}
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 18 }}>
+        {quickLinks.map(([label, href]) => (
+          <Link key={href} href={href} className="btn btn--secondary btn--sm">
+            {label}
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DeploymentVerificationChecklist() {
+  return (
+    <div className="card mb-10 animate-fade-in-2">
+      <div className="card-header" style={{ alignItems: 'flex-start', gap: 16 }}>
+        <div>
+          <div className="card-title">Deployment Verification Checklist</div>
+          <div className="card-desc" style={{ marginTop: 4 }}>
+            Manual post-deployment checks only. This panel does not call health endpoints, trigger scans, or deploy anything.
+          </div>
+        </div>
+        <span className="status-badge status-badge--readonly">MANUAL QA</span>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16, marginTop: 16 }}>
+        <ChecklistColumn title="Backend checks" items={backendChecklist} />
+        <ChecklistColumn title="Frontend routes" items={frontendChecklist} mono />
+      </div>
+    </div>
+  );
+}
+
+function ChecklistColumn({ title, items, mono = false }: { title: string; items: readonly string[]; mono?: boolean }) {
+  return (
+    <div style={{ border: '1px solid var(--border-subtle)', borderRadius: 8, padding: 14 }}>
+      <div className="section-title" style={{ marginBottom: 10 }}>{title}</div>
+      <div style={{ display: 'grid', gap: 8 }}>
+        {items.map(item => (
+          <div key={item} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12, color: 'var(--text-muted)' }}>
+            <span style={{ width: 10, height: 10, border: '1px solid var(--border-default)', borderRadius: 2, marginTop: 4, flexShrink: 0 }} />
+            <span style={{ fontFamily: mono ? 'var(--font-mono)' : undefined }}>{item}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
   const investmentOps: ModuleCard[] = [
     {
@@ -71,6 +205,13 @@ export default function Home() {
       description: "V2 operating queue — existing ResearchCases, legacy/manual labels",
       href: "/investment/research-inbox",
       icon: "RI",
+    },
+    {
+      name: "Intelligence KPIs",
+      status: "READ-ONLY",
+      description: "Preparation quality, evidence coverage, documentation gaps, and manual review workload.",
+      href: "/investment/intelligence",
+      icon: "IK",
     },
     {
       name: "Evaluations Queue",
@@ -209,14 +350,17 @@ export default function Home() {
           </div>
         </div>
 
+        <ResearchCommandCenter />
+        <DeploymentVerificationChecklist />
+
         {/* Investment Operations */}
-        <div className="animate-fade-in-2">
+        <div className="animate-fade-in-3">
           <SectionLabel label="Investment Operations" count={investmentOps.length} />
           <ModuleGrid modules={investmentOps} />
         </div>
 
         {/* Platform Observability */}
-        <div className="animate-fade-in-3">
+        <div className="animate-fade-in-4">
           <SectionLabel label="Platform Observability" count={observability.length} />
           <ModuleGrid modules={observability} />
         </div>

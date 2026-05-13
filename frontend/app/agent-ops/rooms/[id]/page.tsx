@@ -29,7 +29,7 @@ type AgentMetrics = {
 
 const ROOM_CHAINS: Record<string, string[]> = {
   radar_room: ['Edgar Scout', 'Router Analyst', 'Signal Filter', 'Quality Sentinel', 'Fontana'],
-  evidence_lab: ['Resource Scout', 'Evidence Mapper', 'Missing Evidence Hunter', 'Quality Sentinel', 'Playbook Scribe'],
+  evidence_lab: ['Resource Scout', 'Official Source Finder', 'Evidence Mapper', 'Missing Evidence Hunter', 'Quality Sentinel', 'Playbook Scribe'],
   research_desk: ['Case Builder', 'Missing Evidence Hunter', 'Intelligence Scorer', 'Fontana'],
   quality_court: ['Quality Sentinel', 'Risk Discipline Checker', 'Human Review Gate', 'Fontana'],
   playbook_workshop: ['Playbook Scribe', 'Coverage Analyst', 'Drift Watcher', 'Fontana'],
@@ -88,6 +88,17 @@ const AGENT_IDENTITIES: AgentIdentity[] = [
     outputs: ['candidate links', 'manual search ideas', 'resource status hints'],
     currentMode: 'manual-trigger',
     futureMode: 'frequent checks only after approval',
+    scheduler: 'disabled in this sprint',
+  },
+  {
+    name: 'Official Source Finder',
+    keyHint: 'official',
+    title: 'SEC filing locator',
+    mission: 'Builds manual official-source search plans from stored SEC metadata, workspace gaps, and resource candidates.',
+    watches: ['stored SEC filing URL', 'CIK', 'accession number', 'required resources', 'checklist gaps', 'search suggestions'],
+    outputs: ['manual locator steps', 'copyable official-source queries', 'missing document targets'],
+    currentMode: 'manual / observer-only',
+    futureMode: 'approved official-source checks may run in a future sprint',
     scheduler: 'disabled in this sprint',
   },
   {
@@ -308,6 +319,7 @@ export default function AgentOpsRoomDetailPage() {
   const [proposals, setProposals] = useState<AgentOpsProposal[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [loadErrors, setLoadErrors] = useState<Record<string, string | null>>({});
   const [selectedAgentKey, setSelectedAgentKey] = useState<string | null>(null);
 
   const room = useMemo(
@@ -318,6 +330,7 @@ export default function AgentOpsRoomDetailPage() {
   async function load() {
     setLoading(true);
     setError(null);
+    setLoadErrors({});
     try {
       const roomsData = await fetchAgentOpsRooms();
       const foundRoom = roomsData.rooms.find(item => item.key === roomId || item.id === roomId);
@@ -327,20 +340,33 @@ export default function AgentOpsRoomDetailPage() {
         setActivity([]);
         setDiagnostics([]);
         setProposals([]);
+        setLoadErrors({});
         setError('Agent Ops room not found');
         return;
       }
-      const [agentsData, activityData, diagnosticsData, proposalsData] = await Promise.all([
+      const [agentsResult, activityResult, diagnosticsResult, proposalsResult] = await Promise.allSettled([
         fetchAgentOpsAgents({ room_key: foundRoom.key }),
         fetchAgentOpsActivity({ room_key: foundRoom.key, limit: 100 }),
         fetchAgentOpsDiagnostics({ room_key: foundRoom.key, limit: 100 }),
         fetchAgentOpsProposals({ room_key: foundRoom.key, limit: 100 }),
       ]);
-      setAgents(agentsData.agents);
-      setActivity(activityData.items);
-      setDiagnostics(diagnosticsData.items);
-      setProposals(proposalsData.items);
-      setSelectedAgentKey(prev => prev ?? agentsData.agents[0]?.key ?? null);
+      const nextErrors: Record<string, string | null> = {};
+      const nextAgents = agentsResult.status === 'fulfilled' ? agentsResult.value.agents : [];
+      const nextActivity = activityResult.status === 'fulfilled' ? activityResult.value.items : [];
+      const nextDiagnostics = diagnosticsResult.status === 'fulfilled' ? diagnosticsResult.value.items : [];
+      const nextProposals = proposalsResult.status === 'fulfilled' ? proposalsResult.value.items : [];
+
+      if (agentsResult.status === 'rejected') nextErrors.agents = agentsResult.reason instanceof Error ? agentsResult.reason.message : 'Failed to load room agents';
+      if (activityResult.status === 'rejected') nextErrors.activity = activityResult.reason instanceof Error ? activityResult.reason.message : 'Failed to load room activity';
+      if (diagnosticsResult.status === 'rejected') nextErrors.diagnostics = diagnosticsResult.reason instanceof Error ? diagnosticsResult.reason.message : 'Failed to load room diagnostics';
+      if (proposalsResult.status === 'rejected') nextErrors.proposals = proposalsResult.reason instanceof Error ? proposalsResult.reason.message : 'Failed to load room proposals';
+
+      setAgents(nextAgents);
+      setActivity(nextActivity);
+      setDiagnostics(nextDiagnostics);
+      setProposals(nextProposals);
+      setLoadErrors(nextErrors);
+      setSelectedAgentKey(prev => (prev && nextAgents.some(agent => agent.key === prev)) ? prev : nextAgents[0]?.key ?? null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load Agent Ops room');
     } finally {
@@ -358,6 +384,7 @@ export default function AgentOpsRoomDetailPage() {
   const roomChain = room ? ROOM_CHAINS[room.key] ?? agents.map(agent => agent.name) : [];
   const totalSevereDiagnostics = diagnostics.filter(item => ['warning', 'error', 'critical'].includes(item.severity)).length;
   const roomReliability = Math.max(0, Math.min(100, 100 - totalSevereDiagnostics * 12 + activity.filter(item => item.severity === 'success').length * 3));
+  const secondaryLoadErrors = Object.entries(loadErrors).filter(([, message]) => Boolean(message));
 
   return (
     <div className="min-h-screen bg-slate-50 p-6 text-slate-900 md:p-8">
@@ -379,6 +406,17 @@ export default function AgentOpsRoomDetailPage() {
           <div className="rounded-lg border border-red-200 bg-red-50 p-5 text-sm text-red-800">{error ?? 'Agent Ops room not found'}</div>
         ) : (
           <div className="space-y-6">
+            {secondaryLoadErrors.length > 0 && (
+              <section className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                <p className="font-semibold">Some Agent Ops room panels did not load.</p>
+                <ul className="mt-2 list-disc space-y-1 pl-5">
+                  {secondaryLoadErrors.map(([key, message]) => (
+                    <li key={key}>{formatLabel(key)}: {message}</li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
             <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
               <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                 <div>

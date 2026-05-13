@@ -8,6 +8,7 @@ import {
   fetchAgentOpsDiagnostics,
   fetchAgentOpsProposals,
   fetchAgentOpsRooms,
+  fetchFontanaReport,
   updateAgentOpsProposal,
   type AgentOpsActivity,
   type AgentOpsAgent,
@@ -15,6 +16,7 @@ import {
   type AgentOpsProposal,
   type AgentOpsProposalStatus,
   type AgentOpsRoom,
+  type FontanaDiagnosticReport,
 } from '@/lib/api';
 
 const SECTIONS = [
@@ -43,6 +45,7 @@ const TOP_NAV_LINKS = [
   ['/', 'Mission Control'],
   ['/investment/research', 'Research Cases'],
   ['/investment/research-inbox', 'Research Inbox'],
+  ['/investment/intelligence', 'Intelligence KPIs'],
   ['/investment/evaluations', 'Evaluations'],
   ['/investment/internal-audit', 'Internal Audit'],
   ['/investment/radar-status', 'Radar Status'],
@@ -51,7 +54,7 @@ const TOP_NAV_LINKS = [
 
 const ROOM_CHAINS: Record<string, string[]> = {
   radar_room: ['EDGAR Scout', 'Router Analyst', 'Signal Filter', 'Quality Sentinel', 'Fontana'],
-  evidence_lab: ['Resource Scout', 'Evidence Mapper', 'Missing Evidence Hunter', 'Quality Sentinel', 'Playbook Scribe'],
+  evidence_lab: ['Resource Scout', 'Official Source Finder', 'Evidence Mapper', 'Missing Evidence Hunter', 'Quality Sentinel', 'Playbook Scribe'],
   research_desk: ['Case Builder', 'Missing Evidence Hunter', 'Intelligence Scorer', 'Fontana'],
   quality_court: ['Quality Sentinel', 'Risk Discipline Checker', 'Human Review Gate', 'Fontana'],
   playbook_workshop: ['Playbook Scribe', 'Coverage Analyst', 'Drift Watcher', 'Fontana'],
@@ -63,6 +66,7 @@ const AGENT_CALLSIGNS: Record<string, string> = {
   router: 'Playbook router',
   quality: 'Guardrail judge',
   resource: 'Evidence finder',
+  official: 'SEC locator',
   evidence: 'Traceability mapper',
   case: 'Case assembler',
   evaluation: 'Manual prep officer',
@@ -118,6 +122,18 @@ const AGENT_IDENTITIES: AgentIdentity[] = [
     outputs: ['candidate links', 'manual search ideas', 'resource status hints'],
     currentMode: 'manual-trigger',
     futureMode: 'frequent checks only after approval',
+    scheduler: 'disabled in this sprint',
+  },
+  {
+    name: 'Official Source Finder',
+    keyHint: 'official',
+    room: 'evidence_lab',
+    title: 'SEC filing locator',
+    mission: 'Builds manual official-source search plans from stored SEC metadata, workspace gaps, and resource candidates.',
+    watches: ['stored SEC filing URL', 'CIK', 'accession number', 'required resources', 'checklist gaps', 'search suggestions'],
+    outputs: ['manual locator steps', 'copyable official-source queries', 'missing document targets'],
+    currentMode: 'manual / observer-only',
+    futureMode: 'approved official-source checks may run in a future sprint',
     scheduler: 'disabled in this sprint',
   },
   {
@@ -465,6 +481,7 @@ export default function AgentOpsPage() {
   const [activity, setActivity] = useState<AgentOpsActivity[]>([]);
   const [diagnostics, setDiagnostics] = useState<AgentOpsDiagnostic[]>([]);
   const [proposals, setProposals] = useState<AgentOpsProposal[]>([]);
+  const [fontanaReport, setFontanaReport] = useState<FontanaDiagnosticReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [errors, setErrors] = useState<Record<string, string | null>>({});
   const [proposalErrors, setProposalErrors] = useState<Record<string, string>>({});
@@ -477,12 +494,13 @@ export default function AgentOpsPage() {
     if (initial) setLoading(true);
     else setRefreshing(true);
     const nextErrors: Record<string, string | null> = {};
-    const [roomsResult, agentsResult, activityResult, diagnosticsResult, proposalsResult] = await Promise.allSettled([
+    const [roomsResult, agentsResult, activityResult, diagnosticsResult, proposalsResult, fontanaResult] = await Promise.allSettled([
       fetchAgentOpsRooms(),
       fetchAgentOpsAgents(),
       fetchAgentOpsActivity({ limit: 25 }),
       fetchAgentOpsDiagnostics({ limit: 25 }),
       fetchAgentOpsProposals({ limit: 25 }),
+      fetchFontanaReport(),
     ]);
 
     if (roomsResult.status === 'fulfilled') setRooms(roomsResult.value.rooms);
@@ -499,6 +517,9 @@ export default function AgentOpsPage() {
 
     if (proposalsResult.status === 'fulfilled') setProposals(proposalsResult.value.items);
     else nextErrors.proposals = proposalsResult.reason instanceof Error ? proposalsResult.reason.message : 'Failed to load proposals';
+
+    if (fontanaResult.status === 'fulfilled') setFontanaReport(fontanaResult.value);
+    else nextErrors.fontana = fontanaResult.reason instanceof Error ? fontanaResult.reason.message : 'Failed to load Fontana report';
 
     setErrors(nextErrors);
     setLastRefreshedAt(new Date());
@@ -990,12 +1011,62 @@ export default function AgentOpsPage() {
               />
             </SectionShell>
 
-            <SectionShell id="fontana" title="Fontana Reports" subtitle="Fontana is documented as CTO / Project Governor, but runtime is not implemented yet.">
-              <PlaceholderPanel
-                title="Fontana CTO reports are documented but not implemented yet."
-                description="Fontana is an advisor/documenter concept only and cannot deploy, modify production, trigger scans, change cron, or enable evaluator v2."
-                items={FONTANA_SECTIONS}
-              />
+            <SectionShell
+              id="fontana"
+              title="Fontana Diagnostic Report"
+              subtitle="Deterministic observer report. No autonomous changes, live AI, evaluator, scanner, or external fetch is called."
+              error={errors.fontana}
+            >
+              {!fontanaReport ? (
+                <PlaceholderPanel
+                  title="Fontana report endpoint is not available yet."
+                  description="Fontana remains an advisor/documenter concept only and cannot deploy, modify production, trigger scans, change cron, or enable evaluator v2."
+                  items={FONTANA_SECTIONS}
+                />
+              ) : (
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Summary</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-700">{fontanaReport.summary}</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Badge value={fontanaReport.mode} />
+                      <Badge value="read-only" />
+                    </div>
+                  </div>
+                  <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">System Health</p>
+                    <ul className="mt-2 space-y-1">
+                      {fontanaReport.system_health.map(item => (
+                        <li key={item} className="text-sm leading-6 text-slate-700">{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Bottlenecks / Evidence Gaps</p>
+                    <ul className="mt-2 space-y-1">
+                      {[...fontanaReport.case_bottlenecks, ...fontanaReport.evidence_gaps].map(item => (
+                        <li key={item} className="text-sm leading-6 text-slate-700">{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Next Manual Steps</p>
+                    <ul className="mt-2 space-y-1">
+                      {fontanaReport.recommended_manual_next_steps.map(item => (
+                        <li key={item} className="text-sm leading-6 text-slate-700">{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div className="rounded-md border border-slate-200 bg-slate-50 p-4 lg:col-span-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Guardrails</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {fontanaReport.guardrails.map(guardrail => (
+                        <Badge key={guardrail} value={guardrail} />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
             </SectionShell>
           </div>
         )}

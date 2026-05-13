@@ -76,6 +76,10 @@ from backend.services.investment.case_activity import (
     CaseActivityTimelinePackage,
     build_research_case_activity_timeline,
 )
+from backend.services.investment.official_source_finder import (
+    OfficialSourceFinderPackage,
+    build_research_case_official_source_finder,
+)
 from backend.services.observability import run_logger
 
 router = APIRouter()
@@ -172,6 +176,36 @@ async def get_case_documentation_guide(research_case_id: str, db: AsyncSession =
         evidence_links=evidence_links,
         evaluation_prep=evaluation_prep,
         intelligence_score=intelligence_score,
+        source_situation=source_situation,
+    )
+
+
+@router.get("/research-cases/{research_case_id}/official-source-finder", response_model=OfficialSourceFinderPackage)
+async def get_case_official_source_finder(research_case_id: str, db: AsyncSession = Depends(get_db)):
+    rc_id = _parse_uuid(research_case_id, "research_case_id")
+    result = await db.execute(
+        select(ResearchCase)
+        .where(ResearchCase.id == rc_id)
+        .options(
+            selectinload(ResearchCase.documents),
+            selectinload(ResearchCase.sources),
+        )
+    )
+    rc = result.scalars().first()
+    if not rc:
+        raise HTTPException(status_code=404, detail="Research case not found")
+
+    source_situation = None
+    if rc.situation_id:
+        sit_result = await db.execute(
+            select(SpecialSituation).where(SpecialSituation.id == rc.situation_id)
+        )
+        source_situation = sit_result.scalars().first()
+
+    evidence_links = build_research_case_evidence_links(rc)
+    return build_research_case_official_source_finder(
+        rc,
+        evidence_links=evidence_links,
         source_situation=source_situation,
     )
 

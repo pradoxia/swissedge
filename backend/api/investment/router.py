@@ -30,6 +30,12 @@ from backend.services.investment.case_activity import (
     CaseActivityTimelinePackage,
     build_situation_activity_timeline,
 )
+from backend.services.investment.fontana_report import collect_fontana_diagnostic_report
+from backend.services.investment.intelligence_kpis import collect_intelligence_kpi_package
+from backend.services.investment.official_source_finder import (
+    OfficialSourceFinderPackage,
+    build_situation_official_source_finder,
+)
 from backend.services.investment.research_cases import (
     PromoteSpecialSituationPayload,
     ResearchCaseRead,
@@ -244,6 +250,16 @@ def _count_classified_by_type(filings: list[Filing]) -> dict[str, int]:
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
+
+@router.get("/intelligence/kpis")
+async def get_intelligence_kpis(db: AsyncSession = Depends(get_db)):
+    return await collect_intelligence_kpi_package(db)
+
+
+@router.get("/intelligence/fontana-report")
+async def get_fontana_report(db: AsyncSession = Depends(get_db)):
+    return await collect_fontana_diagnostic_report(db)
+
 
 @router.post("/evaluate-v2")
 async def evaluate_v2_manual(
@@ -584,6 +600,18 @@ async def get_situation_documentation_guide(situation_id: str, db: AsyncSession 
         raise HTTPException(status_code=404, detail="Situation not found")
     evidence_links = build_situation_evidence_links(sit)
     return build_situation_documentation_guide(sit, evidence_links)
+
+
+@router.get("/situations/{situation_id}/official-source-finder", response_model=OfficialSourceFinderPackage)
+async def get_situation_official_source_finder(situation_id: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(SpecialSituation).where(SpecialSituation.id == uuid.UUID(situation_id))
+    )
+    sit = result.scalars().first()
+    if not sit:
+        raise HTTPException(status_code=404, detail="Situation not found")
+    evidence_links = build_situation_evidence_links(sit)
+    return build_situation_official_source_finder(sit, evidence_links)
 
 
 @router.get("/situations/{situation_id}/activity-timeline", response_model=CaseActivityTimelinePackage)

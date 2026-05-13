@@ -125,6 +125,24 @@ function documentationSnapshotFor(s: Situation): { level: string; missing: numbe
   return { level, missing: missingResources + missingChecklist };
 }
 
+function sourceFinderSnapshotFor(s: Situation): { hasSecLink: boolean; missingOfficialDocs: number; queries: number; status: string } {
+  const workspace = s.methodology_workspace ?? (s.evaluation?.methodology_workspace as Situation['methodology_workspace'] | undefined);
+  const required = workspace?.required_resources ?? [];
+  const checklist = workspace?.checklist ?? [];
+  const suggestions = workspace?.search_suggestions ?? [];
+  const secDetection = s.evaluation?.sec_detection ?? {};
+  const hasSecLink = !!(s.filing_url || secDetection.filing_url);
+  const missingRequired = required.filter(item => ['missing', 'needs_evidence', 'not_started'].includes(item.status)).length;
+  const missingChecklist = checklist.filter(item => ['missing', 'needs_evidence', 'not_started', 'open'].includes(item.status)).length;
+  const queries = suggestions.filter(item => !!item.query).length;
+  return {
+    hasSecLink,
+    missingOfficialDocs: missingRequired + missingChecklist,
+    queries,
+    status: hasSecLink && missingRequired + missingChecklist === 0 ? 'ready' : 'needs work',
+  };
+}
+
 function MiniCaseRow({ situation: s }: { situation: Situation }) {
   const [hovered, setHovered] = useState(false);
   const name = s.company_name.length > 34 ? s.company_name.slice(0, 32) + '…' : s.company_name;
@@ -284,13 +302,12 @@ function SituationCard({
   const workspace = s.methodology_workspace ?? (s.evaluation?.methodology_workspace as Situation['methodology_workspace'] | undefined);
   const hasWorkspace = !!workspace;
   const progress = workspace?.progress;
-  const missingRequired = progress?.missing_required_resources ?? 0;
-  const candidateResources = progress?.candidate_resources ?? (workspace?.resource_candidates?.filter(item => item.status === 'candidate_found').length ?? 0);
   const evidenceFound = progress?.evidence_found ?? 0;
   const name = s.company_name.length > 38 ? s.company_name.slice(0, 36) + '…' : s.company_name;
   const date = filingDate(s);
   const workflow = workflowFor(s);
   const documentation = documentationSnapshotFor(s);
+  const sourceFinder = sourceFinderSnapshotFor(s);
   const latestActivity = latestActivityFor(s);
   const attention = latestActivity.status === 'needs_attention' || latestActivity.status === 'manual_review_required';
   const showMissingHunter = hasWorkspace || documentation.missing > 0 || documentation.level !== 'needs links';
@@ -318,12 +335,14 @@ function SituationCard({
           {s.evaluation?.detected_only === true && <span className="status-badge status-badge--preview" style={{ fontSize: 10 }}>Detected only</span>}
           {workspace?.research_case_id && <span className="status-badge status-badge--active" style={{ fontSize: 10 }}>ResearchCase</span>}
           <span className="status-badge status-badge--readonly" style={{ fontSize: 10 }}>Docs: {documentation.level}</span>
+          <span className={`status-badge ${sourceFinder.status === 'ready' ? 'status-badge--readonly' : 'status-badge--preview'}`} style={{ fontSize: 10 }}>Source finder: {sourceFinder.status}</span>
+          <span className="status-badge status-badge--readonly" style={{ fontSize: 10 }}>SEC link: {sourceFinder.hasSecLink ? 'yes' : 'no'}</span>
           <span className={`status-badge ${documentation.missing > 0 ? 'status-badge--preview' : 'status-badge--readonly'}`} style={{ fontSize: 10 }}>Missing: {documentation.missing}</span>
           {showMissingHunter && <span className="status-badge status-badge--partial" style={{ fontSize: 10 }}>Agent: Missing Evidence Hunter</span>}
         </div>
         {hasWorkspace && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 5, marginBottom: 8 }}>
-            {([['Missing', missingRequired], ['Resources', candidateResources], ['Evidence', evidenceFound]] as [string, number][]).map(([label, value]) => (
+            {([['Official docs', sourceFinder.missingOfficialDocs], ['Queries', sourceFinder.queries], ['Evidence', evidenceFound]] as [string, number][]).map(([label, value]) => (
               <div key={label} style={{ background: 'var(--bg-subtle)', borderRadius: 5, padding: '5px 6px' }}>
                 <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-faint)', textTransform: 'uppercase' }}>{label}</div>
                 <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-primary)' }}>{value}</div>
