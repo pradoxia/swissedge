@@ -3,11 +3,14 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import { CaseActivityTimeline } from '@/app/components/CaseActivityTimeline';
 import { EvidenceLinksPanel } from '@/app/components/EvidenceLinksPanel';
 import { IntelligenceScoreCard } from '@/app/components/IntelligenceScoreCard';
 import {
   fetchResearchCase,
+  fetchResearchCaseActivityTimeline,
   fetchResearchCaseEvidenceLinks,
+  fetchResearchCaseDocumentationGuide,
   fetchResearchCaseEvaluationPrep,
   fetchResearchCaseIntelligenceScore,
   updateResearchCase,
@@ -27,7 +30,9 @@ import {
   createPublicDraftFromResearchCase,
   fetchPublicDrafts,
   type ResearchCase,
+  type CaseActivityTimelinePackage,
   type ResearchCaseEvidenceLinksPackage,
+  type CaseDocumentationGuidePackage,
   type EvaluationPrepPackage,
   type IntelligenceScorePackage,
   type ResearchTask,
@@ -1579,6 +1584,262 @@ function EvaluationPrepPanel({
   );
 }
 
+function QuickSourceLinks({
+  rc,
+  evidenceLinks,
+}: {
+  rc: ResearchCase;
+  evidenceLinks: ResearchCaseEvidenceLinksPackage | null;
+}) {
+  const links = [
+    ...(rc.situation_id ? [{ label: 'Origin situation', href: `/investment/situations/${rc.situation_id}`, external: false }] : []),
+    ...rc.documents.slice(0, 4).map(doc => ({
+      label: doc.title || doc.doc_type || 'Research document',
+      href: doc.url,
+      external: true,
+    })),
+    ...rc.sources.filter(source => source.source_url).slice(0, 4).map(source => ({
+      label: source.source_name,
+      href: source.source_url!,
+      external: true,
+    })),
+    ...(evidenceLinks?.links ?? []).filter(link => link.url).slice(0, 4).map(link => ({
+      label: link.label || link.source_type,
+      href: link.url!,
+      external: true,
+    })),
+  ].slice(0, 8);
+
+  return (
+    <Section title="Quick Source Links" hint="Metadata links only. Opening a link is a manual browser action.">
+      {links.length === 0 ? (
+        <p className="text-xs font-mono text-gray-600 italic">No source, document, or evidence links recorded yet.</p>
+      ) : (
+        <div className="grid gap-2 md:grid-cols-2">
+          {links.map((link, index) => (
+            link.external ? (
+              <a
+                key={`${link.href}-${index}`}
+                href={link.href}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded border border-gray-800 px-3 py-2 text-xs font-mono text-cyan-700 hover:text-cyan-400"
+              >
+                {link.label}
+              </a>
+            ) : (
+              <Link
+                key={`${link.href}-${index}`}
+                href={link.href}
+                className="rounded border border-gray-800 px-3 py-2 text-xs font-mono text-cyan-700 hover:text-cyan-400"
+              >
+                {link.label}
+              </Link>
+            )
+          ))}
+        </div>
+      )}
+    </Section>
+  );
+}
+
+function CaseActivityLog({ rc }: { rc: ResearchCase }) {
+  const rows = [
+    { label: 'Case created', at: rc.created_at, detail: rc.intake_method ?? 'manual/private desk' },
+    { label: 'Last updated', at: rc.updated_at, detail: rc.status },
+    ...rc.tasks.slice(0, 3).map(task => ({ label: `Task ${task.status}`, at: task.created_at, detail: task.description })),
+    ...rc.documents.slice(0, 3).map(doc => ({ label: 'Document added', at: doc.created_at, detail: doc.title || doc.doc_type || doc.url })),
+    ...rc.sources.slice(0, 3).map(source => ({ label: 'Source added', at: source.created_at, detail: source.source_name })),
+  ]
+    .filter(row => row.at)
+    .sort((a, b) => String(b.at).localeCompare(String(a.at)))
+    .slice(0, 8);
+
+  return (
+    <Section title="Case Activity Log" hint="Read-only event summary from stored case records.">
+      {rows.length === 0 ? (
+        <p className="text-xs font-mono text-gray-600 italic">No case activity rows available yet.</p>
+      ) : (
+        <div className="space-y-2">
+          {rows.map((row, index) => (
+            <div key={`${row.label}-${row.at}-${index}`} className="flex items-start gap-3 rounded border border-gray-800 p-2">
+              <span className="mt-1 h-2 w-2 rounded-full bg-cyan-700" />
+              <div className="min-w-0">
+                <p className="text-xs font-mono text-gray-300">{row.label}</p>
+                <p className="text-xs text-gray-500">{new Date(row.at).toLocaleString('en-CH')} / {row.detail}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Section>
+  );
+}
+
+function guideItemTitle(item: Record<string, unknown>): string {
+  const value = item.title ?? item.label ?? item.resource_id ?? item.check_id ?? item.query;
+  return typeof value === 'string' && value.trim() ? value : 'Untitled item';
+}
+
+function DocumentationGuidePanel({
+  guide,
+  error,
+}: {
+  guide: CaseDocumentationGuidePackage | null;
+  error: string | null;
+}) {
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  function copyQuery(query: string, key: string) {
+    navigator.clipboard.writeText(query).catch(() => {});
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(null), 1500);
+  }
+
+  if (error) {
+    return (
+      <Section title="Case Documentation Guide">
+        <p className="text-xs font-mono text-amber-300">{error}</p>
+      </Section>
+    );
+  }
+  if (!guide) return null;
+
+  const missingTotal =
+    guide.missing_evidence.missing_required_resources.length +
+    guide.missing_evidence.missing_checklist_items.length;
+
+  return (
+    <Section title="Case Documentation Guide" hint="Derived from current case state. No autonomous agent run yet. No document body has been fetched.">
+      <div className="space-y-5">
+        <div className="grid gap-3 md:grid-cols-[180px_1fr]">
+          <div className="rounded border border-gray-800 bg-gray-900/40 p-3">
+            <p className="text-xs font-mono uppercase tracking-wide text-gray-600">Documentation quality</p>
+            <p className="mt-1 text-2xl font-mono text-cyan-300">{guide.documentation_quality.score}/100</p>
+            <p className="mt-1 text-xs font-mono text-gray-500">{guide.documentation_quality.level.replace(/_/g, ' ')}</p>
+          </div>
+          <div className="rounded border border-gray-800 p-3">
+            <p className="text-sm text-gray-300">{guide.documentation_quality.summary}</p>
+            <div className="mt-3 grid gap-2 md:grid-cols-3">
+              {guide.documentation_quality.checks.map(check => (
+                <div key={check.label} className="rounded border border-gray-800 px-2 py-1.5">
+                  <p className="text-xs text-gray-400">{check.label}</p>
+                  <p className={`text-xs font-mono ${check.status === 'ok' ? 'text-green-400' : 'text-amber-300'}`}>{check.status}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-3">
+          <div>
+            <p className="mb-2 text-xs font-mono uppercase tracking-wide text-gray-600">How to find this case</p>
+            <div className="space-y-1 text-xs text-gray-400">
+              <p>Source: {guide.detection_guide.source}</p>
+              <p>Origin SpecialSituation: {guide.detection_guide.company_name ?? '-'}</p>
+              <p>CIK: {guide.detection_guide.cik ?? '-'}</p>
+              <p>Accession: {guide.detection_guide.accession_number ?? '-'}</p>
+              <p>Filing: {guide.detection_guide.filing_type ?? '-'} / {guide.detection_guide.filing_date ?? '-'}</p>
+              {guide.detection_guide.filing_url && (
+                <a href={guide.detection_guide.filing_url} target="_blank" rel="noreferrer" className="mt-2 inline-flex rounded border border-gray-700 px-3 py-1 text-xs font-mono text-cyan-700 hover:text-cyan-400">
+                  Open SEC filing
+                </a>
+              )}
+            </div>
+          </div>
+          <div>
+            <p className="mb-2 text-xs font-mono uppercase tracking-wide text-gray-600">Manual verification steps</p>
+            <ol className="list-decimal space-y-1 pl-4">
+              {guide.detection_guide.manual_verification_steps.map(step => (
+                <li key={step} className="text-xs text-gray-400">{step}</li>
+              ))}
+            </ol>
+          </div>
+          <div>
+            <p className="mb-2 text-xs font-mono uppercase tracking-wide text-gray-600">Missing Evidence Hunter</p>
+            <p className="text-xs leading-5 text-gray-400">{guide.research_agent.current_mission}</p>
+            <p className="mt-2 text-xs font-mono text-gray-500">Current mode: manual / observer-only</p>
+            <p className="mt-1 text-xs text-gray-500">{guide.research_agent.future_scheduler_note}</p>
+          </div>
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-3">
+          <div>
+            <p className="mb-2 text-xs font-mono uppercase tracking-wide text-gray-600">Missing required resources ({guide.missing_evidence.missing_required_resources.length})</p>
+            {guide.missing_evidence.missing_required_resources.length === 0 ? (
+              <p className="text-xs text-gray-600">No missing required resources in the guide.</p>
+            ) : (
+              <ul className="list-disc space-y-1 pl-4">
+                {guide.missing_evidence.missing_required_resources.slice(0, 6).map((item, index) => (
+                  <li key={`${guideItemTitle(item)}-${index}`} className="text-xs text-gray-400">{guideItemTitle(item)}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div>
+            <p className="mb-2 text-xs font-mono uppercase tracking-wide text-gray-600">Missing checklist evidence ({guide.missing_evidence.missing_checklist_items.length})</p>
+            {guide.missing_evidence.missing_checklist_items.length === 0 ? (
+              <p className="text-xs text-gray-600">No checklist gaps in the guide.</p>
+            ) : (
+              <ul className="list-disc space-y-1 pl-4">
+                {guide.missing_evidence.missing_checklist_items.slice(0, 6).map((item, index) => (
+                  <li key={`${guideItemTitle(item)}-${index}`} className="text-xs text-gray-400">{guideItemTitle(item)}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div>
+            <p className="mb-2 text-xs font-mono uppercase tracking-wide text-gray-600">Current manual research plan</p>
+            <ul className="list-disc space-y-1 pl-4">
+              {guide.research_agent.next_manual_actions.slice(0, 5).map(action => (
+                <li key={action} className="text-xs text-gray-400">{action}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+
+        <div>
+          <p className="mb-2 text-xs font-mono uppercase tracking-wide text-gray-600">Copyable search queries</p>
+          {guide.search_plan.copyable_queries.length === 0 ? (
+            <p className="text-xs text-gray-600">No stored search suggestions yet.</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {guide.search_plan.copyable_queries.map((query, index) => (
+                <button
+                  key={`${query}-${index}`}
+                  onClick={() => copyQuery(query, `query-${index}`)}
+                  className="rounded border border-gray-700 px-3 py-1 text-xs font-mono text-gray-400 hover:text-cyan-400"
+                >
+                  {copiedKey === `query-${index}` ? 'Copied' : 'Copy search query'}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div>
+          <p className="mb-2 text-xs font-mono uppercase tracking-wide text-gray-600">Derived activity timeline</p>
+          <div className="space-y-2">
+            {guide.activity_timeline.slice(0, 8).map((event, index) => (
+              <div key={`${event.label}-${index}`} className="rounded border border-gray-800 px-3 py-2">
+                <p className="text-xs font-mono text-gray-300">{event.label}</p>
+                <p className="text-xs text-gray-500">
+                  {event.timestamp ? new Date(event.timestamp).toLocaleString('en-CH') : 'Current state — timestamp unavailable'}
+                  {event.detail ? ` / ${event.detail}` : ''}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <p className="text-xs font-mono text-gray-700">
+          Missing items: {missingTotal} · Frequent checks planned for future approved sprint · Scheduler disabled in this sprint
+        </p>
+      </div>
+    </Section>
+  );
+}
+
 export default function ResearchDetailPage() {
   const params = useParams();
   const id = params.id as string;
@@ -1587,11 +1848,15 @@ export default function ResearchDetailPage() {
   const [evaluationPrep, setEvaluationPrep] = useState<EvaluationPrepPackage | null>(null);
   const [evidenceLinks, setEvidenceLinks] = useState<ResearchCaseEvidenceLinksPackage | null>(null);
   const [intelligenceScore, setIntelligenceScore] = useState<IntelligenceScorePackage | null>(null);
+  const [documentationGuide, setDocumentationGuide] = useState<CaseDocumentationGuidePackage | null>(null);
+  const [activityTimeline, setActivityTimeline] = useState<CaseActivityTimelinePackage | null>(null);
   const [prepLoading, setPrepLoading] = useState(true);
   const [scoreLoading, setScoreLoading] = useState(true);
   const [prepError, setPrepError] = useState<string | null>(null);
   const [evidenceLinksError, setEvidenceLinksError] = useState<string | null>(null);
   const [scoreError, setScoreError] = useState<string | null>(null);
+  const [documentationGuideError, setDocumentationGuideError] = useState<string | null>(null);
+  const [activityTimelineError, setActivityTimelineError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -1653,18 +1918,22 @@ export default function ResearchDetailPage() {
     try {
       setPrepLoading(true);
       setPrepError(null);
-      const [prepData, linksData] = await Promise.all([
-        fetchResearchCaseEvaluationPrep(id),
-        fetchResearchCaseEvidenceLinks(id),
-      ]);
+      const prepData = await fetchResearchCaseEvaluationPrep(id);
       setEvaluationPrep(prepData);
-      setEvidenceLinks(linksData);
-      setEvidenceLinksError(null);
     } catch (err) {
       setPrepError(err instanceof Error ? err.message : 'Failed to load evaluation preparation');
-      setEvidenceLinksError(err instanceof Error ? err.message : 'Failed to load research traceability');
     } finally {
       setPrepLoading(false);
+    }
+  }
+
+  async function loadEvidenceLinks() {
+    try {
+      setEvidenceLinksError(null);
+      const linksData = await fetchResearchCaseEvidenceLinks(id);
+      setEvidenceLinks(linksData);
+    } catch (err) {
+      setEvidenceLinksError(err instanceof Error ? err.message : 'Failed to load research traceability');
     }
   }
 
@@ -1681,10 +1950,33 @@ export default function ResearchDetailPage() {
     }
   }
 
+  async function loadDocumentationGuide() {
+    try {
+      setDocumentationGuideError(null);
+      const guideData = await fetchResearchCaseDocumentationGuide(id);
+      setDocumentationGuide(guideData);
+    } catch (err) {
+      setDocumentationGuideError(err instanceof Error ? err.message : 'Failed to load documentation guide');
+    }
+  }
+
+  async function loadActivityTimeline() {
+    try {
+      setActivityTimelineError(null);
+      const timelineData = await fetchResearchCaseActivityTimeline(id);
+      setActivityTimeline(timelineData);
+    } catch (err) {
+      setActivityTimelineError(err instanceof Error ? err.message : 'Failed to load case activity timeline');
+    }
+  }
+
   useEffect(() => {
     load();
     loadEvaluationPrep();
+    loadEvidenceLinks();
     loadIntelligenceScore();
+    loadDocumentationGuide();
+    loadActivityTimeline();
   }, [id]);
 
   async function saveField(payload: Parameters<typeof updateResearchCase>[1], successMsg: string) {
@@ -1801,6 +2093,8 @@ export default function ResearchDetailPage() {
           <Link href="/" className="hover:text-cyan-400">MISSION CONTROL</Link>
           <span>/</span>
           <Link href="/investment/evaluations" className="hover:text-cyan-400">EVALUATIONS</Link>
+          <span>/</span>
+          <Link href="/investment/situations" className="hover:text-cyan-400">KANBAN</Link>
           <span>/</span>
           <Link href="/investment/research" className="hover:text-cyan-400">RESEARCH CASES</Link>
           <span>/</span>
@@ -1922,6 +2216,52 @@ export default function ResearchDetailPage() {
           </div>
         </div>
 
+        <DocumentationGuidePanel guide={documentationGuide} error={documentationGuideError} />
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          {/* ── Intelligence Score ── */}
+          <Section title="Intelligence Score" hint="Read-only IA Score for preparation quality, safety, and usefulness. Manual review remains mandatory.">
+            <IntelligenceScoreCard
+              score={intelligenceScore}
+              loading={scoreLoading}
+              error={scoreError}
+              onRefresh={loadIntelligenceScore}
+            />
+          </Section>
+
+          {/* ── Evaluation Preparation ── */}
+          <Section title="Evaluation Preparation" hint="Read-only readiness package for manual evaluation planning. No AI, no recommendation, no publishing.">
+            <EvaluationPrepPanel
+              prep={evaluationPrep}
+              loading={prepLoading}
+              error={prepError}
+              onRefresh={loadEvaluationPrep}
+            />
+          </Section>
+        </div>
+
+        {/* ── Evidence Links / Traceability ── */}
+        <Section title="Evidence Links / Research Traceability" hint="Metadata-only source links used to trace where case information came from.">
+          {evidenceLinksError && (
+            <p className="mb-3 text-xs font-mono text-amber-300">{evidenceLinksError}</p>
+          )}
+          <EvidenceLinksPanel
+            title="ResearchCase evidence links"
+            links={evidenceLinks?.links ?? []}
+            guardrails={evidenceLinks?.guardrails ?? []}
+            emptyText="No stored traceability links are available for this ResearchCase yet."
+          />
+        </Section>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <QuickSourceLinks rc={rc} evidenceLinks={evidenceLinks} />
+          <CaseActivityTimeline
+            title="Research Timeline / Case Activity Log"
+            events={activityTimeline?.events ?? []}
+            error={activityTimelineError}
+          />
+        </div>
+
         {/* ── Research Brief ── */}
         <Section title="Research Brief" hint="Structured 14-section research note. Manual editor below; AI preview via button.">
           <BriefEditor
@@ -1946,39 +2286,6 @@ export default function ResearchDetailPage() {
             }}
           />
           <PublicDraftPanel caseId={rc.id} />
-        </Section>
-
-        {/* ── Evaluation Preparation ── */}
-        <Section title="Evaluation Preparation" hint="Read-only readiness package for manual evaluation planning. No AI, no recommendation, no publishing.">
-          <EvaluationPrepPanel
-            prep={evaluationPrep}
-            loading={prepLoading}
-            error={prepError}
-            onRefresh={loadEvaluationPrep}
-          />
-        </Section>
-
-        {/* ── Intelligence Score ── */}
-        <Section title="Intelligence Score" hint="Read-only IA Score for preparation quality, safety, and usefulness. Manual review remains mandatory.">
-          <IntelligenceScoreCard
-            score={intelligenceScore}
-            loading={scoreLoading}
-            error={scoreError}
-            onRefresh={loadIntelligenceScore}
-          />
-        </Section>
-
-        {/* ── Evidence Links / Traceability ── */}
-        <Section title="Evidence Links / Research Traceability" hint="Metadata-only source links used to trace where case information came from.">
-          {evidenceLinksError && (
-            <p className="mb-3 text-xs font-mono text-amber-300">{evidenceLinksError}</p>
-          )}
-          <EvidenceLinksPanel
-            title="ResearchCase evidence links"
-            links={evidenceLinks?.links ?? []}
-            guardrails={evidenceLinks?.guardrails ?? []}
-            emptyText="No stored traceability links are available for this ResearchCase yet."
-          />
         </Section>
 
         {/* ── Notes ── */}

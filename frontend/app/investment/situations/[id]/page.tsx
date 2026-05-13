@@ -13,8 +13,11 @@ import {
   StatusBadge,
 } from '@/app/components/ui';
 import { EvidenceLinksPanel } from '@/app/components/EvidenceLinksPanel';
+import { CaseActivityTimeline } from '@/app/components/CaseActivityTimeline';
 import {
   addSituationResource,
+  fetchSituationActivityTimeline,
+  fetchSituationDocumentationGuide,
   fetchSituationEvidenceLinks,
   fetchSituation,
   promoteSituationToResearchCase,
@@ -25,6 +28,8 @@ import {
   type RequiredResourceItem,
   type ResourceCandidate,
   type Situation,
+  type CaseDocumentationGuidePackage,
+  type CaseActivityTimelinePackage,
   type SituationEvidenceLinksPackage,
 } from '@/lib/api';
 
@@ -94,6 +99,256 @@ function groupChecklist(items: MethodologyChecklistItem[]) {
   }, {});
 }
 
+function SituationQuickLinks({
+  situation,
+  researchCaseId,
+  evidenceLinks,
+}: {
+  situation: Situation;
+  researchCaseId?: string;
+  evidenceLinks: SituationEvidenceLinksPackage | null;
+}) {
+  const links = [
+    { label: 'Kanban board', href: '/investment/situations', external: false },
+    { label: 'Evaluation detail', href: `/investment/evaluations/${situation.id}`, external: false },
+    ...(researchCaseId ? [{ label: 'ResearchCase', href: `/investment/research/${researchCaseId}`, external: false }] : []),
+    ...(situation.filing_url ? [{ label: 'SEC filing', href: situation.filing_url, external: true }] : []),
+    ...(evidenceLinks?.links ?? []).filter(link => link.url).slice(0, 4).map(link => ({
+      label: link.label || link.source_type,
+      href: link.url!,
+      external: true,
+    })),
+  ];
+
+  return (
+    <SectionCard title="Quick Links">
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8 }}>
+        {links.map((link, index) => (
+          link.external ? (
+            <a key={`${link.href}-${index}`} href={link.href} target="_blank" rel="noreferrer" className="btn btn--secondary btn--sm">
+              {link.label}
+            </a>
+          ) : (
+            <Link key={`${link.href}-${index}`} href={link.href} className="btn btn--secondary btn--sm">
+              {link.label}
+            </Link>
+          )
+        ))}
+      </div>
+      <div style={{ marginTop: 8, fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)' }}>
+        Links are opened manually. The UI does not fetch SEC document bodies or crawl linked pages.
+      </div>
+    </SectionCard>
+  );
+}
+
+function SituationActivityLog({
+  situation,
+  workspace,
+}: {
+  situation: Situation;
+  workspace: MethodologyWorkspace | null;
+}) {
+  const rows = [
+    { label: 'Detection created', at: situation.detected_at, detail: situation.filing_type ?? 'official-source signal' },
+    { label: 'Situation updated', at: situation.updated_at, detail: situation.status },
+    ...((workspace?.resource_candidates ?? []).slice(0, 4).map(candidate => ({
+      label: `Resource ${candidate.status}`,
+      at: candidate.discovered_at,
+      detail: candidate.title,
+    }))),
+    ...((workspace?.search_suggestions ?? []).slice(0, 3).map(suggestion => ({
+      label: 'Search suggestion',
+      at: suggestion.created_at,
+      detail: suggestion.query,
+    }))),
+  ]
+    .filter(row => row.at)
+    .sort((a, b) => String(b.at).localeCompare(String(a.at)))
+    .slice(0, 8);
+
+  return (
+    <SectionCard title="Case Activity Log">
+      {rows.length === 0 ? (
+        <InfoBanner variant="info">No stored activity rows are available for this situation yet.</InfoBanner>
+      ) : (
+        <div style={{ display: 'grid', gap: 8 }}>
+          {rows.map((row, index) => (
+            <div key={`${row.label}-${row.at}-${index}`} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '8px 10px', border: '1px solid var(--border-default)', borderRadius: 6 }}>
+              <span className="status-dot status-dot--active" style={{ marginTop: 5 }} />
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-primary)' }}>{row.label}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', wordBreak: 'break-word' }}>
+                  {new Date(String(row.at)).toLocaleString('en-CH')} / {row.detail}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </SectionCard>
+  );
+}
+
+function itemTitle(item: Record<string, unknown>): string {
+  const value = item.title ?? item.label ?? item.resource_id ?? item.check_id ?? item.query;
+  return typeof value === 'string' && value.trim() ? value : 'Untitled item';
+}
+
+function CaseDocumentationGuidePanel({
+  guide,
+  error,
+  onCopy,
+  copiedKey,
+}: {
+  guide: CaseDocumentationGuidePackage | null;
+  error: string | null;
+  onCopy: (text: string, key: string) => void;
+  copiedKey: string | null;
+}) {
+  if (error) {
+    return (
+      <SectionCard title="Case Documentation Guide">
+        <InfoBanner variant="warning">{error}</InfoBanner>
+      </SectionCard>
+    );
+  }
+  if (!guide) return null;
+
+  const missingTotal =
+    guide.missing_evidence.missing_required_resources.length +
+    guide.missing_evidence.missing_checklist_items.length;
+
+  return (
+    <SectionCard title="Case Documentation Guide">
+      <div style={{ display: 'grid', gap: 16 }}>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ background: 'var(--bg-subtle)', border: '1px solid var(--border-default)', borderRadius: 8, padding: '10px 14px' }}>
+            <div style={MONO_LABEL}>Documentation quality</div>
+            <div style={{ fontSize: 22, fontWeight: 700 }}>{guide.documentation_quality.score}/100</div>
+            <StatusBadge value={guide.documentation_quality.level} />
+          </div>
+          <div style={{ flex: '1 1 260px', minWidth: 0 }}>
+            <div style={{ fontSize: 13, color: 'var(--text-primary)', marginBottom: 4 }}>{guide.documentation_quality.summary}</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-muted)' }}>
+              Derived from current case state · Manual research plan · No autonomous agent run yet · No document body has been fetched
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
+          {guide.documentation_quality.checks.map(check => (
+            <div key={check.label} style={{ border: '1px solid var(--border-default)', borderRadius: 6, padding: '8px 10px' }}>
+              <div style={{ fontSize: 12, color: 'var(--text-primary)' }}>{check.label}</div>
+              <StatusBadge value={check.status} />
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14 }}>
+          <div>
+            <div style={MONO_LABEL}>How to find this case</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', display: 'grid', gap: 4 }}>
+              <span>Source: {display(guide.detection_guide.source)}</span>
+              <span>CIK: {display(guide.detection_guide.cik)}</span>
+              <span>Accession: {display(guide.detection_guide.accession_number)}</span>
+              <span>Filing: {display(guide.detection_guide.filing_type)} / {display(guide.detection_guide.filing_date)}</span>
+              {guide.detection_guide.filing_url && (
+                <a href={guide.detection_guide.filing_url} target="_blank" rel="noreferrer" className="btn btn--secondary btn--sm" style={{ justifySelf: 'start', marginTop: 4 }}>
+                  Open SEC filing
+                </a>
+              )}
+            </div>
+          </div>
+          <div>
+            <div style={MONO_LABEL}>Manual verification steps</div>
+            <ol style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 4 }}>
+              {guide.detection_guide.manual_verification_steps.map(step => (
+                <li key={step} style={{ fontSize: 12, color: 'var(--text-muted)' }}>{step}</li>
+              ))}
+            </ol>
+          </div>
+          <div>
+            <div style={MONO_LABEL}>Missing Evidence Hunter</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+              <strong style={{ color: 'var(--text-primary)' }}>{guide.research_agent.agent_name}</strong><br />
+              {guide.research_agent.current_mission}
+              <div style={{ marginTop: 6 }}>Current mode: manual / observer-only</div>
+              <div>{guide.research_agent.future_scheduler_note}</div>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
+          <div>
+            <div style={MONO_LABEL}>Missing required resources ({guide.missing_evidence.missing_required_resources.length})</div>
+            {guide.missing_evidence.missing_required_resources.length === 0 ? (
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>No missing required resources in the derived guide.</div>
+            ) : (
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                {guide.missing_evidence.missing_required_resources.slice(0, 6).map((item, index) => (
+                  <li key={`${itemTitle(item)}-${index}`} style={{ fontSize: 12, color: 'var(--text-muted)' }}>{itemTitle(item)}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div>
+            <div style={MONO_LABEL}>Missing checklist evidence ({guide.missing_evidence.missing_checklist_items.length})</div>
+            {guide.missing_evidence.missing_checklist_items.length === 0 ? (
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>No checklist gaps in the derived guide.</div>
+            ) : (
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                {guide.missing_evidence.missing_checklist_items.slice(0, 6).map((item, index) => (
+                  <li key={`${itemTitle(item)}-${index}`} style={{ fontSize: 12, color: 'var(--text-muted)' }}>{itemTitle(item)}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div>
+            <div style={MONO_LABEL}>Current manual research plan</div>
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              {guide.research_agent.next_manual_actions.slice(0, 5).map(action => (
+                <li key={action} style={{ fontSize: 12, color: 'var(--text-muted)' }}>{action}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+
+        <div>
+          <div style={MONO_LABEL}>Copyable search queries</div>
+          {guide.search_plan.copyable_queries.length === 0 ? (
+            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>No stored search suggestions yet.</div>
+          ) : (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {guide.search_plan.copyable_queries.map((query, index) => (
+                <button key={`${query}-${index}`} className="btn btn--ghost btn--sm" onClick={() => onCopy(query, `guide-query-${index}`)}>
+                  {copiedKey === `guide-query-${index}` ? 'Copied' : 'Copy search query'}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div>
+          <div style={MONO_LABEL}>Derived activity timeline</div>
+          <div style={{ display: 'grid', gap: 6 }}>
+            {guide.activity_timeline.slice(0, 8).map((event, index) => (
+              <div key={`${event.label}-${index}`} style={{ display: 'flex', gap: 8, fontSize: 12, color: 'var(--text-muted)' }}>
+                <span className="status-dot status-dot--active" style={{ marginTop: 5 }} />
+                <span>{event.timestamp ? new Date(event.timestamp).toLocaleString('en-CH') : 'Current state — timestamp unavailable'} / {event.label}{event.detail ? ` / ${event.detail}` : ''}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)' }}>
+          Missing items: {missingTotal} · Frequent checks planned for future approved sprint · Scheduler disabled in this sprint
+        </div>
+      </div>
+    </SectionCard>
+  );
+}
+
 function ResourceTable({ resources }: { resources: RequiredResourceItem[] }) {
   if (resources.length === 0) return null;
   return (
@@ -150,6 +405,11 @@ export default function SpecialSituationMethodologyPage() {
   const [savingCandidateId, setSavingCandidateId] = useState<string | null>(null);
   const [evidenceLinks, setEvidenceLinks] = useState<SituationEvidenceLinksPackage | null>(null);
   const [evidenceLinksError, setEvidenceLinksError] = useState<string | null>(null);
+  const [documentationGuide, setDocumentationGuide] = useState<CaseDocumentationGuidePackage | null>(null);
+  const [documentationGuideError, setDocumentationGuideError] = useState<string | null>(null);
+  const [activityTimeline, setActivityTimeline] = useState<CaseActivityTimelinePackage | null>(null);
+  const [activityTimelineError, setActivityTimelineError] = useState<string | null>(null);
+  const [activityTimelineLoading, setActivityTimelineLoading] = useState(false);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
@@ -158,21 +418,48 @@ export default function SpecialSituationMethodologyPage() {
       try {
         setLoading(true);
         setError(null);
-        const [situationData, linksData] = await Promise.all([
-          fetchSituation(id),
-          fetchSituationEvidenceLinks(id),
-        ]);
+        const situationData = await fetchSituation(id);
         setSituation(situationData);
-        setEvidenceLinks(linksData);
-        setEvidenceLinksError(null);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load situation');
-        setEvidenceLinksError(err instanceof Error ? err.message : 'Failed to load evidence links');
       } finally {
         setLoading(false);
       }
     }
+    async function loadEvidenceLinks() {
+      try {
+        setEvidenceLinksError(null);
+        const linksData = await fetchSituationEvidenceLinks(id);
+        setEvidenceLinks(linksData);
+      } catch (err) {
+        setEvidenceLinksError(err instanceof Error ? err.message : 'Failed to load evidence links');
+      }
+    }
+    async function loadDocumentationGuide() {
+      try {
+        setDocumentationGuideError(null);
+        const guideData = await fetchSituationDocumentationGuide(id);
+        setDocumentationGuide(guideData);
+      } catch (err) {
+        setDocumentationGuideError(err instanceof Error ? err.message : 'Failed to load documentation guide');
+      }
+    }
+    async function loadActivityTimeline() {
+      try {
+        setActivityTimelineLoading(true);
+        setActivityTimelineError(null);
+        const timelineData = await fetchSituationActivityTimeline(id);
+        setActivityTimeline(timelineData);
+      } catch (err) {
+        setActivityTimelineError(err instanceof Error ? err.message : 'Failed to load case activity timeline');
+      } finally {
+        setActivityTimelineLoading(false);
+      }
+    }
     if (id) load();
+    if (id) loadEvidenceLinks();
+    if (id) loadDocumentationGuide();
+    if (id) loadActivityTimeline();
   }, [id]);
 
   const workspace = (situation?.methodology_workspace ?? situation?.evaluation?.methodology_workspace ?? null) as MethodologyWorkspace | null;
@@ -324,6 +611,13 @@ export default function SpecialSituationMethodologyPage() {
 
       {error && <ErrorBanner message={error} />}
 
+      <CaseDocumentationGuidePanel
+        guide={documentationGuide}
+        error={documentationGuideError}
+        onCopy={copyText}
+        copiedKey={copiedKey}
+      />
+
       {/* Compact top summary strip */}
       <div className="card" style={{ padding: '14px 18px', display: 'flex', flexWrap: 'wrap', gap: '14px 32px', alignItems: 'flex-start' }}>
         {([
@@ -355,7 +649,27 @@ export default function SpecialSituationMethodologyPage() {
         </InfoBanner>
       )}
 
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16, marginBottom: 20 }}>
+        <SituationQuickLinks
+          situation={situation}
+          researchCaseId={researchCaseId}
+          evidenceLinks={evidenceLinks}
+        />
+        <div>
+          {activityTimelineLoading && (
+            <InfoBanner variant="info">Loading derived timeline...</InfoBanner>
+          )}
+          <CaseActivityTimeline
+            title="Case Activity Log"
+            events={activityTimeline?.events ?? []}
+            error={activityTimelineError}
+          />
+        </div>
+      </div>
+
       {workspace && (
+        <>
+
         <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', flexWrap: 'wrap' }}>
 
           {/* LEFT — main content */}
@@ -754,6 +1068,7 @@ export default function SpecialSituationMethodologyPage() {
 
           </div>
         </div>
+        </>
       )}
     </div>
   );

@@ -43,6 +43,10 @@ SwissEdge is moving toward:
 - Sprint Y: Evidence Links & Research Traceability implemented locally. New read-only traceability endpoints show original SEC source links, resource candidate links, required-resource/checklist support links, ResearchCase source/document links, and metadata-only guardrails in `/investment/situations/[id]` and `/investment/research/[id]`. It does not fetch document bodies, crawl, download PDFs, evaluate, verify evidence automatically, recommend, publish, call `/scan`, change cron, or enable evaluator v2 globally.
 - Sprint Z: Intelligence Scoring Foundation implemented locally. New read-only endpoint `GET /api/investment/research-cases/{id}/intelligence-score` returns a deterministic 0-100 IA Score with Detection (40), Structuring (40), and Risk Discipline (20) components. `/investment/research/[id]` shows an Intelligence Score card integrated with Evaluation Preparation and Evidence Links. `APPROVABLE` means structurally approvable for manual review only, not investment approval. No DB writes, migration, live AI, external calls, evaluator activation, automatic evaluation, ResearchCase auto-creation, publishing, crawling, PDF download, document body fetching, cron change, or `/scan`.
 - Sprint ZA: Agent Rooms 2.0 implemented locally as a frontend-only Agent Ops expansion. `/agent-ops/rooms/[id]` opens room detail pages with room metrics, agents, deterministic avatar placeholders, selected-agent logs, diagnostics, related ResearchCase/SpecialSituation links when present, conceptual interaction maps, and derived read-only operational indicators. `/agent-ops` room cards now link to room details. Profile name/avatar editing is deferred because no safe AgentProfile PATCH endpoint exists. No backend endpoints, DB migration, scanner/evaluator integration, live AI, cron changes, automation, publishing, recommendations, or Marketplace/Sales changes.
+- Sprint AB: Missing Evidence Hunter & Case Documentation Guide implemented locally. New read-only deterministic guide endpoints organize existing SpecialSituation and ResearchCase state into documentation quality, source trail, manual verification steps, missing required resources, checklist gaps, stored search suggestions, observer-agent next manual actions, quick links, and a derived activity timeline. The Missing Evidence Hunter is manual/observer-only. No cron, scheduler execution, browsing, document fetching, live AI, automatic evaluation, automatic ResearchCase creation, automatic promotion, publishing, public draft creation, recommendations, Marketplace/Sales changes, or DB migration.
+- Sprint AC: Case Activity Log & Research Timeline implemented locally. New read-only deterministic timeline endpoints organize existing SpecialSituation and ResearchCase state into event rows with timestamps when present, origin, observer agent/process, status, related object, safe links, and metadata-only flags. The timelines are derived/current-state views and are not persisted audit logs yet. Agent Ops now shows case-row relevance by agent where loaded rows support it. No cron, scheduler execution, live AI, scanner/evaluator call, crawling, document fetching, automatic evaluation, automatic ResearchCase creation, automatic promotion, publishing, public draft creation, Marketplace/Sales changes, DB migration, or deploy.
+- Sprint AD: Agent Rooms Real Ops + Case Research Agent implemented locally. `/agent-ops` and `/agent-ops/rooms/[id]` now show stronger agent identities, room missions, conceptual interaction maps, scheduler posture display only, Missing Evidence Hunter as the case research agent, case-row relevance, related-case links when logs provide IDs, problems by agent, and frontend-derived XP/reliability/evidence-quality indicators. Rename/avatar editing remains deferred; no safe profile customization endpoint was added. No backend mutation, DB migration, cron, scheduler execution, live AI, scanner/evaluator runtime connection, publishing, recommendations, Marketplace/Sales changes, or deploy.
+- Sprint AE: Batch hardening and deployment readiness implemented locally. SpecialSituation activity timeline and evidence links now load as non-blocking secondary panels. ResearchCase Evidence Links and Evaluation Preparation loaders are separated so secondary panel failures stay local. Kanban warning styling and Missing Evidence Hunter badge visibility were tightened. Batch deployment readiness and deep smoke-test checklist are documented. No backend mutation, DB migration, cron, scheduler execution, live AI, scanner/evaluator runtime connection, publishing, recommendations, Marketplace/Sales changes, or deploy.
 
 ## Current Status Summary
 
@@ -52,6 +56,10 @@ SwissEdge is moving toward:
 - Agent Ops + Fontana documentation is complete enough to guide backend/UI work.
 - Agent Ops backend foundation and `/agent-ops` UI are documented deployed and smoke-tested.
 - Sprint ZA room detail pages are local frontend-only Agent Ops work; profile customization and Fontana runtime remain deferred.
+- Sprint AB Case Documentation Guides are local read-only work; Missing Evidence Hunter has no runtime scheduler in this sprint.
+- Sprint AC Case Activity Timelines are local read-only work; they are derived views, not persisted audit logs yet.
+- Sprint AD Agent Rooms Real Ops is local frontend/read-only work; it adds no runtime agent execution.
+- Sprint AE hardening is local frontend/docs work; it prepares one reviewed batch deployment but does not deploy.
 - Agent Ops migration `e5f6a7b8c9d0` is documented as applied in the 2026-05-10 closeout docs.
 - Agent Ops activity may contain narrow observer events from proposal review and manual ResearchCase creation if Sprint N/O are deployed; diagnostics/proposals may still be empty unless manually created.
 - SEC EDGAR manual detection is validated and scheduled SEC EDGAR intake is enabled through cron. Sprint S/T/U/V methodology, resource, Kanban, evidence-mapping, and manual ResearchCase promotion features are complete and production-validated through manual promotion. EDGAR is operational.
@@ -61,7 +69,7 @@ SwissEdge is moving toward:
 
 ## Current Operating Model
 
-`SEC EDGAR cron -> SpecialSituation -> Kanban -> checklist/resources -> evidence mapping -> manual ResearchCase promotion -> Evaluation Preparation -> Evidence Links -> Intelligence Score -> manual review`
+`SEC EDGAR cron -> SpecialSituation -> Kanban -> Case Documentation Guide -> Case Activity Timeline -> checklist/resources -> evidence mapping -> manual ResearchCase promotion -> Research Timeline -> Evaluation Preparation -> Evidence Links -> Intelligence Score -> manual review`
 
 The current system has an operational SEC-driven detection path. Evaluation remains manual/preparatory: source-driven detection creates `SpecialSituation` records, and ResearchCase promotion is a separate manual action.
 
@@ -78,6 +86,6 @@ The current system has an operational SEC-driven detection path. Evaluation rema
 
 ## Next Strategic Sprints
 
-- Sprint X-B/Y/Z/ZA GitHub sync after final review: commit/push only when Dani chooses to run it.
-- Claude review of Sprint X-B ResearchCase Evaluation Preparation, Sprint Y Evidence Links & Research Traceability, Sprint Z Intelligence Scoring, and Sprint ZA Agent Rooms 2.0.
+- Sprint X-B/Y/Z/ZA/AB/AC/AD/AE GitHub sync after final review: commit/push only when Dani chooses to run it.
+- Claude review of the Sprint AB/AC/AD/AE batch before deployment. Deployment requires Dani approval.
 - Later: controlled official-source discovery, SEC intake observability, external manual intake, Fontana CTO reports, market monitoring.

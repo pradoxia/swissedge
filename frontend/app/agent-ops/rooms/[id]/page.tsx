@@ -28,11 +28,11 @@ type AgentMetrics = {
 };
 
 const ROOM_CHAINS: Record<string, string[]> = {
-  radar_room: ['Edgar Scout', 'Router Analyst', 'Quality Sentinel', 'Fontana'],
-  evidence_lab: ['Resource Scout', 'Evidence Mapper', 'Quality Sentinel', 'Playbook Scribe'],
-  research_desk: ['Case Builder', 'Evaluation Prep Assistant', 'Intelligence Scorer', 'Fontana'],
-  quality_court: ['Quality Sentinel', 'Router Analyst', 'Playbook Scribe', 'Fontana'],
-  playbook_workshop: ['Playbook Scribe', 'Router Analyst', 'Quality Sentinel', 'Fontana'],
+  radar_room: ['Edgar Scout', 'Router Analyst', 'Signal Filter', 'Quality Sentinel', 'Fontana'],
+  evidence_lab: ['Resource Scout', 'Evidence Mapper', 'Missing Evidence Hunter', 'Quality Sentinel', 'Playbook Scribe'],
+  research_desk: ['Case Builder', 'Missing Evidence Hunter', 'Intelligence Scorer', 'Fontana'],
+  quality_court: ['Quality Sentinel', 'Risk Discipline Checker', 'Human Review Gate', 'Fontana'],
+  playbook_workshop: ['Playbook Scribe', 'Coverage Analyst', 'Drift Watcher', 'Fontana'],
   agent_ops: ['Agent Ops Registry', 'Activity Logger', 'Diagnostics Reader', 'Fontana'],
 };
 
@@ -42,6 +42,120 @@ const AVATAR_COLORS = [
   'border-indigo-200 bg-indigo-50 text-indigo-800',
   'border-teal-200 bg-teal-50 text-teal-800',
   'border-slate-200 bg-slate-100 text-slate-700',
+];
+
+type AgentIdentity = {
+  name: string;
+  keyHint: string;
+  title: string;
+  mission: string;
+  watches: string[];
+  outputs: string[];
+  currentMode: string;
+  futureMode: string;
+  scheduler: string;
+};
+
+const AGENT_IDENTITIES: AgentIdentity[] = [
+  {
+    name: 'Edgar Scout',
+    keyHint: 'edgar',
+    title: 'Official signal scout',
+    mission: 'Watches stored SEC EDGAR detection metadata and keeps the official-source trail visible.',
+    watches: ['SEC EDGAR detection metadata', 'filing type', 'detected company context'],
+    outputs: ['candidate SpecialSituations', 'detection context', 'stored SEC metadata'],
+    currentMode: 'observer-only',
+    futureMode: 'approved official-source checks only',
+    scheduler: 'existing SEC intake separate; no Agent Ops scheduler',
+  },
+  {
+    name: 'Router Analyst',
+    keyHint: 'router',
+    title: 'Playbook routing analyst',
+    mission: 'Checks situation type, SEC form, and playbook routing so cases land in the right manual workflow.',
+    watches: ['situation type', 'SEC form', 'selected playbook'],
+    outputs: ['routing confidence', 'required review flags', 'playbook fit notes'],
+    currentMode: 'observer-only',
+    futureMode: 'manual-approved routing review',
+    scheduler: 'disabled in this sprint',
+  },
+  {
+    name: 'Resource Scout',
+    keyHint: 'resource',
+    title: 'Known-resource finder',
+    mission: 'Creates known resource candidates and manual search suggestions from stored metadata.',
+    watches: ['SEC filing links', 'resource candidates', 'stored search suggestions'],
+    outputs: ['candidate links', 'manual search ideas', 'resource status hints'],
+    currentMode: 'manual-trigger',
+    futureMode: 'frequent checks only after approval',
+    scheduler: 'disabled in this sprint',
+  },
+  {
+    name: 'Evidence Mapper',
+    keyHint: 'evidence',
+    title: 'Traceability mapper',
+    mission: 'Connects resource candidates to required resources and checklist items.',
+    watches: ['candidate links', 'required resources', 'checklist evidence refs'],
+    outputs: ['evidence mapping status', 'traceability links', 'metadata-only source map'],
+    currentMode: 'manual-review',
+    futureMode: 'assistive mapping after review',
+    scheduler: 'disabled in this sprint',
+  },
+  {
+    name: 'Missing Evidence Hunter',
+    keyHint: 'missing',
+    title: 'Case research agent',
+    mission: 'Tracks missing required resources and checklist gaps, then suggests the next manual research steps.',
+    watches: ['missing required resources', 'missing checklist evidence', 'candidate_found resources', 'rejected/noisy sources', 'missing SEC filing URL', 'low documentation quality', 'low Intelligence Score'],
+    outputs: ['missing evidence list', 'manual search plan', 'documentation gaps', 'suggested next actions'],
+    currentMode: 'manual / observer-only',
+    futureMode: 'frequent missing-evidence checks after explicit approval',
+    scheduler: 'disabled in this sprint',
+  },
+  {
+    name: 'Quality Sentinel',
+    keyHint: 'quality',
+    title: 'Guardrail judge',
+    mission: 'Finds weak traceability, missing evidence, unsafe assumptions, and manual-review needs.',
+    watches: ['documentation gaps', 'diagnostics', 'manual review flags'],
+    outputs: ['quality warnings', 'risk discipline flags', 'manual review requirements'],
+    currentMode: 'observer-only',
+    futureMode: 'approved diagnostics only',
+    scheduler: 'disabled in this sprint',
+  },
+  {
+    name: 'Intelligence Scorer',
+    keyHint: 'intelligence',
+    title: 'Preparation scorekeeper',
+    mission: 'Measures preparation quality, structuring, and risk discipline from stored case metadata.',
+    watches: ['Evaluation Preparation', 'Evidence Links', 'documentation quality'],
+    outputs: ['Intelligence Score', 'risk flags', 'preparation components'],
+    currentMode: 'read-only derived',
+    futureMode: 'manual-approved score refresh',
+    scheduler: 'disabled in this sprint',
+  },
+  {
+    name: 'Playbook Scribe',
+    keyHint: 'playbook',
+    title: 'Methodology coverage keeper',
+    mission: 'Tracks playbook coverage, checklist completeness, and methodology gaps.',
+    watches: ['playbook template', 'checklist completion', 'coverage drift'],
+    outputs: ['playbook coverage notes', 'methodology gap list', 'template hygiene signals'],
+    currentMode: 'observer-only',
+    futureMode: 'manual-approved playbook hygiene',
+    scheduler: 'disabled in this sprint',
+  },
+  {
+    name: 'Fontana',
+    keyHint: 'fontana',
+    title: 'CTO / Project Governor',
+    mission: 'Summarizes project diagnostics, operational status, and future sprint options without runtime authority.',
+    watches: ['Agent Ops diagnostics', 'project state docs', 'review posture'],
+    outputs: ['project diagnostics', 'next sprint options', 'operational status'],
+    currentMode: 'documented observer',
+    futureMode: 'reporting only after approval',
+    scheduler: 'disabled in this sprint',
+  },
 ];
 
 function safeText(value: unknown, fallback = '-'): string {
@@ -116,6 +230,21 @@ function guardrailText(value: AgentOpsAgent['guardrails']): string {
   return 'No autonomous production powers';
 }
 
+function identityForAgent(agent: AgentOpsAgent): AgentIdentity {
+  const haystack = `${agent.key} ${agent.name} ${agent.role ?? ''}`.toLowerCase();
+  return AGENT_IDENTITIES.find(identity => haystack.includes(identity.keyHint)) ?? {
+    name: agent.name,
+    keyHint: agent.key,
+    title: 'Manual observer',
+    mission: agent.role ?? 'Observer/manual role documented in Agent Ops.',
+    watches: ['loaded Agent Ops rows', 'manual review state'],
+    outputs: ['activity rows', 'diagnostics when present'],
+    currentMode: agent.autonomy_level || 'observer-only',
+    futureMode: 'manual-approved sprint required',
+    scheduler: 'disabled in this sprint',
+  };
+}
+
 function relatedLink(type?: string | null, id?: string | null) {
   if (!type || !id) return <span>-</span>;
   const normalized = type.toLowerCase();
@@ -126,6 +255,15 @@ function relatedLink(type?: string | null, id?: string | null) {
     return <Link href={`/investment/situations/${id}`} className="text-cyan-700 hover:text-cyan-900">SpecialSituation {id.slice(0, 8)}</Link>;
   }
   return <span>{type}:{id.slice(0, 8)}</span>;
+}
+
+function isCaseRelated(type?: string | null): boolean {
+  const normalized = (type ?? '').toLowerCase();
+  return normalized.includes('researchcase') || normalized.includes('research_case') || normalized.includes('specialsituation') || normalized.includes('special_situation') || normalized.includes('research') || normalized.includes('situation');
+}
+
+function caseRelatedCount(activity: AgentOpsActivity[], diagnostics: AgentOpsDiagnostic[]): number {
+  return activity.filter(item => isCaseRelated(item.related_entity_type)).length + diagnostics.filter(item => isCaseRelated(item.related_entity_type)).length;
 }
 
 function computeMetrics(
@@ -251,6 +389,7 @@ export default function AgentOpsRoomDetailPage() {
                     <Badge value={room.status} />
                     <Badge value="read-only" />
                     <Badge value="manual review required" />
+                    <Badge value="scheduler disabled" />
                   </div>
                 </div>
                 <button
@@ -270,6 +409,20 @@ export default function AgentOpsRoomDetailPage() {
                 <MetricBox label="Reliability" value={`${roomReliability}%`} />
                 <MetricBox label="Mode" value="Observer" />
               </div>
+              <div className="mt-4 grid gap-3 text-sm md:grid-cols-3">
+                <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Current mode</p>
+                  <p className="mt-1 text-slate-700">observer-only / manual-review</p>
+                </div>
+                <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Scheduler posture</p>
+                  <p className="mt-1 text-slate-700">disabled in this sprint; future approved sprint required</p>
+                </div>
+                <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Guardrail status</p>
+                  <p className="mt-1 text-slate-700">no autonomous execution, no scanner/evaluator runtime connection</p>
+                </div>
+              </div>
             </section>
 
             <section className="rounded-lg border border-blue-200 bg-blue-50 p-4 shadow-sm">
@@ -281,7 +434,7 @@ export default function AgentOpsRoomDetailPage() {
             </section>
 
             <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-              <SectionTitle title="Agent Interaction Map" subtitle="Conceptual chain only. Logs are required before treating any interaction as executed." />
+              <SectionTitle title="Agent Interaction Map" subtitle="Conceptual workflow only. Logs are required before treating an interaction as executed." />
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 {roomChain.map((name, index) => (
                   <div key={`${name}-${index}`} className="flex items-center gap-2">
@@ -302,6 +455,7 @@ export default function AgentOpsRoomDetailPage() {
                     const metrics = computeMetrics(agent, activity, diagnostics, proposals);
                     const agentActivity = activity.filter(item => item.agent_key === agent.key);
                     const agentDiagnostics = diagnostics.filter(item => item.agent_key === agent.key);
+                    const identity = identityForAgent(agent);
                     return (
                       <button
                         type="button"
@@ -315,18 +469,25 @@ export default function AgentOpsRoomDetailPage() {
                           </div>
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
-                              <p className="font-semibold text-slate-950">{agent.name}</p>
+                              <p className="font-semibold text-slate-950">{identity.name}</p>
                               <Badge value={agent.status} />
                             </div>
                             <p className="mt-1 font-mono text-xs text-slate-400">{agent.key}</p>
-                            <p className="mt-2 text-sm leading-6 text-slate-600">{agent.role ?? 'No role documented.'}</p>
+                            <p className="mt-1 text-xs font-medium uppercase tracking-wide text-slate-500">{identity.title}</p>
+                            <p className="mt-2 text-sm leading-6 text-slate-600">{identity.mission}</p>
                           </div>
+                        </div>
+                        <div className="mt-3 grid gap-2 text-xs text-slate-600 md:grid-cols-2">
+                          <p><span className="font-semibold">Watches:</span> {identity.watches.slice(0, 3).join(', ')}</p>
+                          <p><span className="font-semibold">Outputs:</span> {identity.outputs.slice(0, 3).join(', ')}</p>
+                          <p><span className="font-semibold">Mode:</span> {identity.currentMode}</p>
+                          <p><span className="font-semibold">Scheduler:</span> {identity.scheduler}</p>
                         </div>
                         <div className="mt-4 grid grid-cols-2 gap-2 text-xs md:grid-cols-4">
                           <SmallMetric label="Activity" value={agentActivity.length} />
                           <SmallMetric label="Last" value={formatDate(lastActivityFor(agent, activity))} />
                           <SmallMetric label="Diagnostics" value={agentDiagnostics.length} />
-                          <SmallMetric label="Reliability" value={`${metrics.reliability}%`} />
+                          <SmallMetric label="Case rows" value={caseRelatedCount(agentActivity, agentDiagnostics)} />
                         </div>
                         <div className="mt-3 grid grid-cols-2 gap-2 text-xs md:grid-cols-4">
                           <SmallMetric label="Coverage XP" value={metrics.coverageXp} />
@@ -348,30 +509,51 @@ export default function AgentOpsRoomDetailPage() {
                 <SectionTitle title="Selected Agent Detail" subtitle="Expandable detail is read-only. Display-name and avatar editing are deferred until a safe profile customization endpoint exists." />
                 <div className="mt-4 grid grid-cols-1 gap-5 lg:grid-cols-[320px_1fr]">
                   <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                    {(() => {
+                      const identity = identityForAgent(selectedAgent);
+                      return (
+                        <>
                     <div className="flex items-center gap-4">
                       <div className={`flex h-16 w-16 items-center justify-center rounded-lg border text-lg font-semibold ${avatarClass(selectedAgent.key)}`}>
-                        {initials(selectedAgent.name)}
+                        {initials(identity.name)}
                       </div>
                       <div>
-                        <p className="font-semibold text-slate-950">{selectedAgent.name}</p>
+                        <p className="font-semibold text-slate-950">{identity.name}</p>
+                        <p className="mt-1 text-xs font-medium uppercase tracking-wide text-slate-500">{identity.title}</p>
                         <p className="font-mono text-xs text-slate-400">{selectedAgent.key}</p>
                       </div>
                     </div>
                     <div className="mt-4 space-y-3 text-sm text-slate-600">
+                      <InfoRow label="Mission" value={identity.mission} />
                       <InfoRow label="Room" value={selectedAgent.room_key ?? room.key} />
-                      <InfoRow label="Autonomy" value={selectedAgent.autonomy_level} />
+                      <InfoRow label="Current mode" value={identity.currentMode} />
+                      <InfoRow label="Future mode" value={identity.futureMode} />
+                      <InfoRow label="Scheduler" value={identity.scheduler} />
                       <InfoRow label="Implementation" value={selectedAgent.implementation_status} />
                       <InfoRow label="Guardrails" value={guardrailText(selectedAgent.guardrails)} />
                     </div>
+                    <div className="mt-4 grid gap-3 text-sm">
+                      <InfoList label="Input signals" values={identity.watches} />
+                      <InfoList label="Output artifacts" values={identity.outputs} />
+                    </div>
+                    {identity.name === 'Missing Evidence Hunter' && (
+                      <div className="mt-4 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-xs leading-5 text-emerald-900">
+                        Next manual research actions: review missing required resources, check candidate-only resources, inspect rejected/noisy sources, and copy stored search suggestions from case pages.
+                      </div>
+                    )}
                     <div className="mt-4 rounded-md border border-slate-200 bg-white p-3 text-xs leading-5 text-slate-500">
                       Editable names and avatars planned for a future safe profile customization sprint.
                     </div>
+                        </>
+                      );
+                    })()}
                   </div>
 
                   <div className="space-y-5">
                     <AgentActivityPanel activity={selectedActivity} />
                     <AgentDiagnosticsPanel diagnostics={selectedDiagnostics} />
                     <RelatedObjectsPanel activity={selectedActivity} diagnostics={selectedDiagnostics} />
+                    <AgentTimelineRelevancePanel activity={selectedActivity} diagnostics={selectedDiagnostics} />
                   </div>
                 </div>
               </section>
@@ -442,6 +624,19 @@ function InfoRow({ label, value }: { label: string; value: string }) {
     <div>
       <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</p>
       <p className="mt-1 leading-6 text-slate-700">{value}</p>
+    </div>
+  );
+}
+
+function InfoList({ label, values }: { label: string; values: string[] }) {
+  return (
+    <div>
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {values.map(value => (
+          <span key={value} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600">{value}</span>
+        ))}
+      </div>
     </div>
   );
 }
@@ -536,6 +731,42 @@ function RelatedObjectsPanel({
             <span key={`${row.type}:${row.id}`} className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
               {relatedLink(row.type, row.id)}
             </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AgentTimelineRelevancePanel({
+  activity,
+  diagnostics,
+}: {
+  activity: AgentOpsActivity[];
+  diagnostics: AgentOpsDiagnostic[];
+}) {
+  const rows = [...activity, ...diagnostics]
+    .filter(item => isCaseRelated(item.related_entity_type) && item.related_entity_id)
+    .slice(0, 6);
+
+  return (
+    <div>
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Case timeline relevance</p>
+      <p className="mt-2 text-sm leading-6 text-slate-500">
+        These rows can help explain why a case timeline shows agent/process context. They are derived from existing Agent Ops rows only.
+      </p>
+      {rows.length === 0 ? (
+        <p className="mt-2 text-sm text-slate-500">No case-related timeline rows loaded for this agent.</p>
+      ) : (
+        <div className="mt-3 space-y-2">
+          {rows.map(item => (
+            <div key={item.id} className="rounded-md border border-slate-200 bg-white p-3">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <p className="text-sm font-medium text-slate-900">{item.title}</p>
+                <Badge value={item.severity} />
+              </div>
+              <p className="mt-1 text-xs text-slate-500">{formatDate(item.created_at)} / {relatedLink(item.related_entity_type, item.related_entity_id)}</p>
+            </div>
           ))}
         </div>
       )}

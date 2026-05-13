@@ -2,7 +2,7 @@
 
 > Full canonical state: `docs/PROJECT_STATE.md`
 > Architecture decisions: `docs/decisions.md`
-> Last updated: 2026-05-12 (Sprint ZA local — Agent Rooms 2.0)
+> Last updated: 2026-05-12 (Sprint AE local — Batch Hardening, Deployment Readiness & UX Consistency)
 
 ---
 
@@ -85,6 +85,10 @@ SwissEdge is a modular AI platform with two domains:
 - Sprint Y: Evidence Links & Research Traceability implemented locally. New read-only traceability endpoints show original SEC source links, resource candidate links, required-resource/checklist support links, ResearchCase source/document links, and metadata-only guardrails in `/investment/situations/[id]` and `/investment/research/[id]`. It does not fetch document bodies, crawl, download PDFs, evaluate, verify evidence automatically, recommend, publish, call `/scan`, change cron, or enable evaluator v2 globally.
 - Sprint Z: Intelligence Scoring Foundation implemented locally. New read-only endpoint `GET /api/investment/research-cases/{id}/intelligence-score` returns a deterministic 0-100 IA Score with Detection (40), Structuring (40), and Risk Discipline (20) components. `/investment/research/[id]` now shows an Intelligence Score card integrated with Evaluation Preparation and Evidence Links. `APPROVABLE` means structurally approvable for manual review only, not investment approval. No DB writes, migration, live AI, external calls, evaluator activation, automatic evaluation, ResearchCase auto-creation, publishing, crawling, PDF download, document body fetching, cron change, or `/scan`.
 - Sprint ZA: Agent Rooms 2.0 implemented locally as a frontend-only Agent Ops expansion. `/agent-ops/rooms/[id]` opens navigable room detail pages with room metrics, agents, deterministic avatars, selected-agent logs, diagnostics, related ResearchCase/SpecialSituation links when present, conceptual interaction maps, and derived read-only operational indicators. `/agent-ops` room cards now link to room details. Profile name/avatar editing is deferred because no safe AgentProfile PATCH endpoint exists. No backend endpoints, DB migration, scanner/evaluator integration, live AI, cron changes, automation, publishing, recommendations, or Marketplace/Sales changes.
+- Sprint AB: Missing Evidence Hunter & Case Documentation Guide implemented locally. New read-only endpoints `GET /api/investment/situations/{id}/documentation-guide` and `GET /api/investment/research-cases/{id}/documentation-guide` return deterministic documentation packages from existing SEC metadata, methodology workspace snapshots, required resources, resource candidates, search suggestions, Evidence Links, Evaluation Preparation, Intelligence Score, and ResearchCase sources/documents/tasks. `/investment/situations/[id]` and `/investment/research/[id]` now show Case Documentation Guide sections near the top; Kanban cards show derived documentation status; Agent Ops shows Missing Evidence Hunter as observer/manual. No cron, scheduler execution, browsing, document fetching, live AI, automatic evaluation, automatic promotion, ResearchCase auto-creation, publishing, public draft creation, recommendations, Marketplace/Sales changes, or DB migration.
+- Sprint AC: Case Activity Log & Research Timeline implemented locally. New read-only endpoints `GET /api/investment/situations/{id}/activity-timeline` and `GET /api/investment/research-cases/{id}/activity-timeline` return deterministic current-state timelines from stored SEC/workspace/resource/search/research/Agent Ops metadata. `/investment/situations/[id]` and `/investment/research/[id]` now show derived case activity timelines; Kanban cards show latest activity/attention markers without N+1 calls; Agent Ops shows case-row relevance by agent. These are not persisted audit logs yet. No cron, scheduler execution, live AI, scanner/evaluator call, crawling, document fetching, automatic evaluation, automatic ResearchCase creation, publishing, Marketplace/Sales changes, DB migration, or deploy.
+- Sprint AD: Agent Rooms Real Ops + Case Research Agent implemented locally. `/agent-ops` and `/agent-ops/rooms/[id]` now show stronger agent identities, room missions, conceptual interaction maps, scheduler posture display only, Missing Evidence Hunter as the case research agent, case-row relevance, related-case links where logs provide IDs, problems by agent, and frontend-derived XP/reliability/evidence-quality indicators. Rename/avatar editing remains deferred because no safe profile customization endpoint was added. No backend mutation, DB migration, cron, scheduler execution, live AI, scanner/evaluator runtime connection, publishing, recommendations, Marketplace/Sales changes, or deploy.
+- Sprint AE: Batch hardening and deployment readiness implemented locally. SpecialSituation activity timeline and evidence links now load as non-blocking secondary panels, matching the documentation-guide fix. ResearchCase Evidence Links and Evaluation Preparation loaders are separated so secondary panel failures stay local. Kanban styling avoids warning color for `Missing: 0` and gates Missing Evidence Hunter badge to cases with documentation/workspace context. Batch deployment readiness and deep smoke-test checklist are documented. No backend mutation, DB migration, cron, scheduler execution, live AI, scanner/evaluator runtime connection, publishing, recommendations, Marketplace/Sales changes, or deploy.
 
 ## Current blockers / warnings
 
@@ -102,8 +106,8 @@ SwissEdge is a modular AI platform with two domains:
 
 ## Next recommended sprints
 
-1. Sprint X-B/Y/Z/ZA GitHub sync after final review: commit/push only when Dani chooses to run it.
-2. Claude review of Sprint X-B/Y/Z/ZA.
+1. Sprint X-B/Y/Z/ZA/AB/AC/AD/AE GitHub sync after final review: commit/push only when Dani chooses to run it.
+2. Claude review of Sprint AB/AC/AD/AE batch before deployment.
 3. Optional controlled official-source discovery only after explicit approval; Resource Scout remains manual until then.
 4. Fontana report runtime after explicit approval.
 5. Market monitoring after source-driven intake stabilizes.
@@ -142,13 +146,13 @@ SwissEdge is a modular AI platform with two domains:
 | Route | Description | Status |
 |---|---|---|
 | `/` | Mission Control home | DEPLOYED |
-| `/agent-ops` | Agent Ops Mission Control UI + room links | DEPLOYED + Sprint ZA local |
-| `/agent-ops/rooms/[id]` | Agent Ops room detail with agents, logs, diagnostics, related objects, and derived operational indicators | Sprint ZA local |
+| `/agent-ops` | Agent Ops Mission Control UI + Research Agent Network + room links + case-row relevance + derived XP indicators | DEPLOYED + Sprint AD local |
+| `/agent-ops/rooms/[id]` | Agent Ops room detail with room posture, agent missions, interaction maps, logs, diagnostics, related objects, case timeline relevance, and derived operational indicators | Sprint AD local |
 | `/investment/evaluations` | Evaluation queue | DEPLOYED |
 | `/investment/evaluations/[id]` | Evaluation detail + Research Case panel | DEPLOYED |
 | `/investment/research-inbox` | Research Inbox read-only — existing ResearchCases with V2 metadata when present and legacy/manual fallback labels | DEPLOYED per Sprint B/B.1 summaries — verify manually if needed |
 | `/investment/research` | Research Cases list | DEPLOYED |
-| `/investment/research/[id]` | Research Case detail + workspace + Evaluation Prep + Evidence Links + Intelligence Score + AI Brief Preview + Quality Assist + Source Intelligence Panel (save/approve/reject) | DEPLOYED + Sprint Z local |
+| `/investment/research/[id]` | Research Case detail + workspace + Case Documentation Guide + Research Timeline + Evaluation Prep + Evidence Links + Intelligence Score + AI Brief Preview + Quality Assist + Source Intelligence Panel (save/approve/reject) | DEPLOYED + Sprint AC local |
 | `/investment/watchlist` | Watchlist (status filter) | DEPLOYED |
 | `/investment/radar-status` | Scanner observability (read-only) | DEPLOYED |
 | `/investment/sources` | Source registry + toggles | DEPLOYED |
@@ -171,6 +175,8 @@ SwissEdge is a modular AI platform with two domains:
 | Observability | `/api/observability` | Live |
 | Investment Situations | `/api/investment/situations`, `/api/investment/sources`, `/api/investment/scan`, `/api/investment/evaluate-v2` | Live |
 | Research Cases | `/api/investment/research-cases`, `/api/investment/research-tasks` | Live |
+| Case Documentation Guides | `GET /api/investment/situations/{id}/documentation-guide`, `GET /api/investment/research-cases/{id}/documentation-guide` | Local — Sprint AB read-only |
+| Case Activity Timelines | `GET /api/investment/situations/{id}/activity-timeline`, `GET /api/investment/research-cases/{id}/activity-timeline` | Local — Sprint AC read-only |
 | Research Brief Preview | `POST /api/investment/research-cases/{id}/generate-brief-preview` | Live |
 | Intelligence Score | `GET /api/investment/research-cases/{id}/intelligence-score` | Local — Sprint Z read-only |
 | Research Quality Preview | `POST /api/investment/research-cases/{id}/quality-preview` | Live |

@@ -132,6 +132,112 @@ export interface ResearchCaseEvidenceLinksPackage {
   guardrails: string[];
 }
 
+export interface CaseDocumentationGuidePackage {
+  case_id: string;
+  case_type: 'special_situation' | 'research_case';
+  title: string;
+  documentation_quality: {
+    level: 'good' | 'needs_links' | 'needs_required_resources' | 'needs_evidence_mapping' | 'needs_manual_review';
+    score: number;
+    summary: string;
+    checks: Array<{ label: string; status: 'ok' | 'needs_work' }>;
+  };
+  detection_guide: {
+    source: string;
+    company_name: string | null;
+    ticker: string | null;
+    cik: string | null;
+    accession_number: string | null;
+    filing_type: string | null;
+    filing_date: string | null;
+    detected_at: string | null;
+    situation_type: string | null;
+    selected_playbook: string | null;
+    detection_confidence: string | null;
+    filing_url: string | null;
+    manual_verification_steps: string[];
+  };
+  missing_evidence: {
+    missing_required_resources: Array<Record<string, unknown>>;
+    missing_checklist_items: Array<Record<string, unknown>>;
+    candidate_only_resources: Array<Record<string, unknown>>;
+    evidence_found_not_verified: Array<Record<string, unknown>>;
+    rejected_resources: Array<Record<string, unknown>>;
+  };
+  research_agent: {
+    agent_name: string;
+    agent_key: string;
+    mode: string;
+    current_mission: string;
+    last_activity: string | null;
+    next_manual_actions: string[];
+    future_scheduler_note: string;
+  };
+  search_plan: {
+    stored_search_suggestions: Array<Record<string, unknown>>;
+    manual_search_steps: string[];
+    copyable_queries: string[];
+  };
+  quick_links: Array<{
+    label: string;
+    url: string;
+    source_type: string;
+    metadata_only: boolean;
+  }>;
+  activity_timeline: Array<{
+    label: string;
+    timestamp: string | null;
+    detail: string | null;
+    derived: boolean;
+  }>;
+  guardrails: string[];
+}
+
+export interface CaseActivityEvent {
+  id: string;
+  timestamp: string | null;
+  timestamp_label: string;
+  event_type:
+    | 'detection'
+    | 'workspace'
+    | 'resource_candidate'
+    | 'search_suggestion'
+    | 'evidence_mapping'
+    | 'promotion'
+    | 'research_case'
+    | 'task'
+    | 'source'
+    | 'document'
+    | 'agent_activity'
+    | 'quality_signal'
+    | 'current_state';
+  title: string;
+  description: string;
+  origin: string;
+  agent_key: string | null;
+  agent_name: string | null;
+  related_entity_type: string;
+  related_entity_id: string | null;
+  status: 'info' | 'needs_attention' | 'evidence_found' | 'rejected' | 'manual_review_required' | 'completed';
+  link_url: string | null;
+  metadata_only: boolean;
+}
+
+export interface CaseActivityTimelinePackage {
+  case_id: string;
+  case_type: 'special_situation' | 'research_case';
+  title: string;
+  events: CaseActivityEvent[];
+  summary: {
+    total_events: number;
+    needs_attention: number;
+    agent_events: number;
+    metadata_only: boolean;
+    derived_only: boolean;
+  };
+  guardrails: string[];
+}
+
 export interface MethodologyWorkspace {
   template_key: string;
   template_version: string;
@@ -329,6 +435,18 @@ export async function fetchSituationEvidenceLinks(id: string): Promise<Situation
     throw new Error(`Failed to fetch situation evidence links: ${response.statusText}`);
   }
 
+  return response.json();
+}
+
+export async function fetchSituationDocumentationGuide(id: string): Promise<CaseDocumentationGuidePackage> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/situations/${id}/documentation-guide`);
+  if (!response.ok) throw new Error(`Failed to fetch situation documentation guide: ${response.statusText}`);
+  return response.json();
+}
+
+export async function fetchSituationActivityTimeline(id: string): Promise<CaseActivityTimelinePackage> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/situations/${id}/activity-timeline`);
+  if (!response.ok) throw new Error(`Failed to fetch situation activity timeline: ${response.statusText}`);
   return response.json();
 }
 
@@ -866,6 +984,18 @@ export async function fetchResearchCaseEvidenceLinks(id: string): Promise<Resear
 export async function fetchResearchCaseIntelligenceScore(id: string): Promise<IntelligenceScorePackage> {
   const response = await fetch(`${API_BASE_URL}/api/investment/research-cases/${id}/intelligence-score`);
   if (!response.ok) throw new Error(`Failed to fetch intelligence score: ${response.statusText}`);
+  return response.json();
+}
+
+export async function fetchResearchCaseDocumentationGuide(id: string): Promise<CaseDocumentationGuidePackage> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/research-cases/${id}/documentation-guide`);
+  if (!response.ok) throw new Error(`Failed to fetch research case documentation guide: ${response.statusText}`);
+  return response.json();
+}
+
+export async function fetchResearchCaseActivityTimeline(id: string): Promise<CaseActivityTimelinePackage> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/research-cases/${id}/activity-timeline`);
+  if (!response.ok) throw new Error(`Failed to fetch research case activity timeline: ${response.statusText}`);
   return response.json();
 }
 

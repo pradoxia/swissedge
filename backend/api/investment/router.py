@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from backend.db.database import get_db
+from backend.models.agent_ops import AgentActivity
 from backend.models.investment import SpecialSituation, SituationHistory, InvestmentSource
 from backend.services.investment.sources.sec_edgar import SECEdgarAdapter
 from backend.services.investment.sources.base import Filing
@@ -21,6 +22,14 @@ from backend.services.investment.resource_scout import (
     update_workflow_status,
 )
 from backend.services.investment.evidence_links import build_situation_evidence_links
+from backend.services.investment.case_documentation import (
+    CaseDocumentationGuidePackage,
+    build_situation_documentation_guide,
+)
+from backend.services.investment.case_activity import (
+    CaseActivityTimelinePackage,
+    build_situation_activity_timeline,
+)
 from backend.services.investment.research_cases import (
     PromoteSpecialSituationPayload,
     ResearchCaseRead,
@@ -563,6 +572,46 @@ async def get_situation_evidence_links(situation_id: str, db: AsyncSession = Dep
     if not sit:
         raise HTTPException(status_code=404, detail="Situation not found")
     return build_situation_evidence_links(sit).model_dump()
+
+
+@router.get("/situations/{situation_id}/documentation-guide", response_model=CaseDocumentationGuidePackage)
+async def get_situation_documentation_guide(situation_id: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(SpecialSituation).where(SpecialSituation.id == uuid.UUID(situation_id))
+    )
+    sit = result.scalars().first()
+    if not sit:
+        raise HTTPException(status_code=404, detail="Situation not found")
+    evidence_links = build_situation_evidence_links(sit)
+    return build_situation_documentation_guide(sit, evidence_links)
+
+
+@router.get("/situations/{situation_id}/activity-timeline", response_model=CaseActivityTimelinePackage)
+async def get_situation_activity_timeline(situation_id: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(SpecialSituation).where(SpecialSituation.id == uuid.UUID(situation_id))
+    )
+    sit = result.scalars().first()
+    if not sit:
+        raise HTTPException(status_code=404, detail="Situation not found")
+
+    evidence_links = build_situation_evidence_links(sit)
+    documentation_guide = build_situation_documentation_guide(sit, evidence_links)
+    related_ids = {str(sit.id)}
+    workspace = sit.evaluation.get(WORKSPACE_KEY, {}) if isinstance(sit.evaluation, dict) else {}
+    if isinstance(workspace, dict) and workspace.get("research_case_id"):
+        related_ids.add(str(workspace["research_case_id"]))
+    activity_result = await db.execute(
+        select(AgentActivity)
+        .where(AgentActivity.related_entity_id.in_(related_ids))
+        .options(selectinload(AgentActivity.agent))
+    )
+    return build_situation_activity_timeline(
+        sit,
+        evidence_links=evidence_links,
+        documentation_guide=documentation_guide,
+        agent_activities=list(activity_result.scalars().all()),
+    )
 
 
 @router.patch("/situations/{situation_id}")

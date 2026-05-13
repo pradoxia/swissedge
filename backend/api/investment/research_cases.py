@@ -1,12 +1,18 @@
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from backend.db.database import get_db
+from backend.models.agent_ops import AgentActivity
+from backend.models.investment import SpecialSituation
+from backend.models.investment_research import ResearchCase
 from backend.services.investment.research_cases import (
     ResearchCaseRead,
     ResearchCaseUpdate,
     EvaluationPrepPackage,
+    build_evaluation_prep_package,
     ResearchTaskRead,
     ResearchTaskCreate,
     ResearchTaskUpdate,
@@ -61,6 +67,14 @@ from backend.services.investment.evidence_links import build_research_case_evide
 from backend.services.investment.intelligence_score import (
     IntelligenceScorePackage,
     build_intelligence_score_package,
+)
+from backend.services.investment.case_documentation import (
+    CaseDocumentationGuidePackage,
+    build_research_case_documentation_guide,
+)
+from backend.services.investment.case_activity import (
+    CaseActivityTimelinePackage,
+    build_research_case_activity_timeline,
 )
 from backend.services.observability import run_logger
 
@@ -125,6 +139,92 @@ async def get_case_evidence_links(research_case_id: str, db: AsyncSession = Depe
 async def get_case_intelligence_score(research_case_id: str, db: AsyncSession = Depends(get_db)):
     rc = await get_research_case(db, _parse_uuid(research_case_id, "research_case_id"))
     return build_intelligence_score_package(rc)
+
+
+@router.get("/research-cases/{research_case_id}/documentation-guide", response_model=CaseDocumentationGuidePackage)
+async def get_case_documentation_guide(research_case_id: str, db: AsyncSession = Depends(get_db)):
+    rc_id = _parse_uuid(research_case_id, "research_case_id")
+    result = await db.execute(
+        select(ResearchCase)
+        .where(ResearchCase.id == rc_id)
+        .options(
+            selectinload(ResearchCase.tasks),
+            selectinload(ResearchCase.documents),
+            selectinload(ResearchCase.sources),
+        )
+    )
+    rc = result.scalars().first()
+    if not rc:
+        raise HTTPException(status_code=404, detail="Research case not found")
+
+    source_situation = None
+    if rc.situation_id:
+        sit_result = await db.execute(
+            select(SpecialSituation).where(SpecialSituation.id == rc.situation_id)
+        )
+        source_situation = sit_result.scalars().first()
+
+    evidence_links = build_research_case_evidence_links(rc)
+    evaluation_prep = build_evaluation_prep_package(rc)
+    intelligence_score = build_intelligence_score_package(rc)
+    return build_research_case_documentation_guide(
+        rc,
+        evidence_links=evidence_links,
+        evaluation_prep=evaluation_prep,
+        intelligence_score=intelligence_score,
+        source_situation=source_situation,
+    )
+
+
+@router.get("/research-cases/{research_case_id}/activity-timeline", response_model=CaseActivityTimelinePackage)
+async def get_case_activity_timeline(research_case_id: str, db: AsyncSession = Depends(get_db)):
+    rc_id = _parse_uuid(research_case_id, "research_case_id")
+    result = await db.execute(
+        select(ResearchCase)
+        .where(ResearchCase.id == rc_id)
+        .options(
+            selectinload(ResearchCase.tasks),
+            selectinload(ResearchCase.documents),
+            selectinload(ResearchCase.sources),
+        )
+    )
+    rc = result.scalars().first()
+    if not rc:
+        raise HTTPException(status_code=404, detail="Research case not found")
+
+    source_situation = None
+    related_ids = {str(rc.id)}
+    if rc.situation_id:
+        sit_result = await db.execute(
+            select(SpecialSituation).where(SpecialSituation.id == rc.situation_id)
+        )
+        source_situation = sit_result.scalars().first()
+        related_ids.add(str(rc.situation_id))
+
+    evidence_links = build_research_case_evidence_links(rc)
+    evaluation_prep = build_evaluation_prep_package(rc)
+    intelligence_score = build_intelligence_score_package(rc)
+    documentation_guide = build_research_case_documentation_guide(
+        rc,
+        evidence_links=evidence_links,
+        evaluation_prep=evaluation_prep,
+        intelligence_score=intelligence_score,
+        source_situation=source_situation,
+    )
+    activity_result = await db.execute(
+        select(AgentActivity)
+        .where(AgentActivity.related_entity_id.in_(related_ids))
+        .options(selectinload(AgentActivity.agent))
+    )
+    return build_research_case_activity_timeline(
+        rc,
+        evidence_links=evidence_links,
+        evaluation_prep=evaluation_prep,
+        intelligence_score=intelligence_score,
+        documentation_guide=documentation_guide,
+        source_situation=source_situation,
+        agent_activities=list(activity_result.scalars().all()),
+    )
 
 
 @router.patch("/research-cases/{research_case_id}", response_model=ResearchCaseRead)

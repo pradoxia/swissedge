@@ -102,6 +102,12 @@ const BADGE_MAP: Record<string, string> = {
   reconstructed:        'status-badge--partial',
   lessons_extracted:    'status-badge--active',
   source_intel_applied: 'status-badge--manual',
+  // derived case timelines
+  info:                 'status-badge--readonly',
+  needs_attention:      'status-badge--preview',
+  evidence_found:       'status-badge--active',
+  manual_review_required:'status-badge--preview',
+  completed:            'status-badge--active',
   // source intel
   proposed:             'status-badge--preview',
   approved:             'status-badge--active',

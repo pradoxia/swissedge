@@ -11,6 +11,7 @@ interface ModuleCard {
 function statusBadgeClass(status: string) {
   switch (status) {
     case 'ACTIVE':    return 'status-badge status-badge--active';
+    case 'CORE':      return 'status-badge status-badge--active';
     case 'READ-ONLY': return 'status-badge status-badge--readonly';
     case 'MANUAL':    return 'status-badge status-badge--manual';
     case 'PREVIEW':   return 'status-badge status-badge--preview';
@@ -57,6 +58,13 @@ function ModuleGrid({ modules }: { modules: ModuleCard[] }) {
 
 export default function Home() {
   const investmentOps: ModuleCard[] = [
+    {
+      name: "Kanban — Special Situations",
+      status: "CORE",
+      description: "Mission Control pipeline — triage, evidence, promotion, and manual workflow movement",
+      href: "/investment/situations",
+      icon: "KB",
+    },
     {
       name: "Research Inbox",
       status: "READ-ONLY",

@@ -54,6 +54,77 @@ function filingDate(s: Situation): string {
   }
 }
 
+function formatActivityDate(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  try {
+    return new Date(raw).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+  } catch {
+    return raw;
+  }
+}
+
+function latestActivityFor(s: Situation): { title: string; timestamp: string | null; status: 'info' | 'needs_attention' | 'manual_review_required' | 'completed' } {
+  const workspace = s.methodology_workspace ?? (s.evaluation?.methodology_workspace as Situation['methodology_workspace'] | undefined);
+  const candidates = workspace?.resource_candidates ?? [];
+  const latestCandidate = [...candidates]
+    .filter(item => item.discovered_at)
+    .sort((a, b) => (a.discovered_at ?? '').localeCompare(b.discovered_at ?? ''))
+    .at(-1);
+  if (latestCandidate) {
+    const needsAttention = ['candidate_found', 'rejected'].includes(latestCandidate.status);
+    return {
+      title: `Resource ${latestCandidate.status.replace(/_/g, ' ')}`,
+      timestamp: formatActivityDate(latestCandidate.discovered_at),
+      status: needsAttention ? 'manual_review_required' : latestCandidate.status === 'evidence_found' ? 'completed' : 'info',
+    };
+  }
+  const missingResources = workspace?.required_resources?.filter(item => ['missing', 'needs_evidence', 'not_started'].includes(item.status)).length ?? 0;
+  const missingChecklist = workspace?.checklist?.filter(item => ['missing', 'needs_evidence', 'not_started', 'open'].includes(item.status)).length ?? 0;
+  if (missingResources + missingChecklist > 0) {
+    return {
+      title: `${missingResources + missingChecklist} documentation gaps`,
+      timestamp: formatActivityDate(s.updated_at ?? s.detected_at),
+      status: 'needs_attention',
+    };
+  }
+  if (workspace?.research_case_id) {
+    return {
+      title: 'ResearchCase linked',
+      timestamp: formatActivityDate(s.updated_at ?? s.detected_at),
+      status: 'completed',
+    };
+  }
+  return {
+    title: 'SEC detection created',
+    timestamp: formatActivityDate(s.detected_at),
+    status: 'info',
+  };
+}
+
+function documentationSnapshotFor(s: Situation): { level: string; missing: number } {
+  const workspace = s.methodology_workspace ?? (s.evaluation?.methodology_workspace as Situation['methodology_workspace'] | undefined);
+  const secDetection = s.evaluation?.sec_detection ?? {};
+  const hasSecMetadata = !!(s.filing_type || s.filing_url || secDetection.cik || secDetection.accession_number);
+  const required = workspace?.required_resources ?? [];
+  const checklist = workspace?.checklist ?? [];
+  const candidates = workspace?.resource_candidates ?? [];
+  const suggestions = workspace?.search_suggestions ?? [];
+  const missingResources = required.filter(item => ['missing', 'needs_evidence', 'not_started'].includes(item.status)).length;
+  const missingChecklist = checklist.filter(item => ['missing', 'needs_evidence', 'not_started', 'open'].includes(item.status)).length;
+  const score =
+    (hasSecMetadata ? 20 : 0) +
+    (s.filing_url ? 15 : 0) +
+    (required.length ? 15 : 0) +
+    (candidates.length ? 15 : 0) +
+    (checklist.length ? 10 : 0) +
+    (candidates.some(item => item.status === 'evidence_found') || s.filing_url ? 10 : 0) +
+    (suggestions.length ? 5 : 0) +
+    (workspace?.research_case_id ? 5 : 0) +
+    (checklist.some(item => item.human_review_required) ? 5 : 0);
+  const level = score >= 80 && s.filing_url ? 'good' : score >= 50 ? 'needs evidence' : score >= 25 ? 'needs resources' : 'needs links';
+  return { level, missing: missingResources + missingChecklist };
+}
+
 function MiniCaseRow({ situation: s }: { situation: Situation }) {
   const [hovered, setHovered] = useState(false);
   const name = s.company_name.length > 34 ? s.company_name.slice(0, 32) + '…' : s.company_name;
@@ -219,12 +290,20 @@ function SituationCard({
   const name = s.company_name.length > 38 ? s.company_name.slice(0, 36) + '…' : s.company_name;
   const date = filingDate(s);
   const workflow = workflowFor(s);
+  const documentation = documentationSnapshotFor(s);
+  const latestActivity = latestActivityFor(s);
+  const attention = latestActivity.status === 'needs_attention' || latestActivity.status === 'manual_review_required';
+  const showMissingHunter = hasWorkspace || documentation.missing > 0 || documentation.level !== 'needs links';
 
   return (
-    <Link href={`/investment/situations/${s.id}`} style={{ textDecoration: 'none', display: 'block' }}>
-      <div className="card" style={{ padding: '11px 13px', cursor: 'pointer' }}>
+    <div className="card" style={{ padding: '11px 13px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 5 }}>
-          <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.3 }}>{name}</div>
+          <Link
+            href={`/investment/situations/${s.id}`}
+            style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.3, textDecoration: 'none' }}
+          >
+            {name}
+          </Link>
           <StatusBadge value={workflow} />
         </div>
         {s.ticker && (
@@ -238,10 +317,13 @@ function SituationCard({
           {hasWorkspace && <span className="status-badge status-badge--partial" style={{ fontSize: 10 }}>workspace</span>}
           {s.evaluation?.detected_only === true && <span className="status-badge status-badge--preview" style={{ fontSize: 10 }}>Detected only</span>}
           {workspace?.research_case_id && <span className="status-badge status-badge--active" style={{ fontSize: 10 }}>ResearchCase</span>}
+          <span className="status-badge status-badge--readonly" style={{ fontSize: 10 }}>Docs: {documentation.level}</span>
+          <span className={`status-badge ${documentation.missing > 0 ? 'status-badge--preview' : 'status-badge--readonly'}`} style={{ fontSize: 10 }}>Missing: {documentation.missing}</span>
+          {showMissingHunter && <span className="status-badge status-badge--partial" style={{ fontSize: 10 }}>Agent: Missing Evidence Hunter</span>}
         </div>
         {hasWorkspace && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 5, marginBottom: 8 }}>
-            {([['Missing', missingRequired], ['Candidates', candidateResources], ['Evidence', evidenceFound]] as [string, number][]).map(([label, value]) => (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 5, marginBottom: 8 }}>
+            {([['Missing', missingRequired], ['Resources', candidateResources], ['Evidence', evidenceFound]] as [string, number][]).map(([label, value]) => (
               <div key={label} style={{ background: 'var(--bg-subtle)', borderRadius: 5, padding: '5px 6px' }}>
                 <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-faint)', textTransform: 'uppercase' }}>{label}</div>
                 <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-primary)' }}>{value}</div>
@@ -249,6 +331,21 @@ function SituationCard({
             ))}
           </div>
         )}
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+          <Link href={`/investment/situations/${s.id}`} className="btn btn--secondary btn--sm">
+            Open case
+          </Link>
+          {s.filing_url && (
+            <a href={s.filing_url} target="_blank" rel="noreferrer" className="btn btn--ghost btn--sm">
+              SEC link
+            </a>
+          )}
+          {workspace?.research_case_id && (
+            <Link href={`/investment/research/${workspace.research_case_id}`} className="btn btn--ghost btn--sm">
+              ResearchCase
+            </Link>
+          )}
+        </div>
         {hasWorkspace && (
           <select
             value={workflow}
@@ -267,16 +364,15 @@ function SituationCard({
             ))}
           </select>
         )}
-        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-faint)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: attention ? '#7a5a00' : 'var(--text-faint)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
           <span>{date}</span>
-          {s.filing_url && (
-            <a href={s.filing_url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={{ color: 'var(--accent)', fontSize: 10 }}>
-              SEC ↗
-            </a>
-          )}
+          <span style={{ textAlign: 'right' }}>
+            {attention ? 'Attention: ' : 'Latest: '}
+            {latestActivity.title}
+            {latestActivity.timestamp ? ` · ${latestActivity.timestamp}` : ''}
+          </span>
         </div>
       </div>
-    </Link>
   );
 }
 
@@ -299,7 +395,7 @@ export default function SpecialSituationsPage() {
   const [filterType, setFilterType] = useState('');
   const [filterFiling, setFilterFiling] = useState('');
   const [hideEmpty, setHideEmpty] = useState(false);
-  const [compactView, setCompactView] = useState(true);
+  const [compactView, setCompactView] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [movingId, setMovingId] = useState<string | null>(null);
 
@@ -385,10 +481,10 @@ export default function SpecialSituationsPage() {
   }
 
   return (
-    <div className="page-container--wide">
+    <div className="page-container--wide" style={{ maxWidth: 'min(1880px, calc(100vw - 32px))' }}>
       <PageHeader
-        title="Special Situations"
-        subtitle="Detection pipeline — official-source signals awaiting human review"
+        title="Kanban — Special Situations"
+        subtitle="Mission Control pipeline — official-source signals, evidence gaps, manual movement"
         backHref="/investment/evaluations"
         backLabel="Evaluations Queue"
         actions={
@@ -493,7 +589,7 @@ export default function SpecialSituationsPage() {
                   fontWeight: !compactView ? 700 : 400,
                 }}
               >
-                Detailed
+                Pipeline
               </button>
             </div>
 
@@ -520,13 +616,13 @@ export default function SpecialSituationsPage() {
           ))}
         </div>
       ) : (
-        /* ── Detailed board (horizontal scroll, full cards) ── */
+        /* ── Pipeline board (horizontal scroll; expands on ultrawide screens) ── */
         <div style={{ overflowX: 'auto', paddingBottom: 16 }}>
           <div style={{
             display: 'grid',
-            gridTemplateColumns: `repeat(${COLUMNS.length}, 272px)`,
+            gridTemplateColumns: `repeat(${COLUMNS.length}, minmax(260px, 1fr))`,
             gap: 10,
-            minWidth: `${COLUMNS.length * 282}px`,
+            minWidth: `${COLUMNS.length * 270}px`,
           }}>
             {COLUMNS.map(col => {
               const cards = columnMap[col.key] ?? [];
