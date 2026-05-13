@@ -132,6 +132,12 @@ export default function EvaluationsPage() {
         }
       />
 
+      <InfoBanner variant="info">
+        Evaluations Queue is the older review queue for evaluator outputs and manually reviewed situations.
+        Special Situations Kanban is the active SEC-detection workflow: SEC EDGAR detection -&gt; SpecialSituation -&gt; evidence mapping -&gt; manual promotion -&gt; ResearchCase.
+        Detection does not mean evaluated, and ResearchCases are not created automatically from this queue.
+      </InfoBanner>
+
       {/* Summary strip */}
       {!loading && !error && situations.length > 0 && (
         <div className="card" style={{ marginBottom: '24px' }}>

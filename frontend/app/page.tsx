@@ -61,7 +61,7 @@ export default function Home() {
     {
       name: "Kanban — Special Situations",
       status: "CORE",
-      description: "Mission Control pipeline — triage, evidence, promotion, and manual workflow movement",
+      description: "Active SEC-detection workflow: triage, evidence mapping, and manual ResearchCase promotion",
       href: "/investment/situations",
       icon: "KB",
     },
@@ -75,7 +75,7 @@ export default function Home() {
     {
       name: "Evaluations Queue",
       status: "ACTIVE",
-      description: "SEC EDGAR situations — review, watchlist, archive",
+      description: "Legacy/evaluator review queue for evaluator outputs and manually reviewed situations",
       href: "/investment/evaluations",
       icon: "📋",
     },

@@ -111,9 +111,9 @@ const WORKFLOW_STEPS: { key: string; label: string }[] = [
   { key: 'published',           label: 'Published' },
 ];
 
-function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+function Section({ title, hint, children, id }: { title: string; hint?: string; children: React.ReactNode; id?: string }) {
   return (
-    <div className="glass-panel rounded-lg p-5 mb-4">
+    <div id={id} className="glass-panel rounded-lg p-5 mb-4 scroll-mt-20">
       <div className="mb-4">
         <h2 className="text-xs font-mono font-bold text-gray-500 tracking-widest uppercase">{title}</h2>
         {hint && <p className="text-xs font-mono text-gray-700 mt-0.5">{hint}</p>}
@@ -1681,6 +1681,33 @@ function guideItemTitle(item: Record<string, unknown>): string {
   return typeof value === 'string' && value.trim() ? value : 'Untitled item';
 }
 
+function guideTargetFor(label: string): string {
+  const normalized = label.toLowerCase();
+  if (normalized.includes('sec') || normalized.includes('filing') || normalized.includes('origin')) return 'guide-find-case';
+  if (normalized.includes('required resource')) return 'guide-required-resources';
+  if (normalized.includes('candidate') || normalized.includes('evidence link') || normalized.includes('evidence present')) return 'guide-evidence-links';
+  if (normalized.includes('checklist') || normalized.includes('human review')) return 'guide-checklist';
+  if (normalized.includes('search')) return 'guide-search-suggestions';
+  if (normalized.includes('researchcase')) return 'guide-researchcase';
+  return '';
+}
+
+function GuideStatusChip({ label, status }: { label: string; status: string }) {
+  const target = guideTargetFor(label);
+  if (!target) {
+    return <p className={`text-xs font-mono ${status === 'ok' ? 'text-green-400' : 'text-amber-300'}`}>{status}</p>;
+  }
+  return (
+    <a
+      href={`#${target}`}
+      className={`text-xs font-mono ${status === 'ok' ? 'text-green-400' : 'text-amber-300'} hover:text-cyan-300`}
+      aria-label={`Jump to ${label} section`}
+    >
+      {status}
+    </a>
+  );
+}
+
 function DocumentationGuidePanel({
   guide,
   error,
@@ -1724,7 +1751,7 @@ function DocumentationGuidePanel({
               {guide.documentation_quality.checks.map(check => (
                 <div key={check.label} className="rounded border border-gray-800 px-2 py-1.5">
                   <p className="text-xs text-gray-400">{check.label}</p>
-                  <p className={`text-xs font-mono ${check.status === 'ok' ? 'text-green-400' : 'text-amber-300'}`}>{check.status}</p>
+                  <GuideStatusChip label={check.label} status={check.status} />
                 </div>
               ))}
             </div>
@@ -1732,7 +1759,7 @@ function DocumentationGuidePanel({
         </div>
 
         <div className="grid gap-4 lg:grid-cols-3">
-          <div>
+          <div id="guide-find-case" className="scroll-mt-20">
             <p className="mb-2 text-xs font-mono uppercase tracking-wide text-gray-600">How to find this case</p>
             <div className="space-y-1 text-xs text-gray-400">
               <p>Source: {guide.detection_guide.source}</p>
@@ -1747,7 +1774,7 @@ function DocumentationGuidePanel({
               )}
             </div>
           </div>
-          <div>
+          <div id="guide-checklist" className="scroll-mt-20">
             <p className="mb-2 text-xs font-mono uppercase tracking-wide text-gray-600">Manual verification steps</p>
             <ol className="list-decimal space-y-1 pl-4">
               {guide.detection_guide.manual_verification_steps.map(step => (
@@ -1755,7 +1782,7 @@ function DocumentationGuidePanel({
               ))}
             </ol>
           </div>
-          <div>
+          <div id="guide-researchcase" className="scroll-mt-20">
             <p className="mb-2 text-xs font-mono uppercase tracking-wide text-gray-600">Missing Evidence Hunter</p>
             <p className="text-xs leading-5 text-gray-400">{guide.research_agent.current_mission}</p>
             <p className="mt-2 text-xs font-mono text-gray-500">Current mode: manual / observer-only</p>
@@ -1764,7 +1791,7 @@ function DocumentationGuidePanel({
         </div>
 
         <div className="grid gap-4 lg:grid-cols-3">
-          <div>
+          <div id="guide-required-resources" className="scroll-mt-20">
             <p className="mb-2 text-xs font-mono uppercase tracking-wide text-gray-600">Missing required resources ({guide.missing_evidence.missing_required_resources.length})</p>
             {guide.missing_evidence.missing_required_resources.length === 0 ? (
               <p className="text-xs text-gray-600">No missing required resources in the guide.</p>
@@ -1798,20 +1825,35 @@ function DocumentationGuidePanel({
           </div>
         </div>
 
-        <div>
-          <p className="mb-2 text-xs font-mono uppercase tracking-wide text-gray-600">Copyable search queries</p>
+        <div id="guide-evidence-links" className="scroll-mt-20">
+          <p className="mb-2 text-xs font-mono uppercase tracking-wide text-gray-600">Evidence links / resource candidates</p>
+          <div className="flex flex-wrap gap-2">
+            <span className="rounded border border-gray-800 px-2 py-0.5 text-[10px] font-mono text-gray-500">Candidate-only: {guide.missing_evidence.candidate_only_resources.length}</span>
+            <span className="rounded border border-amber-900 px-2 py-0.5 text-[10px] font-mono text-amber-300">Evidence not verified: {guide.missing_evidence.evidence_found_not_verified.length}</span>
+            <span className="rounded border border-gray-800 px-2 py-0.5 text-[10px] font-mono text-gray-500">Rejected: {guide.missing_evidence.rejected_resources.length}</span>
+          </div>
+        </div>
+
+        <div id="guide-search-suggestions" className="scroll-mt-20">
+          <p className="mb-2 text-xs font-mono uppercase tracking-wide text-gray-600">Manual search suggestions</p>
+          <p className="mb-2 text-xs text-gray-500">
+            Stored prompts for a human researcher. They are not fetched automatically, not evidence, and not verified.
+            Copy a query and paste it into Google, SEC search, or the company IR site.
+          </p>
           {guide.search_plan.copyable_queries.length === 0 ? (
             <p className="text-xs text-gray-600">No stored search suggestions yet.</p>
           ) : (
-            <div className="flex flex-wrap gap-2">
+            <div className="grid gap-2">
               {guide.search_plan.copyable_queries.map((query, index) => (
-                <button
-                  key={`${query}-${index}`}
-                  onClick={() => copyQuery(query, `query-${index}`)}
-                  className="rounded border border-gray-700 px-3 py-1 text-xs font-mono text-gray-400 hover:text-cyan-400"
-                >
-                  {copiedKey === `query-${index}` ? 'Copied' : 'Copy search query'}
-                </button>
+                <div key={`${query}-${index}`} className="rounded border border-gray-800 px-3 py-2">
+                  <p className="text-xs text-gray-300 break-words">{query}</p>
+                  <button
+                    onClick={() => copyQuery(query, `query-${index}`)}
+                    className="mt-2 rounded border border-gray-700 px-3 py-1 text-xs font-mono text-gray-400 hover:text-cyan-400"
+                  >
+                    {copiedKey === `query-${index}` ? 'Copied' : 'Copy query'}
+                  </button>
+                </div>
               ))}
             </div>
           )}
@@ -2220,7 +2262,7 @@ export default function ResearchDetailPage() {
 
         <div className="grid gap-4 lg:grid-cols-2">
           {/* ── Intelligence Score ── */}
-          <Section title="Intelligence Score" hint="Read-only IA Score for preparation quality, safety, and usefulness. Manual review remains mandatory.">
+          <Section id="research-intelligence-score" title="Intelligence Score" hint="Read-only IA Score for preparation quality, safety, and usefulness. Manual review remains mandatory.">
             <IntelligenceScoreCard
               score={intelligenceScore}
               loading={scoreLoading}
@@ -2230,7 +2272,7 @@ export default function ResearchDetailPage() {
           </Section>
 
           {/* ── Evaluation Preparation ── */}
-          <Section title="Evaluation Preparation" hint="Read-only readiness package for manual evaluation planning. No AI, no recommendation, no publishing.">
+          <Section id="research-evaluation-preparation" title="Evaluation Preparation" hint="Read-only readiness package for manual evaluation planning. No AI, no recommendation, no publishing.">
             <EvaluationPrepPanel
               prep={evaluationPrep}
               loading={prepLoading}
@@ -2241,7 +2283,7 @@ export default function ResearchDetailPage() {
         </div>
 
         {/* ── Evidence Links / Traceability ── */}
-        <Section title="Evidence Links / Research Traceability" hint="Metadata-only source links used to trace where case information came from.">
+        <Section id="research-evidence-links" title="Evidence Links / Research Traceability" hint="Metadata-only source links used to trace where case information came from.">
           {evidenceLinksError && (
             <p className="mb-3 text-xs font-mono text-amber-300">{evidenceLinksError}</p>
           )}
@@ -2322,7 +2364,7 @@ export default function ResearchDetailPage() {
         </Section>
 
         {/* ── Tasks / Missing Info ── */}
-        <Section title={`Tasks / Missing Info (${rc.tasks.length})`} hint="Track what still needs to be verified.">
+        <Section id="research-tasks" title={`Tasks / Missing Info (${rc.tasks.length})`} hint="Track what still needs to be verified.">
           {rc.tasks.length === 0 && !showAddTask && (
             <p className="text-xs font-mono text-gray-600 italic mb-3">No tasks yet. Add items you still need to verify.</p>
           )}
@@ -2395,7 +2437,7 @@ export default function ResearchDetailPage() {
         </Section>
 
         {/* ── Key Documents ── */}
-        <Section title={`Key Documents (${rc.documents.length})`} hint="Paste document URLs as metadata references. No content is fetched. Use the snippet field to paste relevant excerpts for AI analysis.">
+        <Section id="research-documents" title={`Key Documents (${rc.documents.length})`} hint="Paste document URLs as metadata references. No content is fetched. Use the snippet field to paste relevant excerpts for AI analysis.">
           {rc.documents.length === 0 && !showAddDoc && (
             <p className="text-xs font-mono text-gray-600 italic mb-3">No documents added. Record URLs to SEC filings, press releases, or news articles. URLs are metadata only — no content is fetched.</p>
           )}
@@ -2464,7 +2506,7 @@ export default function ResearchDetailPage() {
         </Section>
 
         {/* ── Useful Sources ── */}
-        <Section title={`Useful Sources (${rc.sources.length})`} hint="Record sources that produced useful signal. Signal quality and usefulness notes are editable per source. Source URLs are metadata only — SwissEdge does not crawl or read linked URLs.">
+        <Section id="research-sources" title={`Useful Sources (${rc.sources.length})`} hint="Record sources that produced useful signal. Signal quality and usefulness notes are editable per source. Source URLs are metadata only — SwissEdge does not crawl or read linked URLs.">
           <p className="text-xs font-mono text-gray-700 mb-3">
             Source URLs are metadata only. SwissEdge does not crawl or read linked URLs.
           </p>
@@ -2537,7 +2579,7 @@ export default function ResearchDetailPage() {
         </Section>
 
         {/* ── V2 Research Metadata ── */}
-        <Section title="V2 Research Metadata" hint="Source-driven intake metadata. Read-only — populated by V2 intake agents when available.">
+        <Section id="research-metadata" title="V2 Research Metadata" hint="Source-driven intake metadata. Read-only — populated by V2 intake agents when available.">
           <V2MetadataPanel rc={rc} />
           <p className="text-xs font-mono text-gray-700 mt-3">
             Read-only · no edits · no AI · no URL fetching · populated by future V2 intake path

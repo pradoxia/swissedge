@@ -500,6 +500,12 @@ export default function SpecialSituationsPage() {
         No automated investment decisions are made from this pipeline.
       </InfoBanner>
 
+      <InfoBanner variant="info">
+        Evaluations = legacy/evaluator review queue. Special Situations Kanban = active SEC-detection workflow.
+        Flow: SEC EDGAR Detection -&gt; SpecialSituation -&gt; Kanban evidence mapping -&gt; manual promotion -&gt; ResearchCase -&gt; Evaluation Preparation / Evidence Links / Intelligence Score.
+        Promotion is manual; no recommendation, publishing, or ResearchCase creation happens automatically.
+      </InfoBanner>
+
       {error && <ErrorBanner message={error} />}
 
       <MetricRow items={[

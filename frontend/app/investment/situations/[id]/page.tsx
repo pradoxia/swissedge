@@ -195,6 +195,27 @@ function itemTitle(item: Record<string, unknown>): string {
   return typeof value === 'string' && value.trim() ? value : 'Untitled item';
 }
 
+function guideTargetFor(label: string): string {
+  const normalized = label.toLowerCase();
+  if (normalized.includes('sec') || normalized.includes('filing') || normalized.includes('origin')) return 'guide-find-case';
+  if (normalized.includes('required resource')) return 'guide-required-resources';
+  if (normalized.includes('candidate') || normalized.includes('evidence link') || normalized.includes('evidence present')) return 'guide-evidence-links';
+  if (normalized.includes('checklist') || normalized.includes('human review')) return 'guide-checklist';
+  if (normalized.includes('search')) return 'guide-search-suggestions';
+  if (normalized.includes('researchcase')) return 'guide-researchcase';
+  return '';
+}
+
+function GuideStatusChip({ label, status }: { label: string; status: string }) {
+  const target = guideTargetFor(label);
+  if (!target) return <StatusBadge value={status} />;
+  return (
+    <a href={`#${target}`} style={{ textDecoration: 'none', display: 'inline-flex' }} aria-label={`Jump to ${label} section`}>
+      <StatusBadge value={status} />
+    </a>
+  );
+}
+
 function CaseDocumentationGuidePanel({
   guide,
   error,
@@ -240,13 +261,13 @@ function CaseDocumentationGuidePanel({
           {guide.documentation_quality.checks.map(check => (
             <div key={check.label} style={{ border: '1px solid var(--border-default)', borderRadius: 6, padding: '8px 10px' }}>
               <div style={{ fontSize: 12, color: 'var(--text-primary)' }}>{check.label}</div>
-              <StatusBadge value={check.status} />
+              <GuideStatusChip label={check.label} status={check.status} />
             </div>
           ))}
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14 }}>
-          <div>
+          <div id="guide-find-case" style={{ scrollMarginTop: 80 }}>
             <div style={MONO_LABEL}>How to find this case</div>
             <div style={{ fontSize: 12, color: 'var(--text-muted)', display: 'grid', gap: 4 }}>
               <span>Source: {display(guide.detection_guide.source)}</span>
@@ -260,7 +281,7 @@ function CaseDocumentationGuidePanel({
               )}
             </div>
           </div>
-          <div>
+          <div id="guide-checklist" style={{ scrollMarginTop: 80 }}>
             <div style={MONO_LABEL}>Manual verification steps</div>
             <ol style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 4 }}>
               {guide.detection_guide.manual_verification_steps.map(step => (
@@ -268,7 +289,7 @@ function CaseDocumentationGuidePanel({
               ))}
             </ol>
           </div>
-          <div>
+          <div id="guide-researchcase" style={{ scrollMarginTop: 80 }}>
             <div style={MONO_LABEL}>Missing Evidence Hunter</div>
             <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
               <strong style={{ color: 'var(--text-primary)' }}>{guide.research_agent.agent_name}</strong><br />
@@ -280,7 +301,7 @@ function CaseDocumentationGuidePanel({
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
-          <div>
+          <div id="guide-required-resources" style={{ scrollMarginTop: 80 }}>
             <div style={MONO_LABEL}>Missing required resources ({guide.missing_evidence.missing_required_resources.length})</div>
             {guide.missing_evidence.missing_required_resources.length === 0 ? (
               <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>No missing required resources in the derived guide.</div>
@@ -314,16 +335,32 @@ function CaseDocumentationGuidePanel({
           </div>
         </div>
 
-        <div>
-          <div style={MONO_LABEL}>Copyable search queries</div>
+        <div id="guide-evidence-links" style={{ scrollMarginTop: 80 }}>
+          <div style={MONO_LABEL}>Evidence links / resource candidates</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            <span className="status-badge status-badge--readonly">Candidate-only: {guide.missing_evidence.candidate_only_resources.length}</span>
+            <span className="status-badge status-badge--partial">Evidence not verified: {guide.missing_evidence.evidence_found_not_verified.length}</span>
+            <span className="status-badge status-badge--readonly">Rejected: {guide.missing_evidence.rejected_resources.length}</span>
+          </div>
+        </div>
+
+        <div id="guide-search-suggestions" style={{ scrollMarginTop: 80 }}>
+          <div style={MONO_LABEL}>Manual search suggestions</div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 8 }}>
+            Stored prompts for a human researcher. They are not fetched automatically, not evidence, and not verified.
+            Copy a query and paste it into Google, SEC search, or the company IR site.
+          </div>
           {guide.search_plan.copyable_queries.length === 0 ? (
             <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>No stored search suggestions yet.</div>
           ) : (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            <div style={{ display: 'grid', gap: 8 }}>
               {guide.search_plan.copyable_queries.map((query, index) => (
-                <button key={`${query}-${index}`} className="btn btn--ghost btn--sm" onClick={() => onCopy(query, `guide-query-${index}`)}>
-                  {copiedKey === `guide-query-${index}` ? 'Copied' : 'Copy search query'}
-                </button>
+                <div key={`${query}-${index}`} style={{ border: '1px solid var(--border-default)', borderRadius: 6, padding: '8px 10px', display: 'grid', gap: 6 }}>
+                  <div style={{ fontSize: 12, color: 'var(--text-primary)', wordBreak: 'break-word' }}>{query}</div>
+                  <button className="btn btn--ghost btn--sm" onClick={() => onCopy(query, `guide-query-${index}`)} style={{ justifySelf: 'start' }}>
+                    {copiedKey === `guide-query-${index}` ? 'Copied' : 'Copy query'}
+                  </button>
+                </div>
               ))}
             </div>
           )}
@@ -675,6 +712,7 @@ export default function SpecialSituationMethodologyPage() {
           {/* LEFT — main content */}
           <div style={{ flex: '1 1 500px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 20 }}>
 
+            <div id="situation-methodology-checklist" style={{ scrollMarginTop: 80 }}>
             <SectionCard title="Methodology Checklist">
               <div style={{ display: 'grid', gap: 18 }}>
                 {Object.entries(checklistGroups).map(([section, items]) => (
@@ -711,7 +749,9 @@ export default function SpecialSituationMethodologyPage() {
                 ))}
               </div>
             </SectionCard>
+            </div>
 
+            <div id="situation-required-resources" style={{ scrollMarginTop: 80 }}>
             <SectionCard title="Required Resources">
               {requiredResources.length === 0 ? (
                 <InfoBanner variant="info">No resources defined for this template.</InfoBanner>
@@ -732,7 +772,9 @@ export default function SpecialSituationMethodologyPage() {
                 </div>
               )}
             </SectionCard>
+            </div>
 
+            <div id="situation-resource-candidates" style={{ scrollMarginTop: 80 }}>
             <SectionCard title="Found / Candidate Resources">
               {resourceCandidates.length === 0 ? (
                 <InfoBanner variant="info">
@@ -823,7 +865,9 @@ export default function SpecialSituationMethodologyPage() {
                 </div>
               )}
             </SectionCard>
+            </div>
 
+            <div id="situation-evidence-links" style={{ scrollMarginTop: 80 }}>
             <SectionCard title="Evidence Links / Source Traceability">
               {evidenceLinksError && (
                 <InfoBanner variant="warning">{evidenceLinksError}</InfoBanner>
@@ -836,6 +880,7 @@ export default function SpecialSituationMethodologyPage() {
                 emptyText="No stored evidence links are available for this situation yet."
               />
             </SectionCard>
+            </div>
 
             <SectionCard title="Add Resource Manually">
               <div style={{ display: 'grid', gap: 10 }}>
@@ -927,6 +972,7 @@ export default function SpecialSituationMethodologyPage() {
           {/* RIGHT — sidebar */}
           <div style={{ flex: '0 0 300px', minWidth: 280, display: 'flex', flexDirection: 'column', gap: 16 }}>
 
+            <div id="situation-sec-metadata" style={{ scrollMarginTop: 80 }}>
             <SectionCard title="Detection">
               <div style={{ display: 'grid', gap: 10 }}>
                 {([
@@ -950,6 +996,7 @@ export default function SpecialSituationMethodologyPage() {
                 )}
               </div>
             </SectionCard>
+            </div>
 
             <SectionCard title="Workflow">
               <div style={MONO_LABEL}>Move to</div>
@@ -989,6 +1036,7 @@ export default function SpecialSituationMethodologyPage() {
               </div>
             </SectionCard>
 
+            <div id="situation-researchcase-promotion" style={{ scrollMarginTop: 80 }}>
             <SectionCard title="Next Actions">
               <div style={{ display: 'grid', gap: 6 }}>
                 <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>
@@ -1013,14 +1061,20 @@ export default function SpecialSituationMethodologyPage() {
                 )}
               </div>
             </SectionCard>
+            </div>
 
+            <div id="situation-search-suggestions" style={{ scrollMarginTop: 80 }}>
             <SectionCard title="Search Suggestions">
               {searchSuggestions.length === 0 ? (
                 <InfoBanner variant="info">
-                  Run Resource Scout v1 via CLI to generate search queries.
+                  No stored manual search suggestions yet. These suggestions are prompts for human research only; SwissEdge does not run them automatically.
                 </InfoBanner>
               ) : (
                 <>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 8 }}>
+                    Stored manual search suggestions. They are not fetched automatically, not evidence, and not verified.
+                    Copy a query and paste it into Google, SEC search, or the company IR site.
+                  </div>
                   <button
                     className="btn btn--ghost btn--sm"
                     onClick={() => setSuggestionsOpen(!suggestionsOpen)}
@@ -1038,7 +1092,7 @@ export default function SpecialSituationMethodologyPage() {
                         >
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)', textTransform: 'uppercase', marginBottom: 2 }}>
-                              {suggestion.suggestion_type}
+                              Manual search suggestion / {suggestion.suggestion_type}
                             </div>
                             <div style={{ fontSize: 12, color: 'var(--text-primary)', wordBreak: 'break-word' }}>{suggestion.query}</div>
                           </div>
@@ -1047,7 +1101,7 @@ export default function SpecialSituationMethodologyPage() {
                             onClick={() => copyText(suggestion.query, suggestion.suggestion_id)}
                             style={{ flexShrink: 0 }}
                           >
-                            {copiedKey === suggestion.suggestion_id ? '✓' : 'Copy'}
+                            {copiedKey === suggestion.suggestion_id ? 'Copied' : 'Copy query'}
                           </button>
                           <a
                             className="btn btn--secondary btn--sm"
@@ -1065,6 +1119,7 @@ export default function SpecialSituationMethodologyPage() {
                 </>
               )}
             </SectionCard>
+            </div>
 
           </div>
         </div>

@@ -98,12 +98,20 @@ export function EvidenceLinksPanel({
       {searchSuggestions.length > 0 && (
         <div style={{ borderTop: '1px solid var(--border-default)', paddingTop: 10 }}>
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)', textTransform: 'uppercase', marginBottom: 6 }}>
-            Search suggestions without stored links
+            Manual search suggestions without stored links
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 8 }}>
+            Stored research prompts only. They are not fetched automatically, verified evidence, or proof that a search was performed.
           </div>
           <div style={{ display: 'grid', gap: 6 }}>
             {searchSuggestions.slice(0, 6).map(suggestion => (
-              <div key={suggestion.suggestion_id} style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                {suggestion.query}
+              <div key={suggestion.suggestion_id} style={{ border: '1px solid var(--border-default)', borderRadius: 6, padding: '8px 10px' }}>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)', textTransform: 'uppercase', marginBottom: 3 }}>
+                  Manual search suggestion
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-primary)', wordBreak: 'break-word' }}>
+                  {suggestion.query}
+                </div>
               </div>
             ))}
           </div>
