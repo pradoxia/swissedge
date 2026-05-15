@@ -8,6 +8,8 @@ import {
   fetchAgentOpsDiagnostics,
   fetchAgentOpsProposals,
   fetchAgentOpsRooms,
+  fetchDaniWeberMetrics,
+  fetchExecutiveReview,
   fetchFontanaReport,
   updateAgentOpsProposal,
   type AgentOpsActivity,
@@ -16,10 +18,15 @@ import {
   type AgentOpsProposal,
   type AgentOpsProposalStatus,
   type AgentOpsRoom,
+  type DaniWeberMetrics,
+  type ExecutiveReviewPackage,
   type FontanaDiagnosticReport,
 } from '@/lib/api';
 
 const SECTIONS = [
+  ['executive-office', 'Executive Office'],
+  ['executive-review', 'Executive Review'],
+  ['executive-proposals', 'Improvement Proposals'],
   ['rooms', 'Rooms'],
   ['agents', 'Agents'],
   ['activity', 'Activity Feed'],
@@ -244,6 +251,90 @@ const AVATAR_COLORS = [
   'border-slate-200 bg-slate-100 text-slate-700',
 ];
 
+const PROPOSAL_TYPES = [
+  'ADD_SOURCE',
+  'IMPROVE_AGENT_SKILL',
+  'IMPROVE_DETECTION_RULE',
+  'IMPROVE_DOCUMENTATION_WORKFLOW',
+  'SIMPLIFY_UI_SURFACE',
+  'ADD_KPI',
+  'FIX_BOTTLENECK',
+  'DEFER_FEATURE',
+  'HIDE_LEGACY_SURFACE',
+  'CREATE_SPRINT',
+] as const;
+
+type ProposalType = (typeof PROPOSAL_TYPES)[number];
+
+type ExecutiveCard = {
+  title: string;
+  role: string;
+  focus: string;
+  signal: string;
+  next: string;
+};
+
+type ExecutiveReviewItem = {
+  cooFindingCategory: string;
+  ctoInterpretation: string;
+  jointRecommendation: string;
+  approvalRequired: string;
+  relatedProductArea: string;
+  guardrailNote: string;
+};
+
+type ImprovementProposalV1 = {
+  id: string;
+  title: string;
+  proposal_type: ProposalType;
+  owner: 'Dani Weber' | 'Fontana' | 'Executive Review';
+  problem: string;
+  evidence: string;
+  recommendation: string;
+  expected_impact: string;
+  risk: string;
+  complexity: string;
+  approval_status: 'proposed' | 'approved' | 'rejected' | 'deferred';
+  requires_dani_approval: true;
+};
+
+function isProposalType(value: unknown): value is ProposalType {
+  return typeof value === 'string' && PROPOSAL_TYPES.includes(value as ProposalType);
+}
+
+function containsAny(value: string, keywords: string[]): boolean {
+  return keywords.some(keyword => value.includes(keyword));
+}
+
+function inferProposalType(proposal: AgentOpsProposal): ProposalType {
+  const explicit = (proposal as AgentOpsProposal & { proposal_type?: unknown }).proposal_type;
+  if (isProposalType(explicit)) return explicit;
+
+  const text = [
+    proposal.title,
+    proposal.problem_statement,
+    proposal.proposed_change,
+    proposal.expected_benefit,
+    proposal.status,
+    proposal.risk_level,
+    proposal.agent_key,
+    proposal.room_key,
+  ].map(value => safeText(value, '')).join(' ').toLowerCase();
+
+  if (containsAny(text, ['defer', 'deferred', 'pause', 'paused', 'later'])) return 'DEFER_FEATURE';
+  if (containsAny(text, ['sprint', 'implementation', 'next sprint'])) return 'CREATE_SPRINT';
+  if (containsAny(text, ['kpi', 'metric', 'score', 'dashboard'])) return 'ADD_KPI';
+  if (containsAny(text, ['legacy'])) return 'HIDE_LEGACY_SURFACE';
+  if (containsAny(text, ['ui', 'navigation', 'surface', 'screen', 'clutter'])) return 'SIMPLIFY_UI_SURFACE';
+  if (containsAny(text, ['document', 'evidence', 'resource', 'checklist', 'completion'])) return 'IMPROVE_DOCUMENTATION_WORKFLOW';
+  if (containsAny(text, ['detection', 'detector', 'routing', 'classify', 'scanner'])) return 'IMPROVE_DETECTION_RULE';
+  if (containsAny(text, ['skill', 'agent capability', 'hunter', 'parser'])) return 'IMPROVE_AGENT_SKILL';
+  if (containsAny(text, ['source', 'feed', 'rss', 'edgar', 'twitter', 'x/twitter'])) return 'ADD_SOURCE';
+  if (containsAny(text, ['bottleneck', 'blocked', 'stuck', 'flow'])) return 'FIX_BOTTLENECK';
+
+  return 'FIX_BOTTLENECK';
+}
+
 function safeText(value: unknown, fallback = '-'): string {
   if (value === null || value === undefined || value === '') return fallback;
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value);
@@ -328,6 +419,156 @@ function EmptyState({ title, description }: { title: string; description: string
       <p className="text-sm font-semibold text-slate-700">{title}</p>
       <p className="mt-2 text-sm text-slate-500">{description}</p>
     </div>
+  );
+}
+
+function ExecutiveOfficeSection({
+  cards,
+  daniMetrics,
+  executiveReview,
+  reviewItems,
+  proposals,
+}: {
+  cards: ExecutiveCard[];
+  daniMetrics: DaniWeberMetrics | null;
+  executiveReview: ExecutiveReviewPackage | null;
+  reviewItems: ExecutiveReviewItem[];
+  proposals: ImprovementProposalV1[];
+}) {
+  const topBottleneck = daniMetrics?.top_bottlenecks[0];
+  const topFinding = executiveReview?.joint_findings[0];
+
+  return (
+    <section id="executive-office" className="mb-6 rounded-lg border border-slate-200 bg-white p-5 shadow-sm scroll-mt-6">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Executive Office</p>
+          <h2 className="mt-1 text-lg font-semibold text-slate-950">COO / CTO Governance Layer</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+            Deterministic office view for human approval and audit. No chat, live AI, autonomous execution, scanner run, evaluator change, cron change, or deploy is triggered here.
+          </p>
+        </div>
+        <Badge value="proposal-only" />
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {cards.map(card => (
+          <div key={card.title} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-slate-950">{card.title}</p>
+                <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-slate-400">{card.role}</p>
+              </div>
+              <Badge value="manual" />
+            </div>
+            <ProposalText label="Focus" value={card.focus} />
+            <ProposalText label="Last deterministic signal" value={card.signal} />
+            <ProposalText label="Next user action" value={card.next} />
+            <p className="mt-3 text-xs text-slate-500">No autonomous execution.</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="text-sm font-semibold text-emerald-950">Dani Weber COO Metrics</p>
+            <p className="mt-1 text-sm text-emerald-900">Process/funnel snapshot only. Findings become proposals; they do not execute changes.</p>
+          </div>
+          <Badge value="read-only" />
+        </div>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+          <SmallStat label="Signals" value={daniMetrics?.total_special_situations ?? 0} />
+          <SmallStat label="Promoted" value={`${daniMetrics?.promotion_rate_to_research_case.rate_percent ?? 0}%`} />
+          <SmallStat label="Missing resources" value={daniMetrics?.documentation_blockers.missing_required_resources ?? 0} />
+          <SmallStat label="Noise rows" value={daniMetrics?.low_priority_or_noise_count ?? 0} />
+        </div>
+        <p className="mt-3 text-xs leading-5 text-emerald-900">
+          Top bottleneck: {topBottleneck ? `${topBottleneck.title} (${topBottleneck.count})` : 'No dominant bottleneck loaded.'}
+        </p>
+      </div>
+
+      <div id="executive-review" className="mt-5 scroll-mt-6 rounded-lg border border-blue-200 bg-blue-50 p-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="text-sm font-semibold text-blue-950">Executive Review</p>
+            <p className="mt-1 text-sm text-blue-900">COO and CTO findings combined into approval-based next steps.</p>
+          </div>
+          <Badge value="read-only" />
+        </div>
+        <div className="mb-3 rounded-md border border-blue-200 bg-white p-3">
+          <div className="grid gap-3 lg:grid-cols-2">
+            <ProposalText label="COO summary" value={executiveReview?.coo_summary ?? 'Dani Weber metrics not loaded.'} />
+            <ProposalText label="CTO summary" value={executiveReview?.cto_summary ?? 'Fontana interpretation not loaded.'} />
+          </div>
+          <div className="mt-3 grid gap-3 lg:grid-cols-2">
+            <ProposalText
+              label="Top joint finding"
+              value={topFinding ? `${topFinding.coo_observation} Fontana: ${topFinding.cto_interpretation}` : 'No dominant COO / CTO joint finding loaded.'}
+            />
+            <ProposalText
+              label="Joint recommendation"
+              value={executiveReview?.joint_recommendations[0]?.recommended_action ?? 'Continue deterministic monitoring until Dani approves a process-improvement sprint.'}
+            />
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Badge value={`${executiveReview?.joint_findings.length ?? 0} finding(s)`} />
+            <Badge value={`${executiveReview?.pending_approval_items.length ?? 0} approval item(s)`} />
+            <Badge value="no auto-apply" />
+          </div>
+        </div>
+        <div className="grid gap-3 lg:grid-cols-3">
+          {reviewItems.map(item => (
+            <div key={`${item.cooFindingCategory}-${item.relatedProductArea}`} className="rounded-md border border-blue-200 bg-white p-3">
+              <ProposalText label="COO finding category" value={item.cooFindingCategory} />
+              <ProposalText label="CTO interpretation" value={item.ctoInterpretation} />
+              <ProposalText label="Joint recommendation" value={item.jointRecommendation} />
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Badge value={item.approvalRequired} />
+                <Badge value={item.relatedProductArea} />
+              </div>
+              <p className="mt-3 text-xs leading-5 text-blue-900">{item.guardrailNote}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div id="executive-proposals" className="mt-5 scroll-mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="text-sm font-semibold text-amber-950">Improvement Proposals v1</p>
+            <p className="mt-1 text-sm text-amber-900">Read-only proposal model. Persisted Agent Ops proposals can still be reviewed in the Learning Proposals section below.</p>
+          </div>
+          <Badge value={`${proposals.length} proposed`} />
+        </div>
+        <div className="grid gap-3 lg:grid-cols-3">
+          {proposals.map(proposal => (
+            <div key={proposal.id} className="rounded-md border border-amber-200 bg-white p-3">
+              <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <p className="text-sm font-semibold text-slate-950">{proposal.title}</p>
+                  <p className="mt-1 font-mono text-xs text-slate-400">{proposal.id}</p>
+                </div>
+                <Badge value={proposal.approval_status} />
+              </div>
+              <div className="mb-3 flex flex-wrap gap-2">
+                <Badge value={proposal.proposal_type} />
+                <Badge value={proposal.owner} />
+              </div>
+              <ProposalText label="Problem" value={proposal.problem} />
+              <ProposalText label="Evidence" value={proposal.evidence} />
+              <ProposalText label="Recommendation" value={proposal.recommendation} />
+              <ProposalText label="Expected impact" value={proposal.expected_impact} />
+              <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                <SmallStat label="Risk" value={proposal.risk} />
+                <SmallStat label="Complexity" value={proposal.complexity} />
+              </div>
+              <p className="mt-3 text-xs font-medium text-amber-900">Requires Dani approval before implementation.</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -508,6 +749,8 @@ export default function AgentOpsPage() {
   const [diagnostics, setDiagnostics] = useState<AgentOpsDiagnostic[]>([]);
   const [proposals, setProposals] = useState<AgentOpsProposal[]>([]);
   const [fontanaReport, setFontanaReport] = useState<FontanaDiagnosticReport | null>(null);
+  const [daniWeberMetrics, setDaniWeberMetrics] = useState<DaniWeberMetrics | null>(null);
+  const [executiveReview, setExecutiveReview] = useState<ExecutiveReviewPackage | null>(null);
   const [loading, setLoading] = useState(true);
   const [errors, setErrors] = useState<Record<string, string | null>>({});
   const [proposalErrors, setProposalErrors] = useState<Record<string, string>>({});
@@ -520,13 +763,24 @@ export default function AgentOpsPage() {
     if (initial) setLoading(true);
     else setRefreshing(true);
     const nextErrors: Record<string, string | null> = {};
-    const [roomsResult, agentsResult, activityResult, diagnosticsResult, proposalsResult, fontanaResult] = await Promise.allSettled([
+    const [
+      roomsResult,
+      agentsResult,
+      activityResult,
+      diagnosticsResult,
+      proposalsResult,
+      fontanaResult,
+      daniMetricsResult,
+      executiveReviewResult,
+    ] = await Promise.allSettled([
       fetchAgentOpsRooms(),
       fetchAgentOpsAgents(),
       fetchAgentOpsActivity({ limit: 25 }),
       fetchAgentOpsDiagnostics({ limit: 25 }),
       fetchAgentOpsProposals({ limit: 25 }),
       fetchFontanaReport(),
+      fetchDaniWeberMetrics(),
+      fetchExecutiveReview(),
     ]);
 
     if (roomsResult.status === 'fulfilled') setRooms(roomsResult.value.rooms);
@@ -546,6 +800,12 @@ export default function AgentOpsPage() {
 
     if (fontanaResult.status === 'fulfilled') setFontanaReport(fontanaResult.value);
     else nextErrors.fontana = fontanaResult.reason instanceof Error ? fontanaResult.reason.message : 'Failed to load Fontana report';
+
+    if (daniMetricsResult.status === 'fulfilled') setDaniWeberMetrics(daniMetricsResult.value);
+    else nextErrors.daniWeberMetrics = daniMetricsResult.reason instanceof Error ? daniMetricsResult.reason.message : 'Failed to load Dani Weber metrics';
+
+    if (executiveReviewResult.status === 'fulfilled') setExecutiveReview(executiveReviewResult.value);
+    else nextErrors.executiveReview = executiveReviewResult.reason instanceof Error ? executiveReviewResult.reason.message : 'Failed to load Executive Review';
 
     setErrors(nextErrors);
     setLastRefreshedAt(new Date());
@@ -626,6 +886,147 @@ export default function AgentOpsPage() {
     'Review Fontana bottlenecks before planning the next sprint.',
   ];
 
+  const executiveCards = useMemo<ExecutiveCard[]>(() => {
+    const pendingProposalCount = proposals.filter(proposal => proposal.status === 'proposed').length;
+    const warningCount = diagnostics.filter(item => ['warning', 'error', 'critical'].includes(item.severity)).length;
+    const fontanaSignal = fontanaReport?.summary ?? 'Fontana report not loaded; deterministic placeholder only.';
+    const promotionRate = daniWeberMetrics?.promotion_rate_to_research_case.rate_percent ?? 0;
+    const missingResources = daniWeberMetrics?.documentation_blockers.missing_required_resources ?? 0;
+    const topCooBottleneck = daniWeberMetrics?.top_bottlenecks[0]?.title ?? 'No dominant COO bottleneck loaded.';
+    return [
+      {
+        title: 'Dani Weber Office — COO',
+        role: 'Process governor / approval authority',
+        focus: 'Process flow, bottlenecks, promotion rate, documentation quality, noise reduction, and source/skill/process improvements.',
+        signal: `${daniWeberMetrics?.total_special_situations ?? 0} signal(s), ${promotionRate}% promoted, ${missingResources} missing required resource(s). Top bottleneck: ${topCooBottleneck}`,
+        next: 'Review proposed changes, accept/defer/reject status only, and approve implementation in a future sprint.',
+      },
+      {
+        title: 'Fontana Office — CTO',
+        role: 'Deterministic technology audit',
+        focus: 'Technology, architecture, product coherence, technical debt, guardrails, and sprint recommendations.',
+        signal: fontanaSignal,
+        next: 'Inspect bottlenecks and technical findings before selecting the next implementation batch.',
+      },
+      {
+        title: 'Executive Review',
+        role: 'COO / CTO feedback loop',
+        focus: 'Combines COO process findings with CTO interpretation for approval-based next steps.',
+        signal: `${activity.length} activity row(s), ${diagnostics.length} diagnostic row(s), ${proposals.length} persisted proposal row(s), ${pendingProposalCount} pending proposal(s).`,
+        next: 'Compare process and technical findings, then choose which proposal stays in the manual queue.',
+      },
+      {
+        title: 'Pending Improvement Proposals',
+        role: 'Manual proposal queue',
+        focus: 'Proposal status review only. Proposals require Dani approval before implementation.',
+        signal: `${pendingProposalCount} persisted proposal(s) still proposed.`,
+        next: 'Use Learning Proposals below for status review; implementation remains a separate Dani-approved sprint.',
+      },
+    ];
+  }, [activity.length, daniWeberMetrics, diagnostics, fontanaReport, proposals]);
+
+  const executiveReviewItems = useMemo<ExecutiveReviewItem[]>(() => {
+    const caseWarnings = diagnostics.filter(item => isCaseRelated(item.related_entity_type) && ['warning', 'error', 'critical'].includes(item.severity)).length;
+    const proposedCount = proposals.filter(proposal => proposal.status === 'proposed').length;
+    const cooBottleneck = daniWeberMetrics?.top_bottlenecks[0];
+    return [
+      {
+        cooFindingCategory: 'COO funnel bottleneck',
+        ctoInterpretation: cooBottleneck ? `${cooBottleneck.title}: ${cooBottleneck.count} item(s) in deterministic metrics.` : 'No dominant Dani Weber COO bottleneck loaded.',
+        jointRecommendation: 'Use COO metrics to choose a future process-improvement sprint; do not auto-apply proposals.',
+        approvalRequired: 'Dani approval required',
+        relatedProductArea: 'Executive Office',
+        guardrailNote: 'Dani Weber metrics are read-only and do not create cases, verify evidence, run evaluator, or trigger scans.',
+      },
+      {
+        cooFindingCategory: 'Documentation throughput',
+        ctoInterpretation: caseWarnings > 0 ? `${caseWarnings} case-related warning row(s) need traceability review.` : 'No case-related warning rows loaded in Agent Ops.',
+        jointRecommendation: 'Keep evidence review manual and resolve missing documentation before promotion or editorial work.',
+        approvalRequired: 'Dani approval required',
+        relatedProductArea: 'Evidence Room',
+        guardrailNote: 'evidence_found does not mean verified; no checklist or source auto-completion.',
+      },
+      {
+        cooFindingCategory: 'Product surface simplicity',
+        ctoInterpretation: 'Mission Control now separates core, supporting, advanced/legacy, and paused surfaces.',
+        jointRecommendation: 'Continue hiding/de-emphasizing legacy surfaces through labels and hierarchy instead of deleting routes.',
+        approvalRequired: 'Dani approval required',
+        relatedProductArea: 'Mission Control',
+        guardrailNote: 'No Marketplace/Sales functional change and no public-site implementation.',
+      },
+      {
+        cooFindingCategory: 'Improvement proposal flow',
+        ctoInterpretation: `${proposedCount} persisted Agent Ops proposal(s) are awaiting manual review.`,
+        jointRecommendation: 'Review proposal status only; implementation belongs in a future explicit sprint.',
+        approvalRequired: 'Dani approval required',
+        relatedProductArea: 'Agent Ops',
+        guardrailNote: 'Proposal review does not deploy, run agents, change cron, run scanner, or enable evaluator v2.',
+      },
+    ];
+  }, [daniWeberMetrics, diagnostics, proposals]);
+
+  const improvementProposalsV1 = useMemo<ImprovementProposalV1[]>(() => {
+    const mapped = proposals.slice(0, 4).map((proposal): ImprovementProposalV1 => ({
+      id: `agent-ops-${proposal.id.slice(0, 8)}`,
+      title: proposal.title,
+      proposal_type: inferProposalType(proposal),
+      owner: proposal.agent_key?.toLowerCase().includes('fontana') ? 'Fontana' : 'Executive Review',
+      problem: proposal.problem_statement,
+      evidence: proposal.source_diagnostic_id ? `Linked diagnostic ${proposal.source_diagnostic_id.slice(0, 8)}.` : 'Loaded from existing Agent Ops proposal row.',
+      recommendation: proposal.proposed_change,
+      expected_impact: proposal.expected_benefit ?? 'Expected impact requires manual review before implementation.',
+      risk: proposal.risk_level,
+      complexity: proposal.risk_level === 'high' ? 'high' : 'low',
+      approval_status: proposal.status === 'accepted' ? 'approved' : proposal.status === 'archived' || proposal.status === 'implemented' ? 'deferred' : proposal.status,
+      requires_dani_approval: true,
+    }));
+    const deterministicFallbacks: ImprovementProposalV1[] = [
+      {
+        id: 'ap-simplify-legacy-surfaces',
+        title: 'Keep legacy investment surfaces de-emphasized',
+        proposal_type: 'HIDE_LEGACY_SURFACE',
+        owner: 'Executive Review',
+        problem: 'Legacy evaluation and watchlist surfaces can compete with the SEC-driven workflow.',
+        evidence: 'Mission Control classifies Evaluations Queue and Watchlist as Advanced / Legacy.',
+        recommendation: 'Maintain labels and grouping; do not delete routes without a future explicit cleanup sprint.',
+        expected_impact: 'Reduces workflow noise while preserving historical access.',
+        risk: 'low',
+        complexity: 'low',
+        approval_status: 'proposed',
+        requires_dani_approval: true,
+      },
+      {
+        id: 'ap-source-workflow-gap',
+        title: 'Create a focused source workflow improvement sprint',
+        proposal_type: 'CREATE_SPRINT',
+        owner: 'Dani Weber',
+        problem: 'SEC document acquisition now creates metadata candidates that still require manual review and mapping.',
+        evidence: 'Sprint AO stores official SEC candidates without verification or checklist completion.',
+        recommendation: 'Plan a future sprint for manual source review ergonomics, not automated verification.',
+        expected_impact: 'Improves documentation quality without weakening guardrails.',
+        risk: 'medium',
+        complexity: 'medium',
+        approval_status: 'proposed',
+        requires_dani_approval: true,
+      },
+      {
+        id: 'ap-fontana-kpi-followup',
+        title: 'Add Executive Office KPI snapshot later',
+        proposal_type: 'ADD_KPI',
+        owner: 'Fontana',
+        problem: 'Executive Office currently summarizes loaded operational rows but does not persist a KPI snapshot.',
+        evidence: 'Agent Ops already has rooms, diagnostics, proposals, and Fontana report data available.',
+        recommendation: 'Defer persisted KPI snapshots until Dani approves the exact metrics.',
+        expected_impact: 'Keeps AP small while identifying a clean future measurement surface.',
+        risk: 'low',
+        complexity: 'medium',
+        approval_status: 'deferred',
+        requires_dani_approval: true,
+      },
+    ];
+    return [...mapped, ...deterministicFallbacks].slice(0, 6);
+  }, [proposals]);
+
   async function reviewProposal(proposal: AgentOpsProposal, status: AgentOpsProposalStatus) {
     setUpdatingProposal(proposal.id);
     setProposalErrors(prev => ({ ...prev, [proposal.id]: '' }));
@@ -686,6 +1087,14 @@ export default function AgentOpsPage() {
             deploy, or apply learning proposals automatically.
           </p>
         </div>
+
+        <ExecutiveOfficeSection
+          cards={executiveCards}
+          daniMetrics={daniWeberMetrics}
+          executiveReview={executiveReview}
+          reviewItems={executiveReviewItems}
+          proposals={improvementProposalsV1}
+        />
 
         <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-5">
           {[

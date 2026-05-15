@@ -9,7 +9,9 @@ import { IntelligenceScoreCard } from '@/app/components/IntelligenceScoreCard';
 import { OfficialSourceFinderPanel } from '@/app/components/OfficialSourceFinderPanel';
 import { HistoricalAnaloguesPanel } from '@/app/components/HistoricalAnaloguesPanel';
 import { CaseCompletionWorkbench } from '@/app/components/CaseCompletionWorkbench';
+import { SecDocumentAcquisitionPanel } from '@/app/components/SecDocumentAcquisitionPanel';
 import {
+  acquireResearchCaseSecDocuments,
   fetchResearchCase,
   fetchResearchCaseActivityTimeline,
   fetchResearchCaseCompletionWorkbench,
@@ -19,6 +21,8 @@ import {
   fetchResearchCaseHistoricalAnalogues,
   fetchResearchCaseIntelligenceScore,
   fetchResearchCaseOfficialSourceFinder,
+  fetchResearchCaseOperationalView,
+  fetchResearchCaseSecDocumentAcquisitionPreview,
   updateResearchCase,
   addResearchTask,
   updateResearchTask,
@@ -44,6 +48,8 @@ import {
   type HistoricalAnaloguesPackage,
   type IntelligenceScorePackage,
   type OfficialSourceFinderPackage,
+  type OperationalViewPackage,
+  type SecDocumentAcquisitionPackage,
   type ResearchTask,
   type ResearchDocument,
   type ResearchSource,
@@ -1400,6 +1406,122 @@ function ReadinessBadge({ level }: { level: EvaluationPrepPackage['readiness']['
   );
 }
 
+function OperationalViewCard({
+  operationalView,
+  loading,
+  error,
+  onRefresh,
+}: {
+  operationalView: OperationalViewPackage | null;
+  loading: boolean;
+  error: string | null;
+  onRefresh: () => Promise<void>;
+}) {
+  const [refreshing, setRefreshing] = useState(false);
+
+  async function refresh() {
+    setRefreshing(true);
+    try {
+      await onRefresh();
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  const viewLabel = operationalView?.operational_view.replaceAll('_', ' ') ?? 'loading';
+  const badgeClass =
+    operationalView?.operational_view === 'candidate'
+      ? 'border-emerald-800 bg-emerald-950/40 text-emerald-300'
+      : operationalView?.operational_view === 'watchlist'
+      ? 'border-amber-800 bg-amber-950/40 text-amber-300'
+      : operationalView?.operational_view === 'reject'
+      ? 'border-red-900 bg-red-950/40 text-red-300'
+      : 'border-gray-800 bg-gray-950 text-gray-300';
+
+  return (
+    <section className="rounded-lg border border-gray-800 bg-gray-950/60 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-[11px] uppercase tracking-[0.16em] text-cyan-400">Operational View</p>
+          <h2 className="mt-1 text-lg font-semibold text-white">Workflow label preparation</h2>
+          <p className="mt-1 max-w-3xl text-sm text-gray-400">
+            Deterministic read-only view for manual ResearchCase review. No status is applied automatically.
+          </p>
+        </div>
+        <button
+          onClick={refresh}
+          disabled={refreshing}
+          className="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-200 hover:border-cyan-700 disabled:opacity-50"
+        >
+          {refreshing ? 'Refreshing...' : 'Refresh'}
+        </button>
+      </div>
+
+      {error && <p className="mt-4 rounded border border-red-900 bg-red-950/40 p-3 text-sm text-red-300">{error}</p>}
+      {loading && <p className="mt-4 text-sm text-gray-500">Loading operational view...</p>}
+
+      {operationalView && !loading && (
+        <div className="mt-4 space-y-4">
+          <div className="flex flex-wrap gap-2">
+            <span className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase ${badgeClass}`}>
+              {viewLabel}
+            </span>
+            <span className="rounded-full border border-gray-800 bg-black/30 px-3 py-1 text-xs uppercase text-gray-300">
+              Confidence: {operationalView.confidence}
+            </span>
+            <span className="rounded-full border border-cyan-900 bg-cyan-950/30 px-3 py-1 text-xs text-cyan-200">
+              Final decision by Dani
+            </span>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <div>
+              <h3 className="text-xs font-semibold uppercase text-gray-500">Rationale</h3>
+              <ul className="mt-2 space-y-1 text-sm text-gray-300">
+                {operationalView.rationale.map((item) => (
+                  <li key={item}>- {item}</li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <h3 className="text-xs font-semibold uppercase text-gray-500">Blockers</h3>
+              {operationalView.blockers.length ? (
+                <ul className="mt-2 space-y-1 text-sm text-gray-300">
+                  {operationalView.blockers.map((item) => (
+                    <li key={item}>- {item}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-2 text-sm text-gray-500">No blocking metadata detected.</p>
+              )}
+            </div>
+            <div>
+              <h3 className="text-xs font-semibold uppercase text-gray-500">What would change view</h3>
+              <ul className="mt-2 space-y-1 text-sm text-gray-300">
+                {operationalView.what_would_change_view.map((item) => (
+                  <li key={item}>- {item}</li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <h3 className="text-xs font-semibold uppercase text-gray-500">Next manual actions</h3>
+              <ul className="mt-2 space-y-1 text-sm text-gray-300">
+                {operationalView.next_manual_actions.map((item) => (
+                  <li key={item}>- {item}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+
+          <p className="rounded border border-cyan-900 bg-cyan-950/30 p-3 text-xs text-cyan-100">
+            Operational View is a workflow label for manual review. It is not investment advice and does not imply a private action.
+          </p>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function EvaluationPrepPanel({
   prep,
   loading,
@@ -1910,6 +2032,8 @@ export default function ResearchDetailPage() {
   const [documentationGuide, setDocumentationGuide] = useState<CaseDocumentationGuidePackage | null>(null);
   const [completionWorkbench, setCompletionWorkbench] = useState<CaseCompletionPackage | null>(null);
   const [officialSourceFinder, setOfficialSourceFinder] = useState<OfficialSourceFinderPackage | null>(null);
+  const [operationalView, setOperationalView] = useState<OperationalViewPackage | null>(null);
+  const [secDocumentAcquisition, setSecDocumentAcquisition] = useState<SecDocumentAcquisitionPackage | null>(null);
   const [historicalAnalogues, setHistoricalAnalogues] = useState<HistoricalAnaloguesPackage | null>(null);
   const [activityTimeline, setActivityTimeline] = useState<CaseActivityTimelinePackage | null>(null);
   const [prepLoading, setPrepLoading] = useState(true);
@@ -1922,6 +2046,11 @@ export default function ResearchDetailPage() {
   const [completionWorkbenchError, setCompletionWorkbenchError] = useState<string | null>(null);
   const [completionWorkbenchLoading, setCompletionWorkbenchLoading] = useState(false);
   const [officialSourceFinderError, setOfficialSourceFinderError] = useState<string | null>(null);
+  const [operationalViewError, setOperationalViewError] = useState<string | null>(null);
+  const [operationalViewLoading, setOperationalViewLoading] = useState(false);
+  const [secDocumentAcquisitionError, setSecDocumentAcquisitionError] = useState<string | null>(null);
+  const [secDocumentAcquisitionLoading, setSecDocumentAcquisitionLoading] = useState(false);
+  const [secDocumentAcquiring, setSecDocumentAcquiring] = useState(false);
   const [historicalAnaloguesError, setHistoricalAnaloguesError] = useState<string | null>(null);
   const [historicalAnaloguesLoading, setHistoricalAnaloguesLoading] = useState(false);
   const [activityTimelineError, setActivityTimelineError] = useState<string | null>(null);
@@ -2055,6 +2184,32 @@ export default function ResearchDetailPage() {
     }
   }
 
+  async function loadOperationalView() {
+    try {
+      setOperationalViewLoading(true);
+      setOperationalViewError(null);
+      const viewData = await fetchResearchCaseOperationalView(id);
+      setOperationalView(viewData);
+    } catch (err) {
+      setOperationalViewError(err instanceof Error ? err.message : 'Failed to load operational view');
+    } finally {
+      setOperationalViewLoading(false);
+    }
+  }
+
+  async function loadSecDocumentAcquisition() {
+    try {
+      setSecDocumentAcquisitionLoading(true);
+      setSecDocumentAcquisitionError(null);
+      const preview = await fetchResearchCaseSecDocumentAcquisitionPreview(id);
+      setSecDocumentAcquisition(preview);
+    } catch (err) {
+      setSecDocumentAcquisitionError(err instanceof Error ? err.message : 'Failed to load SEC document acquisition preview');
+    } finally {
+      setSecDocumentAcquisitionLoading(false);
+    }
+  }
+
   async function loadHistoricalAnalogues() {
     try {
       setHistoricalAnaloguesLoading(true);
@@ -2089,6 +2244,22 @@ export default function ResearchDetailPage() {
     setTimeout(() => setOfficialSourceCopiedKey(null), 1500);
   }
 
+  async function handleSecDocumentAcquisition() {
+    try {
+      setSecDocumentAcquiring(true);
+      setSecDocumentAcquisitionError(null);
+      const result = await acquireResearchCaseSecDocuments(id);
+      setSecDocumentAcquisition(result);
+      await load();
+      await loadEvidenceLinks();
+      await loadOperationalView();
+    } catch (err) {
+      setSecDocumentAcquisitionError(err instanceof Error ? err.message : 'Failed to acquire SEC document metadata');
+    } finally {
+      setSecDocumentAcquiring(false);
+    }
+  }
+
   useEffect(() => {
     load();
     loadEvaluationPrep();
@@ -2097,6 +2268,8 @@ export default function ResearchDetailPage() {
     loadDocumentationGuide();
     loadCompletionWorkbench();
     loadOfficialSourceFinder();
+    loadOperationalView();
+    loadSecDocumentAcquisition();
     loadHistoricalAnalogues();
     loadActivityTimeline();
   }, [id]);
@@ -2352,12 +2525,29 @@ export default function ResearchDetailPage() {
           error={completionWorkbenchError}
         />
 
+        <OperationalViewCard
+          operationalView={operationalView}
+          loading={operationalViewLoading}
+          error={operationalViewError}
+          onRefresh={loadOperationalView}
+        />
+
         <OfficialSourceFinderPanel
           finder={officialSourceFinder}
           loading={officialSourceFinderLoading}
           error={officialSourceFinderError}
           copiedKey={officialSourceCopiedKey}
           onCopy={copyOfficialSourceQuery}
+        />
+
+        <SecDocumentAcquisitionPanel
+          packageData={secDocumentAcquisition}
+          loading={secDocumentAcquisitionLoading}
+          acquiring={secDocumentAcquiring}
+          error={secDocumentAcquisitionError}
+          copiedKey={officialSourceCopiedKey}
+          onCopy={copyOfficialSourceQuery}
+          onAcquire={handleSecDocumentAcquisition}
         />
 
         <HistoricalAnaloguesPanel

@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from sqlalchemy.orm.attributes import flag_modified
 
 from backend.db.database import get_db
 from backend.models.agent_ops import AgentActivity
@@ -33,6 +34,8 @@ from backend.services.investment.case_activity import (
     build_situation_activity_timeline,
 )
 from backend.services.investment.fontana_report import collect_fontana_diagnostic_report
+from backend.services.investment.dani_weber_metrics import collect_dani_weber_metrics_package
+from backend.services.investment.executive_review import collect_executive_review_package
 from backend.services.investment.intelligence_kpis import collect_intelligence_kpi_package
 from backend.services.investment.official_source_finder import (
     OfficialSourceFinderPackage,
@@ -45,6 +48,12 @@ from backend.services.investment.historical_analogues import (
 from backend.services.investment.case_completion import (
     CaseCompletionPackage,
     build_situation_completion_workbench,
+)
+from backend.services.investment.sec_document_acquisition import (
+    SecDocumentAcquisitionPackage,
+    acquire_sec_documents_from_preview,
+    apply_situation_sec_acquisition_metadata,
+    build_situation_sec_document_acquisition_preview,
 )
 from backend.services.investment.intelligence_score import build_intelligence_score_package
 from backend.services.investment.research_cases import build_evaluation_prep_package
@@ -271,6 +280,16 @@ async def get_intelligence_kpis(db: AsyncSession = Depends(get_db)):
 @router.get("/intelligence/fontana-report")
 async def get_fontana_report(db: AsyncSession = Depends(get_db)):
     return await collect_fontana_diagnostic_report(db)
+
+
+@router.get("/executive/dani-weber-metrics")
+async def get_dani_weber_metrics(db: AsyncSession = Depends(get_db)):
+    return await collect_dani_weber_metrics_package(db)
+
+
+@router.get("/executive/review")
+async def get_executive_review(db: AsyncSession = Depends(get_db)):
+    return await collect_executive_review_package(db)
 
 
 @router.post("/evaluate-v2")
@@ -681,6 +700,36 @@ async def get_situation_completion_workbench(situation_id: str, db: AsyncSession
         intelligence_score=score,
         evaluation_prep=prep,
     )
+
+
+@router.get("/situations/{situation_id}/sec-document-acquisition-preview", response_model=SecDocumentAcquisitionPackage)
+async def get_situation_sec_document_acquisition_preview(situation_id: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(SpecialSituation).where(SpecialSituation.id == uuid.UUID(situation_id))
+    )
+    sit = result.scalars().first()
+    if not sit:
+        raise HTTPException(status_code=404, detail="Situation not found")
+    return build_situation_sec_document_acquisition_preview(sit)
+
+
+@router.post("/situations/{situation_id}/sec-document-acquisition", response_model=SecDocumentAcquisitionPackage)
+async def post_situation_sec_document_acquisition(situation_id: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(SpecialSituation).where(SpecialSituation.id == uuid.UUID(situation_id))
+    )
+    sit = result.scalars().first()
+    if not sit:
+        raise HTTPException(status_code=404, detail="Situation not found")
+
+    preview = build_situation_sec_document_acquisition_preview(sit)
+    package = await acquire_sec_documents_from_preview(preview)
+    if package.acquired_documents:
+        apply_situation_sec_acquisition_metadata(sit, package)
+        flag_modified(sit, "evaluation")
+        await db.commit()
+        await db.refresh(sit)
+    return package
 
 
 @router.get("/situations/{situation_id}/activity-timeline", response_model=CaseActivityTimelinePackage)

@@ -88,6 +88,16 @@ from backend.services.investment.case_completion import (
     CaseCompletionPackage,
     build_research_case_completion_workbench,
 )
+from backend.services.investment.sec_document_acquisition import (
+    SecDocumentAcquisitionPackage,
+    acquire_sec_documents_from_preview,
+    apply_research_case_sec_acquisition_metadata,
+    build_research_case_sec_document_acquisition_preview,
+)
+from backend.services.investment.operational_view import (
+    OperationalViewPackage,
+    build_operational_view_package,
+)
 from backend.services.observability import run_logger
 
 router = APIRouter()
@@ -277,6 +287,111 @@ async def get_case_completion_workbench(research_case_id: str, db: AsyncSession 
         intelligence_score=intelligence_score,
         evaluation_prep=evaluation_prep,
     )
+
+
+@router.get("/research-cases/{research_case_id}/operational-view", response_model=OperationalViewPackage)
+async def get_case_operational_view(research_case_id: str, db: AsyncSession = Depends(get_db)):
+    rc_id = _parse_uuid(research_case_id, "research_case_id")
+    result = await db.execute(
+        select(ResearchCase)
+        .where(ResearchCase.id == rc_id)
+        .options(
+            selectinload(ResearchCase.tasks),
+            selectinload(ResearchCase.documents),
+            selectinload(ResearchCase.sources),
+        )
+    )
+    rc = result.scalars().first()
+    if not rc:
+        raise HTTPException(status_code=404, detail="Research case not found")
+
+    source_situation = None
+    if rc.situation_id:
+        sit_result = await db.execute(select(SpecialSituation).where(SpecialSituation.id == rc.situation_id))
+        source_situation = sit_result.scalars().first()
+
+    historical_result = await db.execute(
+        select(HistoricalCase).options(
+            selectinload(HistoricalCase.documents),
+            selectinload(HistoricalCase.sources),
+        )
+    )
+    evaluation_prep = build_evaluation_prep_package(rc)
+    intelligence_score = build_intelligence_score_package(rc)
+    completion = build_research_case_completion_workbench(
+        rc,
+        intelligence_score=intelligence_score,
+        evaluation_prep=evaluation_prep,
+    )
+    evidence_links = build_research_case_evidence_links(rc)
+    historical_analogues = build_research_case_historical_analogues(
+        rc,
+        historical_cases=list(historical_result.scalars().all()),
+        source_situation=source_situation,
+    )
+    sec_preview = build_research_case_sec_document_acquisition_preview(rc, source_situation=source_situation)
+    return build_operational_view_package(
+        rc,
+        evaluation_prep=evaluation_prep,
+        intelligence_score=intelligence_score,
+        completion_workbench=completion,
+        evidence_links=evidence_links,
+        historical_analogues=historical_analogues,
+        sec_preview=sec_preview,
+    )
+
+
+@router.get("/research-cases/{research_case_id}/sec-document-acquisition-preview", response_model=SecDocumentAcquisitionPackage)
+async def get_case_sec_document_acquisition_preview(research_case_id: str, db: AsyncSession = Depends(get_db)):
+    rc_id = _parse_uuid(research_case_id, "research_case_id")
+    result = await db.execute(
+        select(ResearchCase)
+        .where(ResearchCase.id == rc_id)
+        .options(
+            selectinload(ResearchCase.documents),
+            selectinload(ResearchCase.sources),
+        )
+    )
+    rc = result.scalars().first()
+    if not rc:
+        raise HTTPException(status_code=404, detail="Research case not found")
+
+    source_situation = None
+    if rc.situation_id:
+        sit_result = await db.execute(select(SpecialSituation).where(SpecialSituation.id == rc.situation_id))
+        source_situation = sit_result.scalars().first()
+
+    return build_research_case_sec_document_acquisition_preview(rc, source_situation=source_situation)
+
+
+@router.post("/research-cases/{research_case_id}/sec-document-acquisition", response_model=SecDocumentAcquisitionPackage)
+async def post_case_sec_document_acquisition(research_case_id: str, db: AsyncSession = Depends(get_db)):
+    rc_id = _parse_uuid(research_case_id, "research_case_id")
+    result = await db.execute(
+        select(ResearchCase)
+        .where(ResearchCase.id == rc_id)
+        .options(
+            selectinload(ResearchCase.documents),
+            selectinload(ResearchCase.sources),
+        )
+    )
+    rc = result.scalars().first()
+    if not rc:
+        raise HTTPException(status_code=404, detail="Research case not found")
+
+    source_situation = None
+    if rc.situation_id:
+        sit_result = await db.execute(select(SpecialSituation).where(SpecialSituation.id == rc.situation_id))
+        source_situation = sit_result.scalars().first()
+
+    preview = build_research_case_sec_document_acquisition_preview(rc, source_situation=source_situation)
+    package = await acquire_sec_documents_from_preview(preview)
+    stored = apply_research_case_sec_acquisition_metadata(rc, package) if package.acquired_documents else []
+    for item in stored:
+        db.add(item)
+    if stored:
+        await db.commit()
+    return package
 
 
 @router.get("/research-cases/{research_case_id}/activity-timeline", response_model=CaseActivityTimelinePackage)

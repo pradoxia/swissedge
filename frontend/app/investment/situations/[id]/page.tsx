@@ -17,14 +17,17 @@ import { CaseActivityTimeline } from '@/app/components/CaseActivityTimeline';
 import { OfficialSourceFinderPanel } from '@/app/components/OfficialSourceFinderPanel';
 import { HistoricalAnaloguesPanel } from '@/app/components/HistoricalAnaloguesPanel';
 import { CaseCompletionWorkbench } from '@/app/components/CaseCompletionWorkbench';
+import { SecDocumentAcquisitionPanel } from '@/app/components/SecDocumentAcquisitionPanel';
 import {
   addSituationResource,
+  acquireSituationSecDocuments,
   fetchSituationActivityTimeline,
   fetchSituationDocumentationGuide,
   fetchSituationEvidenceLinks,
   fetchSituationCompletionWorkbench,
   fetchSituationHistoricalAnalogues,
   fetchSituationOfficialSourceFinder,
+  fetchSituationSecDocumentAcquisitionPreview,
   fetchSituation,
   promoteSituationToResearchCase,
   updateSituationResourceCandidate,
@@ -39,6 +42,7 @@ import {
   type CaseCompletionPackage,
   type HistoricalAnaloguesPackage,
   type OfficialSourceFinderPackage,
+  type SecDocumentAcquisitionPackage,
   type SituationEvidenceLinksPackage,
 } from '@/lib/api';
 
@@ -463,6 +467,10 @@ export default function SpecialSituationMethodologyPage() {
   const [officialSourceFinder, setOfficialSourceFinder] = useState<OfficialSourceFinderPackage | null>(null);
   const [officialSourceFinderError, setOfficialSourceFinderError] = useState<string | null>(null);
   const [officialSourceFinderLoading, setOfficialSourceFinderLoading] = useState(false);
+  const [secDocumentAcquisition, setSecDocumentAcquisition] = useState<SecDocumentAcquisitionPackage | null>(null);
+  const [secDocumentAcquisitionError, setSecDocumentAcquisitionError] = useState<string | null>(null);
+  const [secDocumentAcquisitionLoading, setSecDocumentAcquisitionLoading] = useState(false);
+  const [secDocumentAcquiring, setSecDocumentAcquiring] = useState(false);
   const [historicalAnalogues, setHistoricalAnalogues] = useState<HistoricalAnaloguesPackage | null>(null);
   const [historicalAnaloguesError, setHistoricalAnaloguesError] = useState<string | null>(null);
   const [historicalAnaloguesLoading, setHistoricalAnaloguesLoading] = useState(false);
@@ -472,19 +480,20 @@ export default function SpecialSituationMethodologyPage() {
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function load() {
-      try {
-        setLoading(true);
-        setError(null);
-        const situationData = await fetchSituation(id);
-        setSituation(situationData);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load situation');
-      } finally {
-        setLoading(false);
-      }
+  async function load() {
+    try {
+      setLoading(true);
+      setError(null);
+      const situationData = await fetchSituation(id);
+      setSituation(situationData);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load situation');
+    } finally {
+      setLoading(false);
     }
+  }
+
+  useEffect(() => {
     async function loadEvidenceLinks() {
       try {
         setEvidenceLinksError(null);
@@ -527,6 +536,18 @@ export default function SpecialSituationMethodologyPage() {
         setOfficialSourceFinderLoading(false);
       }
     }
+    async function loadSecDocumentAcquisition() {
+      try {
+        setSecDocumentAcquisitionLoading(true);
+        setSecDocumentAcquisitionError(null);
+        const preview = await fetchSituationSecDocumentAcquisitionPreview(id);
+        setSecDocumentAcquisition(preview);
+      } catch (err) {
+        setSecDocumentAcquisitionError(err instanceof Error ? err.message : 'Failed to load SEC document acquisition preview');
+      } finally {
+        setSecDocumentAcquisitionLoading(false);
+      }
+    }
     async function loadHistoricalAnalogues() {
       try {
         setHistoricalAnaloguesLoading(true);
@@ -556,6 +577,7 @@ export default function SpecialSituationMethodologyPage() {
     if (id) loadDocumentationGuide();
     if (id) loadCompletionWorkbench();
     if (id) loadOfficialSourceFinder();
+    if (id) loadSecDocumentAcquisition();
     if (id) loadHistoricalAnalogues();
     if (id) loadActivityTimeline();
   }, [id]);
@@ -584,6 +606,20 @@ export default function SpecialSituationMethodologyPage() {
       setCopiedKey('copy-failed');
     }
     setTimeout(() => setCopiedKey(null), 1500);
+  }
+
+  async function handleSecDocumentAcquisition() {
+    try {
+      setSecDocumentAcquiring(true);
+      setSecDocumentAcquisitionError(null);
+      const result = await acquireSituationSecDocuments(id);
+      setSecDocumentAcquisition(result);
+      await load();
+    } catch (err) {
+      setSecDocumentAcquisitionError(err instanceof Error ? err.message : 'Failed to acquire SEC document metadata');
+    } finally {
+      setSecDocumentAcquiring(false);
+    }
   }
 
   async function handleAddResource() {
@@ -733,6 +769,16 @@ export default function SpecialSituationMethodologyPage() {
         error={officialSourceFinderError}
         copiedKey={copiedKey}
         onCopy={copyText}
+      />
+
+      <SecDocumentAcquisitionPanel
+        packageData={secDocumentAcquisition}
+        loading={secDocumentAcquisitionLoading}
+        acquiring={secDocumentAcquiring}
+        error={secDocumentAcquisitionError}
+        copiedKey={copiedKey}
+        onCopy={copyText}
+        onAcquire={handleSecDocumentAcquisition}
       />
 
       <HistoricalAnaloguesPanel

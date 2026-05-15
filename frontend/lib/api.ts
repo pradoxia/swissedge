@@ -303,6 +303,63 @@ export interface HistoricalAnaloguesPackage {
   guardrails: string[];
 }
 
+export interface SecDocumentAcquisitionPackage {
+  case_id: string;
+  case_type: 'special_situation' | 'research_case';
+  mode: string;
+  available_identifiers: {
+    filing_url: string | null;
+    cik: string | null;
+    accession_number: string | null;
+    filing_type: string | null;
+    filing_date: string | null;
+    company_name: string | null;
+    ticker: string | null;
+  };
+  missing_identifiers: string[];
+  official_links: Array<{
+    title: string;
+    url: string;
+    doc_type: string;
+    accession_number: string | null;
+    form_type: string | null;
+    acquisition_status: string;
+    human_review_required: boolean;
+    verified: boolean;
+  }>;
+  likely_document_targets: Array<{
+    label: string;
+    expected_doc_type: string;
+    reason: string;
+  }>;
+  manual_locator_steps: Array<{
+    step: number;
+    title: string;
+    description: string;
+    link_url: string | null;
+  }>;
+  copyable_queries: Array<{
+    query: string;
+    purpose: string;
+    where_to_use: string;
+    not_executed_by_swissedge: boolean;
+  }>;
+  acquired_documents: Array<{
+    title: string;
+    url: string;
+    doc_type: string;
+    accession_number: string | null;
+    form_type: string | null;
+    acquisition_status: string;
+    human_review_required: boolean;
+    verified: boolean;
+  }>;
+  stored_records: Array<Record<string, unknown>>;
+  warnings: string[];
+  manual_next_steps: string[];
+  guardrails: string[];
+}
+
 export interface CaseCompletionPackage {
   case_id: string;
   case_type: 'special_situation' | 'research_case';
@@ -617,6 +674,18 @@ export async function fetchSituationCompletionWorkbench(id: string): Promise<Cas
   return response.json();
 }
 
+export async function fetchSituationSecDocumentAcquisitionPreview(id: string): Promise<SecDocumentAcquisitionPackage> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/situations/${id}/sec-document-acquisition-preview`);
+  if (!response.ok) throw new Error(`Failed to fetch SEC document acquisition preview: ${response.statusText}`);
+  return response.json();
+}
+
+export async function acquireSituationSecDocuments(id: string): Promise<SecDocumentAcquisitionPackage> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/situations/${id}/sec-document-acquisition`, { method: 'POST' });
+  if (!response.ok) throw new Error(`Failed to acquire SEC documents: ${response.statusText}`);
+  return response.json();
+}
+
 export async function fetchSituationActivityTimeline(id: string): Promise<CaseActivityTimelinePackage> {
   const response = await fetch(`${API_BASE_URL}/api/investment/situations/${id}/activity-timeline`);
   if (!response.ok) throw new Error(`Failed to fetch situation activity timeline: ${response.statusText}`);
@@ -694,6 +763,90 @@ export interface FontanaDiagnosticReport {
   guardrails: string[];
 }
 
+export interface DaniWeberProcessImprovement {
+  id: string;
+  title: string;
+  category: 'ADD_SOURCE' | 'IMPROVE_DOCUMENTATION_WORKFLOW' | 'IMPROVE_DETECTION_RULE' | 'IMPROVE_AGENT_SKILL' | 'FIX_BOTTLENECK' | 'ADD_KPI';
+  evidence: string;
+  recommendation: string;
+  expected_impact: string;
+  requires_dani_approval: boolean;
+  auto_apply: boolean;
+}
+
+export interface DaniWeberMetrics {
+  generated_at: string;
+  mode: 'deterministic_read_only';
+  total_special_situations: number;
+  by_workflow_phase: Record<string, number>;
+  by_situation_type: Record<string, number>;
+  research_case_statuses: Record<string, number>;
+  promotion_rate_to_research_case: {
+    promoted_count: number;
+    total_special_situations: number;
+    rate_percent: number;
+  };
+  documentation_blockers: {
+    missing_required_resources: number;
+    checklist_blocked_items: number;
+    human_review_required_items: number;
+    rejected_resource_candidates: number;
+  };
+  missing_resource_frequency: Array<{ key: string; count: number }>;
+  candidate_source_coverage: {
+    required_resources_total: number;
+    resource_candidates_total: number;
+    candidate_found_total: number;
+    coverage_percent: number;
+    by_source_type: Array<{ key: string; count: number }>;
+  };
+  cases_stuck_by_phase: Array<{
+    phase: string;
+    count: number;
+    cases: Array<{ id: string; title: string; href: string }>;
+  }>;
+  low_priority_or_noise_count: number;
+  top_bottlenecks: Array<{ id: string; title: string; count: number; severity: string }>;
+  recommended_process_improvements: DaniWeberProcessImprovement[];
+  guardrails: string[];
+}
+
+export interface ExecutiveReviewFinding {
+  id: string;
+  coo_observation: string;
+  cto_interpretation: string;
+  product_area: string;
+  severity: 'info' | 'warning' | 'critical';
+  evidence: string;
+  recommended_action: string;
+  requires_dani_approval: boolean;
+  auto_apply: boolean;
+}
+
+export interface ExecutiveReviewAction {
+  id: string;
+  title: string;
+  product_area?: string;
+  source?: string;
+  category?: string;
+  evidence: string;
+  recommended_action?: string;
+  reason?: string;
+  requires_dani_approval: boolean;
+  auto_apply: boolean;
+}
+
+export interface ExecutiveReviewPackage {
+  generated_at: string;
+  coo_summary: string;
+  cto_summary: string;
+  joint_findings: ExecutiveReviewFinding[];
+  joint_recommendations: ExecutiveReviewAction[];
+  pending_approval_items: ExecutiveReviewAction[];
+  guardrails: string[];
+  next_sprint_candidates: ExecutiveReviewAction[];
+}
+
 export async function fetchIntelligenceKpis(): Promise<IntelligenceKpiPackage> {
   const response = await fetch(`${API_BASE_URL}/api/investment/intelligence/kpis`);
   if (!response.ok) throw new Error(`Failed to fetch Intelligence KPIs: ${response.statusText}`);
@@ -703,6 +856,18 @@ export async function fetchIntelligenceKpis(): Promise<IntelligenceKpiPackage> {
 export async function fetchFontanaReport(): Promise<FontanaDiagnosticReport> {
   const response = await fetch(`${API_BASE_URL}/api/investment/intelligence/fontana-report`);
   if (!response.ok) throw new Error(`Failed to fetch Fontana report: ${response.statusText}`);
+  return response.json();
+}
+
+export async function fetchDaniWeberMetrics(): Promise<DaniWeberMetrics> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/executive/dani-weber-metrics`);
+  if (!response.ok) throw new Error(`Failed to fetch Dani Weber metrics: ${response.statusText}`);
+  return response.json();
+}
+
+export async function fetchExecutiveReview(): Promise<ExecutiveReviewPackage> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/executive/review`);
+  if (!response.ok) throw new Error(`Failed to fetch Executive Review: ${response.statusText}`);
   return response.json();
 }
 
@@ -1200,6 +1365,22 @@ export interface IntelligenceScorePackage {
   guardrails: string[];
 }
 
+export type OperationalViewLabel = 'candidate' | 'watchlist' | 'reject' | 'insufficient_information';
+export type OperationalViewConfidence = 'low' | 'medium' | 'high';
+
+export interface OperationalViewPackage {
+  research_case_id: string;
+  operational_view: OperationalViewLabel;
+  confidence: OperationalViewConfidence;
+  rationale: string[];
+  blockers: string[];
+  what_would_change_view: string[];
+  next_manual_actions: string[];
+  guardrails: string[];
+  not_investment_advice: boolean;
+  final_decision_by_dani: boolean;
+}
+
 export interface ResearchCasesResponse {
   count: number;
   research_cases: ResearchCase[];
@@ -1243,6 +1424,12 @@ export async function fetchResearchCaseIntelligenceScore(id: string): Promise<In
   return response.json();
 }
 
+export async function fetchResearchCaseOperationalView(id: string): Promise<OperationalViewPackage> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/research-cases/${id}/operational-view`);
+  if (!response.ok) throw new Error(`Failed to fetch operational view: ${response.statusText}`);
+  return response.json();
+}
+
 export async function fetchResearchCaseDocumentationGuide(id: string): Promise<CaseDocumentationGuidePackage> {
   const response = await fetch(`${API_BASE_URL}/api/investment/research-cases/${id}/documentation-guide`);
   if (!response.ok) throw new Error(`Failed to fetch research case documentation guide: ${response.statusText}`);
@@ -1264,6 +1451,18 @@ export async function fetchResearchCaseHistoricalAnalogues(id: string): Promise<
 export async function fetchResearchCaseCompletionWorkbench(id: string): Promise<CaseCompletionPackage> {
   const response = await fetch(`${API_BASE_URL}/api/investment/research-cases/${id}/completion-workbench`);
   if (!response.ok) throw new Error(`Failed to fetch research case completion workbench: ${response.statusText}`);
+  return response.json();
+}
+
+export async function fetchResearchCaseSecDocumentAcquisitionPreview(id: string): Promise<SecDocumentAcquisitionPackage> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/research-cases/${id}/sec-document-acquisition-preview`);
+  if (!response.ok) throw new Error(`Failed to fetch research case SEC document acquisition preview: ${response.statusText}`);
+  return response.json();
+}
+
+export async function acquireResearchCaseSecDocuments(id: string): Promise<SecDocumentAcquisitionPackage> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/research-cases/${id}/sec-document-acquisition`, { method: 'POST' });
+  if (!response.ok) throw new Error(`Failed to acquire research case SEC documents: ${response.statusText}`);
   return response.json();
 }
 
