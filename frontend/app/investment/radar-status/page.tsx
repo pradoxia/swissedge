@@ -6,6 +6,10 @@ import {
   fetchAgent,
   fetchSources,
   fetchCronUpcoming,
+  fetchDetectionRunStatus,
+  fetchLatestDetectionRun,
+  type DetectionRun,
+  type DetectionRunStatus,
 } from '@/lib/api';
 
 // Never render a raw object into JSX. Converts any value to a display string.
@@ -123,12 +127,16 @@ export default function RadarStatusPage() {
   const [agentRaw, setAgentRaw] = useState<unknown>(null);
   const [sourcesRaw, setSourcesRaw] = useState<unknown>(null);
   const [cronRaw, setCronRaw] = useState<unknown>(null);
+  const [latestDetectionRun, setLatestDetectionRun] = useState<DetectionRun | null>(null);
+  const [detectionRunStatus, setDetectionRunStatus] = useState<DetectionRunStatus | null>(null);
   const [loadingAgent, setLoadingAgent] = useState(true);
   const [loadingSources, setLoadingSources] = useState(true);
   const [loadingCron, setLoadingCron] = useState(true);
   const [agentError, setAgentError] = useState<string | null>(null);
   const [sourcesError, setSourcesError] = useState<string | null>(null);
   const [cronError, setCronError] = useState<string | null>(null);
+  const [detectionRunError, setDetectionRunError] = useState<string | null>(null);
+  const [detectionRunLoading, setDetectionRunLoading] = useState(true);
 
   useEffect(() => {
     fetchAgent('investment_scanner')
@@ -145,6 +153,19 @@ export default function RadarStatusPage() {
       .then((d) => setCronRaw(d))
       .catch((e) => setCronError(String(e?.message ?? e ?? 'Failed')))
       .finally(() => setLoadingCron(false));
+
+    fetchLatestDetectionRun()
+      .then((d) => setLatestDetectionRun(d.run))
+      .catch((e) => setDetectionRunError(String(e?.message ?? e ?? 'Failed')))
+      .finally(() => setDetectionRunLoading(false));
+
+    fetchDetectionRunStatus()
+      .then((d) => {
+        setDetectionRunStatus(d);
+        setLatestDetectionRun(d.latest_run);
+      })
+      .catch((e) => setDetectionRunError(String(e?.message ?? e ?? 'Failed')))
+      .finally(() => setDetectionRunLoading(false));
   }, []);
 
   // ── Normalise agent ────────────────────────────────────────────────────────
@@ -231,6 +252,11 @@ export default function RadarStatusPage() {
     `sources: ${loadingSources ? 'loading' : sourcesError ? `ERR: ${sourcesError}` : `ok (${totalSources} total)`}`,
     `cron: ${loadingCron ? 'loading' : cronError ? `ERR: ${cronError}` : `ok (${allCronEntries.length} entries, ${sortedDayKeys.length} days)`}`,
   ];
+  const detectionMode = !latestDetectionRun
+    ? 'disabled'
+    : latestDetectionRun.dry_run
+      ? 'dry-run'
+      : 'live-create';
 
   return (
     <div className="page-container--wide">
@@ -404,6 +430,53 @@ export default function RadarStatusPage() {
             )}
           </div>
         </div>
+      </div>
+
+      <div className="card mb-6 animate-fade-in-2">
+        <div className="section-header" style={{ marginBottom: '16px' }}>
+          <span className="section-title">SEC EDGAR Detection Status</span>
+          <div className="section-line"></div>
+          {detectionRunStatus && <StatusBadge status={detectionRunStatus.status} />}
+        </div>
+        {detectionRunLoading ? (
+          <div className="loading-state" style={{ padding: '8px 0' }}>
+            <div className="loading-spinner"></div>
+            <span>Loading...</span>
+          </div>
+        ) : detectionRunError ? (
+          <p style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--status-error-text)' }}>{detectionRunError}</p>
+        ) : !latestDetectionRun ? (
+          <div style={{ padding: 12, borderRadius: 8, border: '1px solid var(--status-preview-border)', color: 'var(--status-preview-text)', fontSize: 12 }}>
+            No SEC EDGAR detection runs recorded yet. Cron defaults remain disabled and dry-run.
+          </div>
+        ) : (
+          <>
+            {latestDetectionRun.status === 'failed' && (
+              <div style={{ padding: 12, borderRadius: 8, border: '1px solid var(--status-error-border)', color: 'var(--status-error-text)', fontSize: 12, marginBottom: 12 }}>
+                Latest SEC EDGAR detection run failed. Review the stored error before scheduling.
+              </div>
+            )}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+              <div className="metric-pill"><span className="metric-value">{numberText(latestDetectionRun.raw_hits)}</span><span className="metric-label">Raw hits</span></div>
+              <div className="metric-pill"><span className="metric-value">{numberText(latestDetectionRun.classified_filings)}</span><span className="metric-label">Classified</span></div>
+              <div className="metric-pill"><span className="metric-value">{numberText(latestDetectionRun.special_situations_created)}</span><span className="metric-label">Created</span></div>
+              <div className="metric-pill"><span className="metric-value">{numberText(latestDetectionRun.errors_count)}</span><span className="metric-label">Errors</span></div>
+            </div>
+            <div style={{ display: 'grid', gap: '8px' }}>
+              <Row label="Scheduling status" value={safeText(detectionRunStatus?.status)} />
+              <Row label="Mode" value={detectionMode} />
+              <Row label="Cron default" value={detectionRunStatus?.cron_safe_defaults.enabled_default === false ? 'disabled' : 'enabled'} />
+              <Row label="Latest run" value={formatDate(latestDetectionRun.started_at)} />
+              <Row label="Latest success" value={formatDate(detectionRunStatus?.latest_successful_run?.started_at)} />
+              <Row label="Hours back" value={safeText(latestDetectionRun.hours_back)} />
+              <Row label="Parsed filings" value={numberText(latestDetectionRun.parsed_filings)} />
+              <Row label="Unclassified" value={numberText(latestDetectionRun.unclassified_filings)} />
+              <Row label="Duplicates" value={numberText(latestDetectionRun.duplicates_skipped)} />
+              <Row label="Runtime" value={latestDetectionRun.runtime_seconds != null ? `${Math.round(latestDetectionRun.runtime_seconds * 10) / 10}s` : '—'} />
+              <Row label="Forms checked" value={Array.isArray(latestDetectionRun.forms_checked_json) ? latestDetectionRun.forms_checked_json.join(', ') : safeText(latestDetectionRun.forms_checked_json)} />
+            </div>
+          </>
+        )}
       </div>
 
       {/* Scanner Funnel Diagnostics */}

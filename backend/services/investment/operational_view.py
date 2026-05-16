@@ -11,6 +11,7 @@ from backend.services.investment.historical_analogues import HistoricalAnalogues
 from backend.services.investment.intelligence_score import IntelligenceScorePackage
 from backend.services.investment.research_cases import EvaluationPrepPackage
 from backend.services.investment.sec_document_acquisition import SecDocumentAcquisitionPackage
+from backend.services.investment.document_package import DocumentPackage
 
 
 OperationalView = Literal["candidate", "watchlist", "reject", "insufficient_information"]
@@ -26,6 +27,11 @@ class OperationalViewPackage(BaseModel):
     what_would_change_view: list[str]
     next_manual_actions: list[str]
     guardrails: list[str]
+    documentation_readiness: str | None = None
+    missing_required_count: int | None = None
+    missing_recommended_count: int | None = None
+    top_missing_documents: list[str] = []
+    manual_actions_count: int | None = None
     not_investment_advice: bool = True
     final_decision_by_dani: bool = True
 
@@ -106,6 +112,7 @@ def build_operational_view_package(
     evidence_links: ResearchCaseEvidenceLinksPackage | None = None,
     historical_analogues: HistoricalAnaloguesPackage | None = None,
     sec_preview: SecDocumentAcquisitionPackage | None = None,
+    document_package: DocumentPackage | None = None,
 ) -> OperationalViewPackage:
     rationale: list[str] = []
     blockers: list[str] = []
@@ -168,6 +175,13 @@ def build_operational_view_package(
     if not next_manual_actions:
         next_manual_actions.append("Review source/document metadata and evidence mapping manually.")
 
+    top_missing_documents: list[str] = []
+    if document_package:
+        top_missing_documents = [
+            item.label for item in document_package.documents
+            if item.status in {"missing", "needs_manual_check"} and item.priority in {"required", "recommended"}
+        ][:5]
+
     return OperationalViewPackage(
         research_case_id=str(rc.id),
         operational_view=view,
@@ -177,4 +191,9 @@ def build_operational_view_package(
         what_would_change_view=what_would_change_view,
         next_manual_actions=list(dict.fromkeys(next_manual_actions))[:6],
         guardrails=GUARDRAILS,
+        documentation_readiness=document_package.readiness_level if document_package else None,
+        missing_required_count=document_package.summary.required_missing if document_package else None,
+        missing_recommended_count=document_package.summary.recommended_missing if document_package else None,
+        top_missing_documents=top_missing_documents,
+        manual_actions_count=document_package.summary.manual_actions_count if document_package else None,
     )

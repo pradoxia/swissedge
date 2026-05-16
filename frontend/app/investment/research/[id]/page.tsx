@@ -10,6 +10,7 @@ import { OfficialSourceFinderPanel } from '@/app/components/OfficialSourceFinder
 import { HistoricalAnaloguesPanel } from '@/app/components/HistoricalAnaloguesPanel';
 import { CaseCompletionWorkbench } from '@/app/components/CaseCompletionWorkbench';
 import { SecDocumentAcquisitionPanel } from '@/app/components/SecDocumentAcquisitionPanel';
+import { DocumentPackagePanel } from '@/app/components/DocumentPackagePanel';
 import {
   acquireResearchCaseSecDocuments,
   fetchResearchCase,
@@ -17,6 +18,7 @@ import {
   fetchResearchCaseCompletionWorkbench,
   fetchResearchCaseEvidenceLinks,
   fetchResearchCaseDocumentationGuide,
+  fetchResearchCaseDocumentPackage,
   fetchResearchCaseEvaluationPrep,
   fetchResearchCaseHistoricalAnalogues,
   fetchResearchCaseIntelligenceScore,
@@ -44,6 +46,7 @@ import {
   type CaseCompletionPackage,
   type ResearchCaseEvidenceLinksPackage,
   type CaseDocumentationGuidePackage,
+  type DocumentPackage,
   type EvaluationPrepPackage,
   type HistoricalAnaloguesPackage,
   type IntelligenceScorePackage,
@@ -2034,6 +2037,7 @@ export default function ResearchDetailPage() {
   const [officialSourceFinder, setOfficialSourceFinder] = useState<OfficialSourceFinderPackage | null>(null);
   const [operationalView, setOperationalView] = useState<OperationalViewPackage | null>(null);
   const [secDocumentAcquisition, setSecDocumentAcquisition] = useState<SecDocumentAcquisitionPackage | null>(null);
+  const [documentPackage, setDocumentPackage] = useState<DocumentPackage | null>(null);
   const [historicalAnalogues, setHistoricalAnalogues] = useState<HistoricalAnaloguesPackage | null>(null);
   const [activityTimeline, setActivityTimeline] = useState<CaseActivityTimelinePackage | null>(null);
   const [prepLoading, setPrepLoading] = useState(true);
@@ -2051,6 +2055,8 @@ export default function ResearchDetailPage() {
   const [secDocumentAcquisitionError, setSecDocumentAcquisitionError] = useState<string | null>(null);
   const [secDocumentAcquisitionLoading, setSecDocumentAcquisitionLoading] = useState(false);
   const [secDocumentAcquiring, setSecDocumentAcquiring] = useState(false);
+  const [documentPackageError, setDocumentPackageError] = useState<string | null>(null);
+  const [documentPackageLoading, setDocumentPackageLoading] = useState(false);
   const [historicalAnaloguesError, setHistoricalAnaloguesError] = useState<string | null>(null);
   const [historicalAnaloguesLoading, setHistoricalAnaloguesLoading] = useState(false);
   const [activityTimelineError, setActivityTimelineError] = useState<string | null>(null);
@@ -2210,6 +2216,19 @@ export default function ResearchDetailPage() {
     }
   }
 
+  async function loadDocumentPackage() {
+    try {
+      setDocumentPackageLoading(true);
+      setDocumentPackageError(null);
+      const data = await fetchResearchCaseDocumentPackage(id);
+      setDocumentPackage(data);
+    } catch (err) {
+      setDocumentPackageError(err instanceof Error ? err.message : 'Failed to load document package');
+    } finally {
+      setDocumentPackageLoading(false);
+    }
+  }
+
   async function loadHistoricalAnalogues() {
     try {
       setHistoricalAnaloguesLoading(true);
@@ -2253,6 +2272,7 @@ export default function ResearchDetailPage() {
       await load();
       await loadEvidenceLinks();
       await loadOperationalView();
+      await loadDocumentPackage();
     } catch (err) {
       setSecDocumentAcquisitionError(err instanceof Error ? err.message : 'Failed to acquire SEC document metadata');
     } finally {
@@ -2270,6 +2290,7 @@ export default function ResearchDetailPage() {
     loadOfficialSourceFinder();
     loadOperationalView();
     loadSecDocumentAcquisition();
+    loadDocumentPackage();
     loadHistoricalAnalogues();
     loadActivityTimeline();
   }, [id]);
@@ -2548,6 +2569,12 @@ export default function ResearchDetailPage() {
           copiedKey={officialSourceCopiedKey}
           onCopy={copyOfficialSourceQuery}
           onAcquire={handleSecDocumentAcquisition}
+        />
+
+        <DocumentPackagePanel
+          packageData={documentPackage}
+          loading={documentPackageLoading}
+          error={documentPackageError}
         />
 
         <HistoricalAnaloguesPanel

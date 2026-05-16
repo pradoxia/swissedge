@@ -9,7 +9,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from backend.db.database import get_db
 from backend.models.agent_ops import AgentActivity
-from backend.models.investment import SpecialSituation, SituationHistory, InvestmentSource
+from backend.models.investment import DetectionRun, SpecialSituation, SituationHistory, InvestmentSource
 from backend.models.investment_research import HistoricalCase
 from backend.models.investment_research import ResearchCase
 from backend.services.investment.sources.sec_edgar import SECEdgarAdapter
@@ -54,6 +54,19 @@ from backend.services.investment.sec_document_acquisition import (
     acquire_sec_documents_from_preview,
     apply_situation_sec_acquisition_metadata,
     build_situation_sec_document_acquisition_preview,
+)
+from backend.services.investment.detection_run_service import (
+    build_detection_run_status,
+    get_latest_runs,
+    serialize_detection_run,
+)
+from backend.services.investment.document_package import (
+    DocumentPackage,
+    build_situation_document_package,
+)
+from backend.services.investment.promotion_readiness import (
+    PromotionReadinessPackage,
+    build_promotion_readiness_package,
 )
 from backend.services.investment.intelligence_score import build_intelligence_score_package
 from backend.services.investment.research_cases import build_evaluation_prep_package
@@ -275,6 +288,35 @@ def _count_classified_by_type(filings: list[Filing]) -> dict[str, int]:
 @router.get("/intelligence/kpis")
 async def get_intelligence_kpis(db: AsyncSession = Depends(get_db)):
     return await collect_intelligence_kpi_package(db)
+
+
+@router.get("/detection-runs/latest")
+async def get_latest_detection_run(db: AsyncSession = Depends(get_db)):
+    runs = await get_latest_runs(db, limit=1)
+    if not runs:
+        return {"run": None}
+    return {"run": serialize_detection_run(runs[0])}
+
+
+@router.get("/detection-runs/status")
+async def get_detection_runs_status(db: AsyncSession = Depends(get_db)):
+    runs = await get_latest_runs(db, limit=20)
+    return build_detection_run_status(runs)
+
+
+@router.get("/detection-runs")
+async def list_detection_runs(limit: int = 20, db: AsyncSession = Depends(get_db)):
+    limit = max(1, min(limit, 100))
+    runs = await get_latest_runs(db, limit=limit)
+    return {"count": len(runs), "runs": [serialize_detection_run(run) for run in runs]}
+
+
+@router.get("/detection-runs/{run_id}")
+async def get_detection_run(run_id: str, db: AsyncSession = Depends(get_db)):
+    run = await db.get(DetectionRun, uuid.UUID(run_id))
+    if not run:
+        raise HTTPException(status_code=404, detail="Detection run not found")
+    return serialize_detection_run(run)
 
 
 @router.get("/intelligence/fontana-report")
@@ -631,6 +673,37 @@ async def get_situation_documentation_guide(situation_id: str, db: AsyncSession 
         raise HTTPException(status_code=404, detail="Situation not found")
     evidence_links = build_situation_evidence_links(sit)
     return build_situation_documentation_guide(sit, evidence_links)
+
+
+@router.get("/situations/{situation_id}/document-package", response_model=DocumentPackage)
+async def get_situation_document_package(situation_id: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(SpecialSituation).where(SpecialSituation.id == uuid.UUID(situation_id))
+    )
+    sit = result.scalars().first()
+    if not sit:
+        raise HTTPException(status_code=404, detail="Situation not found")
+    evidence_links = build_situation_evidence_links(sit)
+    sec_preview = build_situation_sec_document_acquisition_preview(sit)
+    return build_situation_document_package(sit, evidence_links=evidence_links, sec_preview=sec_preview)
+
+
+@router.get("/situations/{situation_id}/promotion-readiness", response_model=PromotionReadinessPackage)
+async def get_situation_promotion_readiness(situation_id: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(SpecialSituation).where(SpecialSituation.id == uuid.UUID(situation_id))
+    )
+    sit = result.scalars().first()
+    if not sit:
+        raise HTTPException(status_code=404, detail="Situation not found")
+    evidence_links = build_situation_evidence_links(sit)
+    sec_preview = build_situation_sec_document_acquisition_preview(sit)
+    document_package = build_situation_document_package(sit, evidence_links=evidence_links, sec_preview=sec_preview)
+    return build_promotion_readiness_package(
+        sit,
+        document_package=document_package,
+        evidence_links=evidence_links,
+    )
 
 
 @router.get("/situations/{situation_id}/official-source-finder", response_model=OfficialSourceFinderPackage)

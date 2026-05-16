@@ -18,15 +18,18 @@ import { OfficialSourceFinderPanel } from '@/app/components/OfficialSourceFinder
 import { HistoricalAnaloguesPanel } from '@/app/components/HistoricalAnaloguesPanel';
 import { CaseCompletionWorkbench } from '@/app/components/CaseCompletionWorkbench';
 import { SecDocumentAcquisitionPanel } from '@/app/components/SecDocumentAcquisitionPanel';
+import { DocumentPackagePanel } from '@/app/components/DocumentPackagePanel';
 import {
   addSituationResource,
   acquireSituationSecDocuments,
   fetchSituationActivityTimeline,
   fetchSituationDocumentationGuide,
+  fetchSituationDocumentPackage,
   fetchSituationEvidenceLinks,
   fetchSituationCompletionWorkbench,
   fetchSituationHistoricalAnalogues,
   fetchSituationOfficialSourceFinder,
+  fetchSituationPromotionReadiness,
   fetchSituationSecDocumentAcquisitionPreview,
   fetchSituation,
   promoteSituationToResearchCase,
@@ -34,12 +37,14 @@ import {
   updateSituationWorkflowStatus,
   type MethodologyChecklistItem,
   type MethodologyWorkspace,
+  type PromotionReadinessPackage,
   type RequiredResourceItem,
   type ResourceCandidate,
   type Situation,
   type CaseDocumentationGuidePackage,
   type CaseActivityTimelinePackage,
   type CaseCompletionPackage,
+  type DocumentPackage,
   type HistoricalAnaloguesPackage,
   type OfficialSourceFinderPackage,
   type SecDocumentAcquisitionPackage,
@@ -436,6 +441,77 @@ function ResourceTable({ resources }: { resources: RequiredResourceItem[] }) {
   );
 }
 
+function PromotionReadinessPanel({
+  readiness,
+  loading,
+  error,
+}: {
+  readiness: PromotionReadinessPackage | null;
+  loading: boolean;
+  error: string | null;
+}) {
+  const topEvidence = readiness?.supporting_evidence.slice(0, 3) ?? [];
+  return (
+    <SectionCard title="Promotion Readiness">
+      <div style={{ display: 'grid', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span className="status-badge status-badge--readonly">
+            {readiness ? readiness.readiness_level.replaceAll('_', ' ') : 'not loaded'}
+          </span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-muted)' }}>
+            Score {readiness?.readiness_score ?? '-'}/100
+          </span>
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+          Ready for manual promotion does not mean investment approval. This panel does not create a ResearchCase.
+        </div>
+        {loading && <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Loading promotion readiness...</div>}
+        {error && <InfoBanner variant="warning">{error}</InfoBanner>}
+        {readiness && !loading && (
+          <>
+            {readiness.blocking_reasons.length > 0 && (
+              <div>
+                <div style={MONO_LABEL}>Blocking reasons</div>
+                <ul style={{ margin: 0, paddingLeft: 18 }}>
+                  {readiness.blocking_reasons.slice(0, 4).map(reason => (
+                    <li key={reason} style={{ fontSize: 12, color: 'var(--text-muted)' }}>{reason}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {readiness.missing_required_documents.length > 0 && (
+              <div>
+                <div style={MONO_LABEL}>Missing required documents</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                  {readiness.missing_required_documents.slice(0, 5).map(label => (
+                    <span key={label} className="status-badge status-badge--preview">{label}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {topEvidence.length > 0 && (
+              <div>
+                <div style={MONO_LABEL}>Top supporting evidence</div>
+                <div style={{ display: 'grid', gap: 4 }}>
+                  {topEvidence.map((item, index) => (
+                    <div key={`${String(item.label ?? 'evidence')}-${index}`} style={{ fontSize: 12, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {String(item.label ?? item.source_type ?? 'Evidence link')}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div>
+              <div style={MONO_LABEL}>Recommended next manual action</div>
+              <div style={{ fontSize: 12, color: 'var(--text-primary)' }}>{readiness.recommended_next_step}</div>
+            </div>
+          </>
+        )}
+      </div>
+    </SectionCard>
+  );
+}
+
 export default function SpecialSituationMethodologyPage() {
   const params = useParams();
   const id = params.id as string;
@@ -471,6 +547,12 @@ export default function SpecialSituationMethodologyPage() {
   const [secDocumentAcquisitionError, setSecDocumentAcquisitionError] = useState<string | null>(null);
   const [secDocumentAcquisitionLoading, setSecDocumentAcquisitionLoading] = useState(false);
   const [secDocumentAcquiring, setSecDocumentAcquiring] = useState(false);
+  const [documentPackage, setDocumentPackage] = useState<DocumentPackage | null>(null);
+  const [documentPackageError, setDocumentPackageError] = useState<string | null>(null);
+  const [documentPackageLoading, setDocumentPackageLoading] = useState(false);
+  const [promotionReadiness, setPromotionReadiness] = useState<PromotionReadinessPackage | null>(null);
+  const [promotionReadinessError, setPromotionReadinessError] = useState<string | null>(null);
+  const [promotionReadinessLoading, setPromotionReadinessLoading] = useState(false);
   const [historicalAnalogues, setHistoricalAnalogues] = useState<HistoricalAnaloguesPackage | null>(null);
   const [historicalAnaloguesError, setHistoricalAnaloguesError] = useState<string | null>(null);
   const [historicalAnaloguesLoading, setHistoricalAnaloguesLoading] = useState(false);
@@ -548,6 +630,30 @@ export default function SpecialSituationMethodologyPage() {
         setSecDocumentAcquisitionLoading(false);
       }
     }
+    async function loadDocumentPackage() {
+      try {
+        setDocumentPackageLoading(true);
+        setDocumentPackageError(null);
+        const data = await fetchSituationDocumentPackage(id);
+        setDocumentPackage(data);
+      } catch (err) {
+        setDocumentPackageError(err instanceof Error ? err.message : 'Failed to load document package');
+      } finally {
+        setDocumentPackageLoading(false);
+      }
+    }
+    async function loadPromotionReadiness() {
+      try {
+        setPromotionReadinessLoading(true);
+        setPromotionReadinessError(null);
+        const data = await fetchSituationPromotionReadiness(id);
+        setPromotionReadiness(data);
+      } catch (err) {
+        setPromotionReadinessError(err instanceof Error ? err.message : 'Failed to load promotion readiness');
+      } finally {
+        setPromotionReadinessLoading(false);
+      }
+    }
     async function loadHistoricalAnalogues() {
       try {
         setHistoricalAnaloguesLoading(true);
@@ -578,6 +684,8 @@ export default function SpecialSituationMethodologyPage() {
     if (id) loadCompletionWorkbench();
     if (id) loadOfficialSourceFinder();
     if (id) loadSecDocumentAcquisition();
+    if (id) loadDocumentPackage();
+    if (id) loadPromotionReadiness();
     if (id) loadHistoricalAnalogues();
     if (id) loadActivityTimeline();
   }, [id]);
@@ -779,6 +887,18 @@ export default function SpecialSituationMethodologyPage() {
         copiedKey={copiedKey}
         onCopy={copyText}
         onAcquire={handleSecDocumentAcquisition}
+      />
+
+      <DocumentPackagePanel
+        packageData={documentPackage}
+        loading={documentPackageLoading}
+        error={documentPackageError}
+      />
+
+      <PromotionReadinessPanel
+        readiness={promotionReadiness}
+        loading={promotionReadinessLoading}
+        error={promotionReadinessError}
       />
 
       <HistoricalAnaloguesPanel

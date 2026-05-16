@@ -94,6 +94,10 @@ from backend.services.investment.sec_document_acquisition import (
     apply_research_case_sec_acquisition_metadata,
     build_research_case_sec_document_acquisition_preview,
 )
+from backend.services.investment.document_package import (
+    DocumentPackage,
+    build_research_case_document_package,
+)
 from backend.services.investment.operational_view import (
     OperationalViewPackage,
     build_operational_view_package,
@@ -194,6 +198,36 @@ async def get_case_documentation_guide(research_case_id: str, db: AsyncSession =
         evidence_links=evidence_links,
         evaluation_prep=evaluation_prep,
         intelligence_score=intelligence_score,
+        source_situation=source_situation,
+    )
+
+
+@router.get("/research-cases/{research_case_id}/document-package", response_model=DocumentPackage)
+async def get_case_document_package(research_case_id: str, db: AsyncSession = Depends(get_db)):
+    rc_id = _parse_uuid(research_case_id, "research_case_id")
+    result = await db.execute(
+        select(ResearchCase)
+        .where(ResearchCase.id == rc_id)
+        .options(
+            selectinload(ResearchCase.documents),
+            selectinload(ResearchCase.sources),
+        )
+    )
+    rc = result.scalars().first()
+    if not rc:
+        raise HTTPException(status_code=404, detail="Research case not found")
+
+    source_situation = None
+    if rc.situation_id:
+        sit_result = await db.execute(select(SpecialSituation).where(SpecialSituation.id == rc.situation_id))
+        source_situation = sit_result.scalars().first()
+
+    evidence_links = build_research_case_evidence_links(rc)
+    sec_preview = build_research_case_sec_document_acquisition_preview(rc, source_situation=source_situation)
+    return build_research_case_document_package(
+        rc,
+        evidence_links=evidence_links,
+        sec_preview=sec_preview,
         source_situation=source_situation,
     )
 
@@ -330,6 +364,12 @@ async def get_case_operational_view(research_case_id: str, db: AsyncSession = De
         source_situation=source_situation,
     )
     sec_preview = build_research_case_sec_document_acquisition_preview(rc, source_situation=source_situation)
+    document_package = build_research_case_document_package(
+        rc,
+        evidence_links=evidence_links,
+        sec_preview=sec_preview,
+        source_situation=source_situation,
+    )
     return build_operational_view_package(
         rc,
         evaluation_prep=evaluation_prep,
@@ -338,6 +378,7 @@ async def get_case_operational_view(research_case_id: str, db: AsyncSession = De
         evidence_links=evidence_links,
         historical_analogues=historical_analogues,
         sec_preview=sec_preview,
+        document_package=document_package,
     )
 
 

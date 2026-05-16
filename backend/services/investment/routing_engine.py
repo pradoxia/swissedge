@@ -62,6 +62,7 @@ def detect_situation_type(filing: Filing) -> dict:
         - subtype: str | None
         - detection_confidence: str (HIGH, MEDIUM, LOW)
         - detected_signal: str (what triggered detection)
+        - reason_code: str (deterministic reason for auditability)
     """
     form_type = detect_form_type(filing)
     summary_lower = filing.summary.lower() if filing.summary else ""
@@ -73,6 +74,7 @@ def detect_situation_type(filing: Filing) -> dict:
             "subtype": "acquisition_tender_offer",
             "detection_confidence": "HIGH",
             "detected_signal": f"Form type: {form_type} (third-party acquisition tender)",
+            "reason_code": "form_sc_to_t",
         }
 
     if form_type == "SC TO-I":
@@ -81,6 +83,7 @@ def detect_situation_type(filing: Filing) -> dict:
             "subtype": "self_tender",
             "detection_confidence": "HIGH",
             "detected_signal": f"Form type: {form_type} (issuer self-tender)",
+            "reason_code": "form_sc_to_i",
         }
 
     if form_type in ("Form 10", "Form 14-12B"):
@@ -89,6 +92,7 @@ def detect_situation_type(filing: Filing) -> dict:
             "subtype": "standard_spin_off",
             "detection_confidence": "HIGH",
             "detected_signal": f"Form type: {form_type} (spinco registration)",
+            "reason_code": "form_10_spin",
         }
 
     if form_type == "SC 13D":
@@ -97,6 +101,7 @@ def detect_situation_type(filing: Filing) -> dict:
             "subtype": "activist_campaign",
             "detection_confidence": "HIGH",
             "detected_signal": f"Form type: {form_type} (activist ownership >5%)",
+            "reason_code": "activist_ownership_form",
         }
 
     if form_type == "DFAN14A":
@@ -105,6 +110,7 @@ def detect_situation_type(filing: Filing) -> dict:
             "subtype": "proxy_contest",
             "detection_confidence": "HIGH",
             "detected_signal": f"Form type: {form_type} (dissident proxy solicitation)",
+            "reason_code": "proxy_solicitation_form",
         }
 
     if form_type in ("S-3", "F-3") and ("rights offering" in summary_lower or "subscription rights" in summary_lower):
@@ -113,27 +119,54 @@ def detect_situation_type(filing: Filing) -> dict:
             "subtype": "rights_offering",
             "detection_confidence": "HIGH",
             "detected_signal": f"Form type: {form_type} + rights offering language",
+            "reason_code": "rights_offering_keyword",
         }
 
     # Medium-confidence: 8-K or DEF 14A with keyword detection
     if form_type in ("8-K", "DEF 14A"):
         # Plan of dissolution/liquidation
-        dissolution_patterns = [
-            "plan of dissolution",
+        liquidation_patterns = [
             "plan of liquidation",
             "liquidation",
+            "liquidating distribution",
+        ]
+        dissolution_patterns = [
+            "plan of dissolution",
             "dissolution",
             "complete dissolution",
             "wind down",
-            "liquidating distribution",
         ]
+        if any(pattern in summary_lower for pattern in liquidation_patterns):
+            return {
+                "situation_type": "bankruptcy",
+                "subtype": "voluntary_liquidation",
+                "detection_confidence": "HIGH",
+                "detected_signal": f"Form type: {form_type} + liquidation language",
+                "reason_code": "liquidation_keyword",
+            }
         if any(pattern in summary_lower for pattern in dissolution_patterns):
             return {
                 "situation_type": "bankruptcy",
                 "subtype": "voluntary_liquidation",
                 "detection_confidence": "HIGH",
                 "detected_signal": f"Form type: {form_type} + dissolution language",
+                "reason_code": "dissolution_keyword",
             }
+
+        weak_8k_patterns = [
+            ("bankruptcy_keyword", ["bankruptcy", "chapter 11", "chapter 7"]),
+            ("restructuring_keyword", ["restructuring", "reorganization", "going concern"]),
+            ("asset_sale_keyword", ["asset sale", "sale of assets", "disposition of assets"]),
+        ]
+        for reason_code, patterns in weak_8k_patterns:
+            if any(pattern in summary_lower for pattern in patterns):
+                return {
+                    "situation_type": "unknown",
+                    "subtype": "review_only_8k",
+                    "detection_confidence": "LOW",
+                    "detected_signal": f"Form type: {form_type} + weak 8-K review language",
+                    "reason_code": reason_code,
+                }
 
         # Merger agreement
         merger_patterns = [
@@ -149,12 +182,14 @@ def detect_situation_type(filing: Filing) -> dict:
                     "subtype": "merger_via_tender",
                     "detection_confidence": "HIGH",
                     "detected_signal": f"Form type: {form_type} + merger + tender language",
+                    "reason_code": "merger_agreement_keyword",
                 }
             return {
                 "situation_type": "merger",
                 "subtype": "cash_or_stock_merger",
                 "detection_confidence": "MEDIUM",
                 "detected_signal": f"Form type: {form_type} + merger agreement language",
+                "reason_code": "merger_agreement_keyword",
             }
 
         # Non-binding offer (watchlist only)
@@ -164,6 +199,16 @@ def detect_situation_type(filing: Filing) -> dict:
                 "subtype": "non_binding_offer",
                 "detection_confidence": "LOW",
                 "detected_signal": f"Form type: {form_type} + non-binding language",
+                "reason_code": "weak_or_unclassified_8k",
+            }
+
+        if form_type == "8-K":
+            return {
+                "situation_type": "unknown",
+                "subtype": None,
+                "detection_confidence": "LOW",
+                "detected_signal": "Form type: 8-K does not contain a strong supported special-situation signal",
+                "reason_code": "weak_or_unclassified_8k",
             }
 
     # DEFM14A / PREM14A
@@ -173,6 +218,7 @@ def detect_situation_type(filing: Filing) -> dict:
             "subtype": "definitive_merger_proxy",
             "detection_confidence": "HIGH",
             "detected_signal": f"Form type: {form_type} (definitive merger proxy)",
+            "reason_code": "definitive_proxy_form",
         }
 
     if form_type == "PREM14A":
@@ -181,6 +227,7 @@ def detect_situation_type(filing: Filing) -> dict:
             "subtype": "preliminary_merger_proxy",
             "detection_confidence": "MEDIUM",
             "detected_signal": f"Form type: {form_type} (preliminary merger proxy)",
+            "reason_code": "preliminary_proxy_form",
         }
 
     # S-4 (stock-for-stock merger)
@@ -190,6 +237,7 @@ def detect_situation_type(filing: Filing) -> dict:
             "subtype": "stock_for_stock_merger",
             "detection_confidence": "HIGH",
             "detected_signal": f"Form type: {form_type} (acquirer share registration)",
+            "reason_code": "s4_merger_form",
         }
 
     # 13E-3 (going-private)
@@ -199,6 +247,7 @@ def detect_situation_type(filing: Filing) -> dict:
             "subtype": "going_private",
             "detection_confidence": "HIGH",
             "detected_signal": f"Form type: {form_type} (going-private transaction)",
+            "reason_code": "going_private_form",
         }
 
     # Unknown
@@ -207,6 +256,7 @@ def detect_situation_type(filing: Filing) -> dict:
         "subtype": None,
         "detection_confidence": "LOW",
         "detected_signal": f"Form type: {form_type} does not match known patterns",
+        "reason_code": "unsupported_form",
     }
 
 
@@ -393,6 +443,7 @@ def build_routing_decision(filing: Filing) -> dict:
     return {
         "detected_form_type": form_type,
         "detected_signal": detection["detected_signal"],
+        "reason_code": detection.get("reason_code", "unknown"),
         "selected_playbook": routing["selected_playbook"],
         "routed_from": routing["routed_from"],
         "routed_to": routing["routed_to"],

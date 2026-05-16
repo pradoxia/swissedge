@@ -360,6 +360,64 @@ export interface SecDocumentAcquisitionPackage {
   guardrails: string[];
 }
 
+export type DocumentPackageReadiness =
+  | 'not_ready'
+  | 'useful_incomplete'
+  | 'mostly_ready'
+  | 'ready_for_manual_evaluation';
+
+export interface DocumentPackageItem {
+  document_key: string;
+  label: string;
+  priority: 'required' | 'recommended' | 'optional';
+  source_hint: 'SEC' | 'company_ir' | 'court' | 'manual' | 'other';
+  description: string;
+  status: 'found' | 'suggested' | 'missing' | 'needs_manual_check' | 'not_applicable';
+  matched_links: Array<Record<string, unknown>>;
+  suggested_links: Array<Record<string, unknown>>;
+  notes: string | null;
+  verified: boolean;
+}
+
+export interface DocumentPackage {
+  case_id: string;
+  case_type: 'special_situation' | 'research_case';
+  situation_type: string | null;
+  readiness_level: DocumentPackageReadiness;
+  summary: {
+    readiness_level: DocumentPackageReadiness;
+    required_found: number;
+    required_missing: number;
+    recommended_found: number;
+    recommended_missing: number;
+    suggested_links_count: number;
+    manual_actions_count: number;
+  };
+  documents: DocumentPackageItem[];
+  suggested_links: Array<Record<string, unknown>>;
+  manual_next_actions: string[];
+  warnings: string[];
+  guardrails: string[];
+}
+
+export type PromotionReadinessLevel =
+  | 'not_ready'
+  | 'needs_documentation'
+  | 'ready_for_manual_promotion';
+
+export interface PromotionReadinessPackage {
+  situation_id: string;
+  readiness_level: PromotionReadinessLevel;
+  readiness_score: number;
+  blocking_reasons: string[];
+  missing_required_documents: string[];
+  supporting_evidence: Array<Record<string, unknown>>;
+  suggested_manual_actions: string[];
+  warnings: string[];
+  recommended_next_step: string;
+  guardrails: string[];
+}
+
 export interface CaseCompletionPackage {
   case_id: string;
   case_type: 'special_situation' | 'research_case';
@@ -590,6 +648,62 @@ export async function fetchSituations(params?: {
   return response.json();
 }
 
+export interface DetectionRun {
+  id: string;
+  source: string;
+  started_at: string | null;
+  finished_at: string | null;
+  status: 'running' | 'success' | 'partial' | 'failed' | string;
+  dry_run: boolean;
+  hours_back: number | null;
+  raw_hits: number;
+  parsed_filings: number;
+  classified_filings: number;
+  unclassified_filings: number;
+  duplicates_skipped: number;
+  special_situations_created: number;
+  errors_count: number;
+  runtime_seconds: number | null;
+  forms_checked_json: unknown;
+  per_form_summary_json: unknown;
+  summary_json: unknown;
+  error_message: string | null;
+  created_at: string | null;
+}
+
+export interface DetectionRunStatus {
+  latest_run: DetectionRun | null;
+  latest_successful_run: DetectionRun | null;
+  latest_failed_run: DetectionRun | null;
+  total_recent_runs: number;
+  recent_errors_count: number;
+  last_run_age_minutes: number | null;
+  status: 'healthy' | 'warning' | 'stale' | 'no_runs' | string;
+  cron_safe_defaults: {
+    enabled_default: boolean;
+    dry_run_default: boolean;
+    hours_back_default: number;
+  };
+  guardrails: {
+    no_scan_trigger: boolean;
+    read_only_api: boolean;
+    no_live_ai: boolean;
+    no_auto_promotion: boolean;
+  };
+}
+
+export async function fetchLatestDetectionRun(): Promise<{ run: DetectionRun | null }> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/detection-runs/latest`);
+  if (!response.ok) throw new Error(`Failed to fetch latest detection run: ${response.statusText}`);
+  return response.json();
+}
+
+export async function fetchDetectionRunStatus(): Promise<DetectionRunStatus> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/detection-runs/status`);
+  if (!response.ok) throw new Error(`Failed to fetch detection run status: ${response.statusText}`);
+  return response.json();
+}
+
 export async function archiveSituation(id: string): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/api/investment/situations/${id}`, {
     method: 'PATCH',
@@ -677,6 +791,18 @@ export async function fetchSituationCompletionWorkbench(id: string): Promise<Cas
 export async function fetchSituationSecDocumentAcquisitionPreview(id: string): Promise<SecDocumentAcquisitionPackage> {
   const response = await fetch(`${API_BASE_URL}/api/investment/situations/${id}/sec-document-acquisition-preview`);
   if (!response.ok) throw new Error(`Failed to fetch SEC document acquisition preview: ${response.statusText}`);
+  return response.json();
+}
+
+export async function fetchSituationDocumentPackage(id: string): Promise<DocumentPackage> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/situations/${id}/document-package`);
+  if (!response.ok) throw new Error(`Failed to fetch situation document package: ${response.statusText}`);
+  return response.json();
+}
+
+export async function fetchSituationPromotionReadiness(id: string): Promise<PromotionReadinessPackage> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/situations/${id}/promotion-readiness`);
+  if (!response.ok) throw new Error(`Failed to fetch situation promotion readiness: ${response.statusText}`);
   return response.json();
 }
 
@@ -1377,6 +1503,11 @@ export interface OperationalViewPackage {
   what_would_change_view: string[];
   next_manual_actions: string[];
   guardrails: string[];
+  documentation_readiness?: DocumentPackageReadiness | null;
+  missing_required_count?: number | null;
+  missing_recommended_count?: number | null;
+  top_missing_documents?: string[];
+  manual_actions_count?: number | null;
   not_investment_advice: boolean;
   final_decision_by_dani: boolean;
 }
@@ -1457,6 +1588,12 @@ export async function fetchResearchCaseCompletionWorkbench(id: string): Promise<
 export async function fetchResearchCaseSecDocumentAcquisitionPreview(id: string): Promise<SecDocumentAcquisitionPackage> {
   const response = await fetch(`${API_BASE_URL}/api/investment/research-cases/${id}/sec-document-acquisition-preview`);
   if (!response.ok) throw new Error(`Failed to fetch research case SEC document acquisition preview: ${response.statusText}`);
+  return response.json();
+}
+
+export async function fetchResearchCaseDocumentPackage(id: string): Promise<DocumentPackage> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/research-cases/${id}/document-package`);
+  if (!response.ok) throw new Error(`Failed to fetch research case document package: ${response.statusText}`);
   return response.json();
 }
 

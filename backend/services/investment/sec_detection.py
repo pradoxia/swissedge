@@ -28,6 +28,7 @@ class SecDetectionRunSummary:
     filings_fetched: int = 0
     filings_inspected: int = 0
     candidates_detected: int = 0
+    unclassified_filings: int = 0
     duplicates_skipped: int = 0
     unsupported_forms_skipped: int = 0
     outside_lookback_skipped: int = 0
@@ -37,6 +38,7 @@ class SecDetectionRunSummary:
     oldest_filing_date_seen: str | None = None
     newest_filing_date_seen: str | None = None
     form_counts: dict[str, int] = field(default_factory=dict)
+    per_form_summary: dict[str, dict[str, int]] = field(default_factory=dict)
     special_situations_created: int = 0
     special_situations_updated: int = 0
     errors: list[str] = field(default_factory=list)
@@ -51,6 +53,8 @@ class SecDetectionRunSummary:
             "filings_fetched": self.filings_fetched,
             "filings_inspected": self.filings_inspected,
             "candidates_detected": self.candidates_detected,
+            "classified_filings": self.candidates_detected,
+            "unclassified_filings": self.unclassified_filings,
             "duplicates_skipped": self.duplicates_skipped,
             "unsupported_forms_skipped": self.unsupported_forms_skipped,
             "outside_lookback_skipped": self.outside_lookback_skipped,
@@ -60,6 +64,9 @@ class SecDetectionRunSummary:
             "oldest_filing_date_seen": self.oldest_filing_date_seen,
             "newest_filing_date_seen": self.newest_filing_date_seen,
             "form_counts": self.form_counts,
+            "per_form_summary": self.per_form_summary,
+            "raw_hits": sum(item.get("raw", 0) for item in self.per_form_summary.values()),
+            "parsed_filings": self.filings_fetched,
             "special_situations_created": self.special_situations_created,
             "special_situations_updated": self.special_situations_updated,
             "errors": self.errors,
@@ -114,15 +121,22 @@ async def run_sec_edgar_detection(
     summary.oldest_filing_date_seen = diagnostics.get("oldest_filing_date_seen")
     summary.newest_filing_date_seen = diagnostics.get("newest_filing_date_seen")
     summary.form_counts = diagnostics.get("form_counts", {})
+    summary.per_form_summary = _initial_per_form_summary(diagnostics, filings)
 
     for filing in filings:
         summary.filings_inspected += 1
+        form_key = build_routing_decision(filing)["detected_form_type"]
+        form_metrics = summary.per_form_summary.setdefault(form_key, _empty_form_summary())
+        form_metrics["parsed"] += 1
         decision = classify_sec_p1_candidate(filing)
         if decision is None:
             summary.unsupported_forms_skipped += 1
+            summary.unclassified_filings += 1
+            form_metrics["unclassified"] += 1
             continue
 
         summary.candidates_detected += 1
+        form_metrics["classified"] += 1
         existing = await _find_existing_situation(db, filing)
         if existing:
             if not dry_run and _needs_detection_evidence_update(existing):
@@ -132,6 +146,7 @@ async def run_sec_edgar_detection(
                 summary.special_situations_updated += 1
             else:
                 summary.duplicates_skipped += 1
+                form_metrics["duplicates"] += 1
             continue
 
         if dry_run:
@@ -150,6 +165,7 @@ async def run_sec_edgar_detection(
         db.add(sit)
         await db.flush()
         summary.special_situations_created += 1
+        form_metrics["created"] += 1
 
     summary.completed_at = _utc_now_iso()
     return summary.as_dict()
@@ -217,6 +233,7 @@ def _build_minimal_evidence(filing: Filing, decision: dict[str, Any]) -> dict[st
             "filing_date": filing.date,
             "detected_form_type": decision["detected_form_type"],
             "detected_signal": decision["detected_signal"],
+            "reason_code": decision.get("reason_code"),
             "detection_confidence": decision["detection_confidence"],
             "situation_type": decision["situation_type"],
             "subtype": decision.get("subtype"),
@@ -227,3 +244,36 @@ def _build_minimal_evidence(filing: Filing, decision: dict[str, Any]) -> dict[st
         "disclaimer": "Detected from official SEC metadata for human review. This is not investment advice.",
     }
     return attach_methodology_workspace_to_evidence(evidence)
+
+
+def _empty_form_summary() -> dict[str, int]:
+    return {
+        "raw": 0,
+        "parsed": 0,
+        "classified": 0,
+        "unclassified": 0,
+        "duplicates": 0,
+        "created": 0,
+        "errors": 0,
+    }
+
+
+def _initial_per_form_summary(diagnostics: dict[str, Any], filings: list[Filing]) -> dict[str, dict[str, int]]:
+    per_form: dict[str, dict[str, int]] = {}
+    by_form = diagnostics.get("by_form") if isinstance(diagnostics.get("by_form"), dict) else {}
+    for form, metrics in by_form.items():
+        row = _empty_form_summary()
+        if isinstance(metrics, dict):
+            row["raw"] = int(metrics.get("raw_hits") or metrics.get("raw") or 0)
+            row["errors"] = 1 if metrics.get("error") or metrics.get("backoff_error") else 0
+        per_form[str(form)] = row
+
+    form_counts = diagnostics.get("form_counts") if isinstance(diagnostics.get("form_counts"), dict) else {}
+    for form, count in form_counts.items():
+        row = per_form.setdefault(str(form), _empty_form_summary())
+        row["raw"] = max(row["raw"], int(count or 0))
+
+    for filing in filings:
+        form_key = build_routing_decision(filing)["detected_form_type"]
+        per_form.setdefault(form_key, _empty_form_summary())
+    return per_form

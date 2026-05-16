@@ -53,6 +53,22 @@ def test_8k_liquidation_dissolution_classification(phrase):
     assert result is not None
     assert result["situation_type"] == "bankruptcy"
     assert result["subtype"] == "voluntary_liquidation"
+    assert result["reason_code"] in {"liquidation_keyword", "dissolution_keyword"}
+
+
+@pytest.mark.parametrize(("phrase", "reason_code"), [
+    ("entered chapter 11 bankruptcy proceedings", "bankruptcy_keyword"),
+    ("announced a restructuring plan", "restructuring_keyword"),
+    ("completed an asset sale", "asset_sale_keyword"),
+    ("filed current report with routine updates", "weak_or_unclassified_8k"),
+])
+def test_8k_weak_signals_do_not_create_candidates(phrase, reason_code):
+    filing = _filing("8-K", phrase)
+    decision = sec_detection.build_routing_decision(filing)
+
+    assert decision["reason_code"] == reason_code
+    assert decision["detection_confidence"] == "LOW"
+    assert classify_sec_p1_candidate(filing) is None
 
 
 def test_unsupported_form_skipped():
@@ -113,6 +129,37 @@ async def test_creates_special_situation_without_research_case(monkeypatch):
     assert isinstance(db.added[0], SpecialSituation)
     assert db.added[0].status == "detected"
     assert db.added[0].evaluation["detected_only"] is True
+
+
+@pytest.mark.asyncio
+async def test_detection_summary_per_form_funnel_counters(monkeypatch):
+    db = FakeDb()
+
+    async def fake_find_existing(_db, filing):
+        return SimpleNamespace(evaluation={"sec_detection": {"accession_number": filing.accession_number}}) if filing.accession_number == "dupe" else None
+
+    filings = [
+        _filing("SC TO-T", accession="create"),
+        _filing("SC TO-T", accession="dupe"),
+        _filing("8-K", "routine current report", accession="weak"),
+    ]
+    diagnostics = {
+        "form_counts": {"SC TO-T": 2, "8-K": 1},
+        "by_form": {"SC TO-T": {"raw_hits": 2}, "8-K": {"raw_hits": 1}},
+    }
+    monkeypatch.setattr(sec_detection, "_find_existing_situation", fake_find_existing)
+
+    summary = await run_sec_edgar_detection(db, adapter=FakeAdapter(filings, diagnostics))
+
+    assert summary["parsed_filings"] == 3
+    assert summary["classified_filings"] == 2
+    assert summary["unclassified_filings"] == 1
+    assert summary["duplicates_skipped"] == 1
+    assert summary["special_situations_created"] == 1
+    assert summary["per_form_summary"]["SC TO-T"]["classified"] == 2
+    assert summary["per_form_summary"]["SC TO-T"]["duplicates"] == 1
+    assert summary["per_form_summary"]["SC TO-T"]["created"] == 1
+    assert summary["per_form_summary"]["8-K"]["unclassified"] == 1
 
 
 @pytest.mark.asyncio

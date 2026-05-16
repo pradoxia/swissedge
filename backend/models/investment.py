@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, date, timezone
-from sqlalchemy import String, Text, Integer, Boolean, DateTime, Date, ForeignKey
+from sqlalchemy import String, Text, Integer, Boolean, DateTime, Date, ForeignKey, Float
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.db.database import Base
@@ -71,6 +71,31 @@ class InvestmentSource(Base):
     query_template: Mapped[str | None] = mapped_column(Text)
     last_success: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_error: Mapped[str | None] = mapped_column(Text)
+
+
+class DetectionRun(Base):
+    __tablename__ = "detection_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source: Mapped[str] = mapped_column(String(100), nullable=False, default="sec_edgar")
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="running")
+    dry_run: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    hours_back: Mapped[int | None] = mapped_column(Integer)
+    raw_hits: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    parsed_filings: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    classified_filings: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    unclassified_filings: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    duplicates_skipped: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    special_situations_created: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    errors_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    runtime_seconds: Mapped[float | None] = mapped_column(Float)
+    forms_checked_json: Mapped[dict | None] = mapped_column(JSONB)
+    per_form_summary_json: Mapped[dict | None] = mapped_column(JSONB)
+    summary_json: Mapped[dict | None] = mapped_column(JSONB)
+    error_message: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
 
 
 class InvestorContact(Base):
