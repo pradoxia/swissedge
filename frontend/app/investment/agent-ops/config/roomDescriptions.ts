@@ -1,0 +1,157 @@
+export type AgentRoomDescription = {
+  id: string;
+  name: string;
+  shortDescription: string;
+  purpose: string;
+  inputs: string[];
+  responsibilities: string[];
+  outputs: string[];
+  agentsOrSkills: string[];
+  mainQuestion: string;
+  passesTo: string;
+  possibleBlockers: string[];
+};
+
+export const AGENT_ROOM_DESCRIPTIONS: AgentRoomDescription[] = [
+  {
+    id: 'detection-room',
+    name: 'Detection Room',
+    shortDescription: 'Radar room for new special situation signals.',
+    purpose: 'Find new special situation signals and record detection activity.',
+    inputs: ['SEC EDGAR', 'cron dry-run/live-create', 'future X/Twitter, RSS, newsletters, email, manual uploads'],
+    responsibilities: [
+      'Scan sources such as SEC EDGAR',
+      'Identify filings and signals',
+      'Classify form type and probable situation type',
+      'Create SpecialSituation if allowed',
+      'Record DetectionRun',
+      'Avoid duplicates and control noise',
+    ],
+    outputs: [
+      'SpecialSituation',
+      'DetectionRun',
+      'detection reason',
+      'filing URL',
+      'CIK/accession/form/date',
+      'initial situation_type',
+      'confidence/review flag',
+    ],
+    agentsOrSkills: ['Edgar Scout', 'Router Analyst', 'Noise Filter', 'Duplicate Detector', 'Source Monitor'],
+    mainQuestion: 'Has something new appeared that deserves review?',
+    passesTo: 'Evidence Lab',
+    possibleBlockers: ['SEC source unavailable', 'stale cron or missing logs', 'ambiguous classification', 'noisy 8-K signal', 'duplicate filing'],
+  },
+  {
+    id: 'evidence-lab',
+    name: 'Evidence Lab',
+    shortDescription: 'Turns a detected signal into an evidence packet.',
+    purpose: 'Map official evidence and preserve source provenance.',
+    inputs: ['SpecialSituation', 'filing URL', 'accession number', 'CIK', 'SEC metadata', 'DetectionRun summary'],
+    responsibilities: [
+      'Use SEC metadata and filing URLs',
+      'Identify primary document and exhibits',
+      'Classify found documents',
+      'Separate found, suggested, missing, and needs_manual_check documents',
+      'Preserve source provenance',
+    ],
+    outputs: ['SEC Evidence Packet', 'Evidence Links', 'found documents', 'candidate documents', 'missing document hints', 'official source provenance'],
+    agentsOrSkills: ['Evidence Mapper', 'SEC Filing Locator', 'SEC Exhibit Index Reader', 'SEC Document Classifier', 'Related Filing Finder', 'Source Provenance Tracker'],
+    mainQuestion: 'What official evidence do we already have and where is it?',
+    passesTo: 'Playbook Workshop',
+    possibleBlockers: ['missing filing URL', 'missing accession number or CIK', 'SEC filing unavailable', 'exhibits not identifiable', 'unclear provenance'],
+  },
+  {
+    id: 'playbook-workshop',
+    name: 'Playbook Workshop',
+    shortDescription: 'Connects each case with the course methodology.',
+    purpose: 'Convert case context into course-based questions, checklist items, and document requirements.',
+    inputs: ['SpecialSituation / ResearchCase', 'situation_type', 'filing_type', 'Evidence Packet', 'course index', 'playbooks', 'course checklists'],
+    responsibilities: [
+      'Map situation_type to course chapters',
+      'Select applicable playbook',
+      'Generate case-specific checklist',
+      'Define questions the case must answer',
+      'Define required documents and information',
+      'Define required skills',
+    ],
+    outputs: ['Course-Based Checklist', 'Relevant Course Chapters', 'Required Documents', 'Required Information', 'Skill Requirements Map', 'Course questions'],
+    agentsOrSkills: ['Playbook Scribe', 'Course Chapter Mapper', 'Checklist Builder', 'Course Question Mapper', 'Skill Requirement Mapper', 'Document Importance Assigner'],
+    mainQuestion: 'According to the course, what do we need to know and what documents are required?',
+    passesTo: 'Research Desk',
+    possibleBlockers: ['unclear situation_type', 'missing course index', 'missing playbook', 'unclear required documents', 'checklist too broad'],
+  },
+  {
+    id: 'research-desk',
+    name: 'Research Desk',
+    shortDescription: 'Turns evidence and checklist context into actionable documentation.',
+    purpose: 'Make the case reviewable through documentation, readiness, and next actions.',
+    inputs: ['Evidence Packet', 'Course-Based Checklist', 'Document Package', 'SpecialSituation / ResearchCase', 'Promotion Readiness'],
+    responsibilities: [
+      'Compare found documents against required documents',
+      'Detect missing critical documents',
+      'Create Documentation Report',
+      'Propose manual searches and actions',
+      'Prepare Promotion Readiness',
+      'Prepare ResearchCase review if Dani promotes manually',
+      'Extract basic terms when deterministic extraction is possible',
+    ],
+    outputs: ['Documentation Agent Report', 'Document Package', 'Promotion Readiness', 'missing documents', 'manual actions', 'next best action', 'readiness level'],
+    agentsOrSkills: [
+      'Documentation Agent',
+      'Missing Document Detector',
+      'Document Matcher',
+      'Readiness Scorer',
+      'Next Best Action Generator',
+      'Consideration Extractor',
+      'Timeline Extractor',
+      'Condition Extractor',
+      'Risk Factor Extractor',
+    ],
+    mainQuestion: 'Is this case sufficiently documented for Dani to review or promote manually?',
+    passesTo: 'Quality Court',
+    possibleBlockers: ['missing required documents', 'unreviewed suggested links', 'unmapped evidence', 'extraction not deterministic', 'low Promotion Readiness'],
+  },
+  {
+    id: 'quality-court',
+    name: 'Quality Court',
+    shortDescription: 'Reviews quality, consistency, and guardrails.',
+    purpose: 'Decide whether documentation can be operationally trusted or needs review first.',
+    inputs: ['Detection output', 'Evidence Packet', 'Course Checklist', 'Documentation Report', 'Promotion Readiness', 'ResearchCase', 'Operational View'],
+    responsibilities: [
+      'Check inconsistencies',
+      'Detect missing critical evidence',
+      'Detect possible misclassification',
+      'Review guardrails',
+      'Check over-confidence or under-confidence',
+      'Flag trust risks',
+      'Prevent investment-advice language',
+    ],
+    outputs: ['Quality Review', 'warnings', 'blockers', 'confidence notes', 'guardrail status', 'review recommendation'],
+    agentsOrSkills: ['Quality Sentinel', 'Consistency Checker', 'Guardrail Checker', 'Evidence Completeness Reviewer', 'Misclassification Detector', 'Noise Reviewer'],
+    mainQuestion: 'Can we operationally trust this documentation, or must something be reviewed first?',
+    passesTo: 'Executive Office',
+    possibleBlockers: ['inconsistent evidence', 'missing critical source', 'possible misclassification', 'over-confident documentation', 'guardrail violation'],
+  },
+  {
+    id: 'executive-office',
+    name: 'Executive Office',
+    shortDescription: 'Supervises SwissEdge as an operating system.',
+    purpose: 'Find system bottlenecks, missing skills, and next sprint priorities.',
+    inputs: ['DetectionRuns', 'case pipeline', 'agent activity', 'quality reviews', 'blocked cases', 'promotion rates', 'documentation gaps', 'system errors', 'improvement proposals'],
+    responsibilities: [
+      'Detect system bottlenecks',
+      'Review whether Detection Room finds enough signals',
+      'Review whether Evidence Lab gets useful documents',
+      'Review whether Research Desk makes cases reviewable',
+      'Review whether Quality Court blocks for valid reasons',
+      'Propose product and technical improvements',
+      'Enumerate missing skills',
+      'Prioritize next sprints',
+    ],
+    outputs: ['Executive Review', 'Improvement Proposals', 'Skill Gap Report', 'Process Bottleneck Report', 'Next Sprint Recommendation'],
+    agentsOrSkills: ['Fontana - CTO / technical governance', 'Dani Weber - COO / process governance', 'Strategic Reviewer', 'Skill Gap Analyst', 'Bottleneck Analyst'],
+    mainQuestion: 'Is SwissEdge working as a system and what should be improved next?',
+    passesTo: 'Dani / next sprint planning',
+    possibleBlockers: ['missing metrics', 'unclear ownership', 'noisy detection funnel', 'low promotion readiness', 'repeated documentation gaps', 'unresolved quality blockers'],
+  },
+];
