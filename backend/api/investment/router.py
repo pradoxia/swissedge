@@ -16,6 +16,8 @@ from backend.services.investment.sources.sec_edgar import SECEdgarAdapter
 from backend.services.investment.sources.base import Filing
 from backend.services.investment.evaluator import evaluate_situation
 from backend.services.investment.course_index import load_master_index
+from backend.services.investment.course_documentation_map import get_course_documentation_map
+from backend.services.investment.skill_registry import get_skill_requirements_map
 from backend.services.investment.methodology_workspace import ALLOWED_WORKFLOW_STATUSES, WORKSPACE_KEY
 from backend.services.investment.resource_scout import (
     VALID_RESOURCE_REVIEW_STATUSES,
@@ -60,9 +62,28 @@ from backend.services.investment.detection_run_service import (
     get_latest_runs,
     serialize_detection_run,
 )
+from backend.services.investment.detection_readiness import (
+    DetectionReadinessPackage,
+    build_detection_readiness,
+)
 from backend.services.investment.document_package import (
     DocumentPackage,
     build_situation_document_package,
+)
+from backend.services.investment.documentation_agent import (
+    DocumentationAgentReport,
+    build_special_situation_documentation_report,
+)
+from backend.services.investment.documentation_extraction import (
+    DocumentationExtractionFieldRead,
+    list_extraction_fields,
+    read_and_store_draft_fields,
+    review_extraction_field,
+)
+from backend.services.investment.knowledge_base import (
+    KnowledgeEntry,
+    get_knowledge_entry,
+    list_knowledge_entries,
 )
 from backend.services.investment.promotion_readiness import (
     PromotionReadinessPackage,
@@ -161,6 +182,17 @@ class ResourceCandidatePatch(BaseModel):
     notes: str | None = None
     related_resource_ids: list[str] | None = None
     related_check_ids: list[str] | None = None
+
+
+class DocumentationExtractionReadRequest(BaseModel):
+    candidate_source_id: str
+    document_key: str
+
+
+class DocumentationExtractionReviewRequest(BaseModel):
+    status: str
+    extracted_value: str | None = None
+    reviewed_by: str | None = "Dani"
 
 
 # ── Serializers ───────────────────────────────────────────────────────────────
@@ -304,6 +336,12 @@ async def get_detection_runs_status(db: AsyncSession = Depends(get_db)):
     return build_detection_run_status(runs)
 
 
+@router.get("/detection-runs/readiness", response_model=DetectionReadinessPackage)
+async def get_detection_runs_readiness(db: AsyncSession = Depends(get_db)):
+    runs = await get_latest_runs(db, limit=10)
+    return build_detection_readiness(runs)
+
+
 @router.get("/detection-runs")
 async def list_detection_runs(limit: int = 20, db: AsyncSession = Depends(get_db)):
     limit = max(1, min(limit, 100))
@@ -313,7 +351,12 @@ async def list_detection_runs(limit: int = 20, db: AsyncSession = Depends(get_db
 
 @router.get("/detection-runs/{run_id}")
 async def get_detection_run(run_id: str, db: AsyncSession = Depends(get_db)):
-    run = await db.get(DetectionRun, uuid.UUID(run_id))
+    try:
+        run_uuid = uuid.UUID(run_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Detection run not found") from None
+
+    run = await db.get(DetectionRun, run_uuid)
     if not run:
         raise HTTPException(status_code=404, detail="Detection run not found")
     return serialize_detection_run(run)
@@ -663,6 +706,19 @@ async def get_situation_evidence_links(situation_id: str, db: AsyncSession = Dep
     return build_situation_evidence_links(sit).model_dump()
 
 
+@router.get("/knowledge", response_model=list[KnowledgeEntry])
+async def get_knowledge_entries(type: str | None = None, situation_type: str | None = None):
+    return list_knowledge_entries(type=type, situation_type=situation_type)
+
+
+@router.get("/knowledge/{knowledge_key}", response_model=KnowledgeEntry)
+async def get_investment_knowledge_entry(knowledge_key: str):
+    entry = get_knowledge_entry(knowledge_key)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Knowledge entry not found")
+    return entry
+
+
 @router.get("/situations/{situation_id}/documentation-guide", response_model=CaseDocumentationGuidePackage)
 async def get_situation_documentation_guide(situation_id: str, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
@@ -686,6 +742,60 @@ async def get_situation_document_package(situation_id: str, db: AsyncSession = D
     evidence_links = build_situation_evidence_links(sit)
     sec_preview = build_situation_sec_document_acquisition_preview(sit)
     return build_situation_document_package(sit, evidence_links=evidence_links, sec_preview=sec_preview)
+
+
+@router.get("/situations/{situation_id}/documentation-agent-report", response_model=DocumentationAgentReport)
+async def get_situation_documentation_agent_report(situation_id: str, db: AsyncSession = Depends(get_db)):
+    return await build_special_situation_documentation_report(situation_id, db)
+
+
+@router.get("/situations/{situation_id}/documentation-extractions", response_model=list[DocumentationExtractionFieldRead])
+async def get_situation_documentation_extractions(
+    situation_id: str,
+    document_key: str | None = None,
+    candidate_source_id: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    rows = await list_extraction_fields(
+        db,
+        uuid.UUID(situation_id),
+        document_key=document_key,
+        candidate_source_id=candidate_source_id,
+    )
+    return [DocumentationExtractionFieldRead.from_orm(row) for row in rows]
+
+
+@router.post("/situations/{situation_id}/documentation-extractions/read-draft", response_model=list[DocumentationExtractionFieldRead])
+async def read_situation_documentation_source_draft(
+    situation_id: str,
+    body: DocumentationExtractionReadRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    rows = await read_and_store_draft_fields(
+        db,
+        uuid.UUID(situation_id),
+        candidate_source_id=body.candidate_source_id,
+        document_key=body.document_key,
+    )
+    await db.commit()
+    return [DocumentationExtractionFieldRead.from_orm(row) for row in rows]
+
+
+@router.patch("/documentation-extractions/{field_id}", response_model=DocumentationExtractionFieldRead)
+async def review_documentation_extraction_field(
+    field_id: str,
+    body: DocumentationExtractionReviewRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    row = await review_extraction_field(
+        db,
+        uuid.UUID(field_id),
+        status=body.status,
+        extracted_value=body.extracted_value,
+        reviewed_by=body.reviewed_by,
+    )
+    await db.commit()
+    return DocumentationExtractionFieldRead.from_orm(row)
 
 
 @router.get("/situations/{situation_id}/promotion-readiness", response_model=PromotionReadinessPackage)
@@ -1005,6 +1115,16 @@ async def get_course_index():
             detail="Course index not found. Run scripts/ingest_course.py first.",
         )
     return index
+
+
+@router.get("/course-documentation-map/{situation_type}")
+def get_course_documentation_map_endpoint(situation_type: str):
+    return get_course_documentation_map(situation_type)
+
+
+@router.get("/skill-requirements/{situation_type}")
+def get_skill_requirements_endpoint(situation_type: str):
+    return get_skill_requirements_map(situation_type)
 
 
 # ── Investment Sources CRUD ───────────────────────────────────────────────────
