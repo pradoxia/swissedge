@@ -33,11 +33,16 @@ class DetectionRunRead(BaseModel):
     parsed_filings: int
     classified_filings: int
     unclassified_filings: int
+    outside_lookback_skipped: int
+    missing_filing_date_skipped: int
+    unsupported_forms_skipped: int
+    candidates_detected: int
     duplicates_skipped: int
     special_situations_created: int
     errors_count: int
     runtime_seconds: float | None
     forms_checked_json: Any = None
+    per_form_summary: Any = None
     per_form_summary_json: Any = None
     summary_json: Any = None
     error_message: str | None = None
@@ -45,6 +50,10 @@ class DetectionRunRead(BaseModel):
 
 
 def serialize_detection_run(run: DetectionRun) -> dict[str, Any]:
+    summary = run.summary_json if isinstance(run.summary_json, dict) else {}
+    per_form = run.per_form_summary_json if isinstance(run.per_form_summary_json, dict) else {}
+    fallback_counters = counters_from_summary({**summary, "per_form_summary": summary.get("per_form_summary") or per_form})
+    diagnostics = diagnostics_from_summary({**summary, "per_form_summary": summary.get("per_form_summary") or per_form})
     return DetectionRunRead(
         id=str(run.id),
         source=run.source,
@@ -53,16 +62,21 @@ def serialize_detection_run(run: DetectionRun) -> dict[str, Any]:
         status=run.status,
         dry_run=run.dry_run,
         hours_back=run.hours_back,
-        raw_hits=run.raw_hits or 0,
-        parsed_filings=run.parsed_filings or 0,
-        classified_filings=run.classified_filings or 0,
-        unclassified_filings=run.unclassified_filings or 0,
-        duplicates_skipped=run.duplicates_skipped or 0,
-        special_situations_created=run.special_situations_created or 0,
-        errors_count=run.errors_count or 0,
-        runtime_seconds=run.runtime_seconds,
+        raw_hits=_stored_or_fallback(run.raw_hits, fallback_counters["raw_hits"]),
+        parsed_filings=_stored_or_fallback(run.parsed_filings, fallback_counters["parsed_filings"]),
+        classified_filings=_stored_or_fallback(run.classified_filings, fallback_counters["classified_filings"]),
+        unclassified_filings=_stored_or_fallback(run.unclassified_filings, fallback_counters["unclassified_filings"]),
+        outside_lookback_skipped=diagnostics["outside_lookback_skipped"],
+        missing_filing_date_skipped=diagnostics["missing_filing_date_skipped"],
+        unsupported_forms_skipped=diagnostics["unsupported_forms_skipped"],
+        candidates_detected=diagnostics["candidates_detected"],
+        duplicates_skipped=_stored_or_fallback(run.duplicates_skipped, fallback_counters["duplicates_skipped"]),
+        special_situations_created=_stored_or_fallback(run.special_situations_created, fallback_counters["special_situations_created"]),
+        errors_count=_stored_or_fallback(run.errors_count, fallback_counters["errors_count"]),
+        runtime_seconds=run.runtime_seconds if run.runtime_seconds is not None else fallback_counters["runtime_seconds"],
         forms_checked_json=run.forms_checked_json,
-        per_form_summary_json=run.per_form_summary_json,
+        per_form_summary=run.per_form_summary_json or fallback_counters["per_form_summary_json"],
+        per_form_summary_json=run.per_form_summary_json or fallback_counters["per_form_summary_json"],
         summary_json=run.summary_json,
         error_message=run.error_message,
         created_at=run.created_at.isoformat() if run.created_at else None,
@@ -160,26 +174,65 @@ class DetectionRunService:
 def counters_from_summary(summary: dict[str, Any]) -> dict[str, Any]:
     per_form = summary.get("per_form_summary") or summary.get("by_form") or {}
     form_counts = summary.get("form_counts") if isinstance(summary.get("form_counts"), dict) else {}
-    raw_hits = summary.get("raw_hits_total")
-    if raw_hits is None and isinstance(per_form, dict):
-        raw_hits = sum(int(item.get("raw_hits", 0) or 0) for item in per_form.values() if isinstance(item, dict))
+    raw_hits = _first_present(summary, "raw_hits", "raw_hits_total")
     if raw_hits is None:
-        raw_hits = summary.get("filings_fetched", 0)
+        raw_hits = _sum_per_form(per_form, "raw", "raw_hits")
+    if raw_hits is None:
+        raw_hits = _first_present(summary, "filings_fetched", "parsed_filings", "parsed_filings_total", default=0)
     started = _parse_dt(summary.get("started_at"))
     completed = _parse_dt(summary.get("completed_at"))
     runtime = (completed - started).total_seconds() if started and completed else summary.get("runtime_seconds")
     return {
         "raw_hits": int(raw_hits or 0),
-        "parsed_filings": int(summary.get("filings_fetched") or summary.get("parsed_filings_total") or 0),
-        "classified_filings": int(summary.get("candidates_detected") or summary.get("classified_candidates_count") or 0),
-        "unclassified_filings": int(summary.get("unclassified_filings") or summary.get("unsupported_forms_skipped") or summary.get("skipped_unclassified_count") or 0),
-        "duplicates_skipped": int(summary.get("duplicates_skipped") or summary.get("skipped_duplicate_count") or 0),
-        "special_situations_created": int(summary.get("special_situations_created") or summary.get("created_count") or 0),
+        "parsed_filings": int(_first_present(summary, "parsed_filings", "filings_fetched", "parsed_filings_total", default=0) or 0),
+        "classified_filings": int(_first_present(summary, "classified_filings", "candidates_detected", "classified_candidates_count", default=0) or 0),
+        "unclassified_filings": int(_first_present(summary, "unclassified_filings", "unsupported_forms_skipped", "skipped_unclassified_count", default=0) or 0),
+        "duplicates_skipped": int(_first_present(summary, "duplicates_skipped", "skipped_duplicate_count", default=0) or 0),
+        "special_situations_created": int(_first_present(summary, "special_situations_created", "created_count", default=0) or 0),
         "errors_count": len(summary.get("errors") or []),
         "runtime_seconds": runtime,
         "forms_checked_json": list(form_counts.keys()) if form_counts else summary.get("forms_checked"),
         "per_form_summary_json": per_form or form_counts,
     }
+
+
+def diagnostics_from_summary(summary: dict[str, Any]) -> dict[str, int]:
+    return {
+        "outside_lookback_skipped": int(_first_present(summary, "outside_lookback_skipped", default=0) or 0),
+        "missing_filing_date_skipped": int(_first_present(summary, "missing_filing_date_skipped", default=0) or 0),
+        "unsupported_forms_skipped": int(_first_present(summary, "unsupported_forms_skipped", "skipped_unclassified_count", default=0) or 0),
+        "candidates_detected": int(_first_present(summary, "candidates_detected", "classified_filings", "classified_candidates_count", default=0) or 0),
+    }
+
+
+def _stored_or_fallback(stored: Any, fallback: Any) -> int:
+    stored_int = int(stored or 0)
+    fallback_int = int(fallback or 0)
+    return stored_int if stored_int != 0 else fallback_int
+
+
+def _first_present(summary: dict[str, Any], *keys: str, default: Any = None) -> Any:
+    for key in keys:
+        value = summary.get(key)
+        if value is not None:
+            return value
+    return default
+
+
+def _sum_per_form(per_form: Any, *keys: str) -> int | None:
+    if not isinstance(per_form, dict):
+        return None
+    total = 0
+    found = False
+    for item in per_form.values():
+        if not isinstance(item, dict):
+            continue
+        for key in keys:
+            if item.get(key) is not None:
+                total += int(item.get(key) or 0)
+                found = True
+                break
+    return total if found else None
 
 
 def _parse_dt(value: Any) -> datetime | None:

@@ -79,6 +79,47 @@ Expected behavior:
 
 Do not set `SWISSEDGE_SEC_EDGAR_DRY_RUN=false` or use `--live-create` until Dani approves live-create mode.
 
+## Moving From Dry-Run To Limited Live-Create
+
+Only consider limited live-create after 24-48 hours of healthy dry-runs.
+
+Before changing mode:
+
+- Verify the status endpoint is healthy:
+
+```bash
+curl "$API_BASE_URL/api/investment/detection-runs/status"
+```
+
+- Verify the readiness endpoint:
+
+```bash
+curl "$API_BASE_URL/api/investment/detection-runs/readiness"
+```
+
+- Confirm `errors_count=0` on recent runs.
+- Review `raw_hits`, `classified_filings`, `unclassified_filings`, and `per_form_summary`.
+- Keep live AI disabled.
+- Keep evaluator v2 global activation disabled.
+- Keep auto-promotion disabled.
+- Keep auto-discard disabled.
+- Keep document/evidence auto-verification disabled.
+
+Limited live-create only creates `SpecialSituation` records. It must not create `ResearchCase` records or make investment decisions.
+
+Recommended initial scope:
+
+- `SC TO-T`
+- `SC TO-I`
+- `Form 10`
+- `8-K` only for strong liquidation/dissolution signals, or review-only
+
+Rollback is simple: set dry-run mode again before the next run.
+
+```bash
+export SWISSEDGE_SEC_EDGAR_DRY_RUN=true
+```
+
 ## Endpoint Smoke Tests
 
 Use the deployed API base URL placeholder:

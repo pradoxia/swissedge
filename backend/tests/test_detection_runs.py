@@ -4,8 +4,11 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 from backend.api.investment import router as investment_router
+from backend.db.database import get_db
 from backend.cli import sec_edgar_detect
 from backend.models.investment import DetectionRun
 from backend.services.investment.detection_run_service import (
@@ -75,6 +78,7 @@ def test_detection_run_summary_counter_mapping():
         "started_at": "2026-05-16T10:00:00+00:00",
         "completed_at": "2026-05-16T10:00:03+00:00",
         "filings_fetched": 3,
+        "raw_hits": 122,
         "candidates_detected": 2,
         "unsupported_forms_skipped": 1,
         "duplicates_skipped": 1,
@@ -85,6 +89,7 @@ def test_detection_run_summary_counter_mapping():
 
     counters = counters_from_summary(summary)
 
+    assert counters["raw_hits"] == 122
     assert counters["parsed_filings"] == 3
     assert counters["classified_filings"] == 2
     assert counters["unclassified_filings"] == 1
@@ -95,18 +100,37 @@ def test_detection_run_summary_counter_mapping():
     assert counters["forms_checked_json"] == ["SC TO-T", "8-K"]
 
 
+def test_detection_run_raw_hits_falls_back_to_per_form_raw_totals():
+    summary = {
+        "filings_fetched": 0,
+        "per_form_summary": {
+            "8-K": {"raw": 100, "parsed": 0, "classified": 0},
+            "SC TO-I": {"raw": 21, "parsed": 0, "classified": 0},
+            "SC TO-T": {"raw": 1, "parsed": 0, "classified": 0},
+            "Form 10": {"raw": 0, "parsed": 0, "classified": 0},
+        },
+        "errors": [],
+    }
+
+    counters = counters_from_summary(summary)
+
+    assert counters["raw_hits"] == 122
+    assert counters["per_form_summary_json"]["8-K"]["raw"] == 100
+
+
 @pytest.mark.asyncio
 async def test_detection_run_service_start_and_mark_success():
     session = FakeSession()
     service = DetectionRunService(FakeSessionFactory(session))
 
     run_id = await service.start_run(hours_back=48, dry_run=True, forms_checked=["SC TO-T"])
-    await service.mark_success(run_id, summary={"filings_fetched": 1, "candidates_detected": 1})
+    await service.mark_success(run_id, summary={"raw_hits": 122, "filings_fetched": 1, "candidates_detected": 1})
 
     run = session.rows[run_id]
     assert run.status == "success"
     assert run.hours_back == 48
     assert run.dry_run is True
+    assert run.raw_hits == 122
     assert run.parsed_filings == 1
     assert run.classified_filings == 1
     assert run.finished_at is not None
@@ -156,6 +180,17 @@ async def test_detection_run_read_api_serializes_run():
     assert data["unclassified_filings"] == 1
 
 
+def _detection_runs_client(fake_db):
+    app = FastAPI()
+    app.include_router(investment_router.router, prefix="/api/investment")
+
+    async def override_get_db():
+        yield fake_db
+
+    app.dependency_overrides[get_db] = override_get_db
+    return TestClient(app)
+
+
 @pytest.mark.asyncio
 async def test_latest_detection_run_api_empty_state(monkeypatch):
     async def fake_latest_runs(db, limit=1):
@@ -166,6 +201,18 @@ async def test_latest_detection_run_api_empty_state(monkeypatch):
     data = await investment_router.get_latest_detection_run(db=object())
 
     assert data == {"run": None}
+
+
+def test_latest_detection_run_route_hits_static_endpoint(monkeypatch):
+    async def fake_latest_runs(db, limit=1):
+        return []
+
+    monkeypatch.setattr(investment_router, "get_latest_runs", fake_latest_runs)
+
+    response = _detection_runs_client(object()).get("/api/investment/detection-runs/latest")
+
+    assert response.status_code == 200
+    assert response.json() == {"run": None}
 
 
 @pytest.mark.asyncio
@@ -199,6 +246,29 @@ async def test_detection_run_status_api_is_read_only(monkeypatch):
         "hours_back_default": 48,
     }
     assert data["guardrails"]["no_scan_trigger"] is True
+
+
+def test_detection_run_status_route_hits_static_endpoint(monkeypatch):
+    async def fake_latest_runs(db, limit=20):
+        return []
+
+    monkeypatch.setattr(investment_router, "get_latest_runs", fake_latest_runs)
+
+    response = _detection_runs_client(object()).get("/api/investment/detection-runs/status")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "no_runs"
+
+
+def test_detection_run_invalid_uuid_returns_clean_404():
+    class FakeDb:
+        async def get(self, model, item_id):
+            raise AssertionError("invalid UUID should not query the database")
+
+    response = _detection_runs_client(FakeDb()).get("/api/investment/detection-runs/not-a-uuid")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Detection run not found"
 
 
 @pytest.mark.asyncio
@@ -239,6 +309,74 @@ def test_detection_run_serializer_shape():
     assert data["parsed_filings"] == 0
     assert data["unclassified_filings"] == 0
     assert data["forms_checked_json"] is None
+
+
+def test_detection_run_serializer_falls_back_to_summary_raw_hits():
+    run = DetectionRun(
+        id=uuid.uuid4(),
+        source="sec_edgar",
+        started_at=datetime.now(timezone.utc),
+        status="success",
+        dry_run=True,
+        raw_hits=0,
+        parsed_filings=0,
+        classified_filings=0,
+        unclassified_filings=0,
+        errors_count=0,
+        summary_json={
+            "raw_hits": 122,
+            "parsed_filings": 3,
+            "classified_filings": 1,
+            "unclassified_filings": 2,
+            "outside_lookback_skipped": 5,
+            "missing_filing_date_skipped": 2,
+            "unsupported_forms_skipped": 7,
+            "candidates_detected": 1,
+            "per_form_summary": {
+                "8-K": {"raw": 100, "parsed": 0, "classified": 0},
+            },
+            "errors": [],
+        },
+        created_at=datetime.now(timezone.utc),
+    )
+
+    data = serialize_detection_run(run)
+
+    assert data["raw_hits"] == 122
+    assert data["parsed_filings"] == 3
+    assert data["classified_filings"] == 1
+    assert data["unclassified_filings"] == 2
+    assert data["outside_lookback_skipped"] == 5
+    assert data["missing_filing_date_skipped"] == 2
+    assert data["unsupported_forms_skipped"] == 7
+    assert data["candidates_detected"] == 1
+    assert data["per_form_summary"]["8-K"]["raw"] == 100
+
+
+def test_detection_run_status_latest_run_uses_summary_raw_hits_fallback():
+    run = DetectionRun(
+        id=uuid.uuid4(),
+        source="sec_edgar",
+        started_at=datetime.now(timezone.utc),
+        status="success",
+        dry_run=True,
+        raw_hits=0,
+        summary_json={
+            "per_form_summary": {
+                "8-K": {"raw": 100},
+                "SC TO-I": {"raw": 21},
+                "SC TO-T": {"raw": 1},
+            },
+            "errors": [],
+        },
+        errors_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+
+    status = build_detection_run_status([run])
+
+    assert status["status"] == "healthy"
+    assert status["latest_run"]["raw_hits"] == 122
 
 
 def test_detection_run_status_no_runs_and_failed_run():
