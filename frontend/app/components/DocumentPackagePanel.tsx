@@ -1,9 +1,22 @@
 'use client';
 
+import { KnowledgeInfoButton } from '@/app/components/KnowledgeInfoButton';
 import type { DocumentPackage, DocumentPackageItem } from '@/lib/api';
 
 function readinessLabel(value: string): string {
   return value.replaceAll('_', ' ');
+}
+
+function knowledgeKeyForDocument(documentKey: string): string | null {
+  const knownKeys = new Set([
+    'sc_to_i',
+    'offer_to_purchase',
+    'letter_of_transmittal',
+    'press_release',
+    'sec_filing_detail',
+    'key_exhibits',
+  ]);
+  return knownKeys.has(documentKey) ? documentKey : null;
 }
 
 function statusClass(status: string): string {
@@ -25,7 +38,10 @@ function DocumentRow({ item }: { item: DocumentPackageItem }) {
     <div style={{ display: 'grid', gap: 6, padding: '10px 0', borderTop: '1px solid var(--border-subtle)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
         <div>
-          <div style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 600 }}>{item.label}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 600 }}>{item.label}</span>
+            <KnowledgeInfoButton knowledgeKey={knowledgeKeyForDocument(item.document_key)} label={item.label} />
+          </div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{item.priority} / {item.source_hint}</div>
         </div>
         <span className={statusClass(item.status)}>{item.status.replaceAll('_', ' ')}</span>
@@ -55,13 +71,14 @@ export function DocumentPackagePanel({
   const required = packageData?.documents.filter(item => item.priority === 'required') ?? [];
   const recommended = packageData?.documents.filter(item => item.priority === 'recommended') ?? [];
   const topActions = packageData?.manual_next_actions.slice(0, 4) ?? [];
+  const recommendedNeedsReview = recommended.filter(item => item.status === 'needs_manual_check' || item.status === 'missing').length;
 
   return (
     <section className="card" style={{ padding: 18 }}>
       <div className="card-header" style={{ alignItems: 'flex-start', gap: 12 }}>
         <div>
           <div className="card-title">Document Package</div>
-          <div className="card-desc">Expected, found, missing, and manual-check documents. Ready for manual evaluation does not mean investment approval.</div>
+          <div className="card-desc">Compact package summary. Mapped or suggested documents are not verified evidence.</div>
         </div>
         {packageData && <span className="status-badge status-badge--readonly">{readinessLabel(packageData.readiness_level)}</span>}
       </div>
@@ -71,10 +88,14 @@ export function DocumentPackagePanel({
       {packageData && !loading && (
         <div style={{ display: 'grid', gap: 14, marginTop: 14 }}>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="metric-pill"><span className="metric-value">{packageData.summary.required_found}</span><span className="metric-label">Required found</span></div>
+            <div className="metric-pill"><span className="metric-value">{packageData.summary.required_found}</span><span className="metric-label">Required mapped</span></div>
             <div className="metric-pill"><span className="metric-value">{packageData.summary.required_missing}</span><span className="metric-label">Required missing</span></div>
-            <div className="metric-pill"><span className="metric-value">{packageData.summary.recommended_missing}</span><span className="metric-label">Recommended missing</span></div>
+            <div className="metric-pill"><span className="metric-value">{recommendedNeedsReview}</span><span className="metric-label">Recommended needs review</span></div>
             <div className="metric-pill"><span className="metric-value">{packageData.summary.manual_actions_count}</span><span className="metric-label">Manual actions</span></div>
+          </div>
+
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)', lineHeight: 1.5 }}>
+            Mapped or suggested documents are not verified evidence.
           </div>
 
           {packageData.warnings.length > 0 && (
@@ -83,16 +104,21 @@ export function DocumentPackagePanel({
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <div className="section-title" style={{ marginBottom: 4 }}>Required</div>
-              {required.map(item => <DocumentRow key={item.document_key} item={item} />)}
+          <details>
+            <summary style={{ cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-muted)' }}>
+              Show document package details
+            </summary>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4" style={{ marginTop: 12 }}>
+              <div>
+                <div className="section-title" style={{ marginBottom: 4 }}>Required</div>
+                {required.map(item => <DocumentRow key={item.document_key} item={item} />)}
+              </div>
+              <div>
+                <div className="section-title" style={{ marginBottom: 4 }}>Recommended</div>
+                {recommended.slice(0, 6).map(item => <DocumentRow key={item.document_key} item={item} />)}
+              </div>
             </div>
-            <div>
-              <div className="section-title" style={{ marginBottom: 4 }}>Recommended</div>
-              {recommended.slice(0, 6).map(item => <DocumentRow key={item.document_key} item={item} />)}
-            </div>
-          </div>
+          </details>
 
           {topActions.length > 0 && (
             <div>

@@ -206,11 +206,26 @@ def _situation_type_for_case(rc: ResearchCase, source_situation: SpecialSituatio
 
 
 def _match_item(row: TemplateRow, *, evidence_links: list, suggested_pool: list[dict]) -> DocumentPackageItem:
-    found = [link.model_dump() for link in evidence_links if _matches(row, _link_text(link))]
+    matched = [link for link in evidence_links if _matches_link(row, link)]
+    found_links = [
+        link
+        for link in matched
+        if str(getattr(link, "status", "") or "") not in {"candidate_found", "manual_review_required"}
+    ]
+    candidate_links = [
+        link
+        for link in matched
+        if str(getattr(link, "status", "") or "") in {"candidate_found", "manual_review_required"}
+    ]
+    found = [link.model_dump() for link in found_links]
+    candidates = [link.model_dump() for link in candidate_links]
     suggested = [link for link in suggested_pool if _matches(row, _dict_text(link))]
     if found:
         status: DocumentStatus = "found"
         notes = "Stored metadata has a matching link. Manual review still required."
+    elif candidates:
+        status = "needs_manual_check"
+        notes = "Candidate source added — needs review. It is not verified evidence."
     elif suggested:
         status = "suggested"
         notes = "A candidate link may match this document. It is not verified."
@@ -227,7 +242,7 @@ def _match_item(row: TemplateRow, *, evidence_links: list, suggested_pool: list[
         source_hint=row.source_hint,
         description=row.description,
         status=status,
-        matched_links=found[:4],
+        matched_links=(found + candidates)[:4],
         suggested_links=suggested[:4],
         notes=notes,
         verified=False,
@@ -241,6 +256,8 @@ def _matches(row: TemplateRow, text: str) -> bool:
         tokens.extend(["sc to-t", "sc to t", "schedule to"])
     if row.key == "sc_to_i":
         tokens.extend(["sc to-i", "sc to i", "schedule to"])
+    if row.key == "issuer_tender_statement":
+        tokens.extend(["sc to-i", "sc to i", "schedule to", "issuer tender"])
     if row.key == "sec_filing_detail":
         tokens.extend(["sec filing", "accession", "stored sec filing"])
     if row.key == "key_exhibits":
@@ -248,6 +265,13 @@ def _matches(row: TemplateRow, text: str) -> bool:
     if row.key == "form_10":
         tokens.extend(["form 10", "10-12b"])
     return any(token and token in text for token in tokens)
+
+
+def _matches_link(row: TemplateRow, link) -> bool:
+    linked_resources = getattr(link, "linked_required_resource_ids", []) or []
+    if row.key in linked_resources:
+        return True
+    return _matches(row, _link_text(link))
 
 
 def _link_text(link) -> str:

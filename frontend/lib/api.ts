@@ -78,6 +78,7 @@ export interface SearchSuggestion {
 
 export interface EvidenceLink {
   id: string;
+  candidate_source_id?: string | null;
   label: string;
   url: string | null;
   source_type: string;
@@ -400,6 +401,150 @@ export interface DocumentPackage {
   guardrails: string[];
 }
 
+export type DocumentationAgentStatus =
+  | 'blocked'
+  | 'useful_incomplete'
+  | 'mostly_documented'
+  | 'ready_for_manual_review';
+
+export interface DocumentationAgentDocument {
+  document_key: string;
+  label: string;
+  importance: string;
+  priority: string;
+  source_hint: string;
+  status: string;
+  description: string;
+  matched_links: Array<Record<string, unknown>>;
+  suggested_links: Array<Record<string, unknown>>;
+  verified: boolean;
+  notes: string | null;
+}
+
+export interface DocumentationAgentChecklistItem {
+  key: string;
+  label: string;
+  importance: string;
+  why_it_matters: string;
+  required_document_keys: string[];
+  required_skill_keys: string[];
+  status: string;
+  missing_document_keys: string[];
+  manual_check_document_keys: string[];
+  found_document_keys: string[];
+  verified: boolean;
+}
+
+export interface DocumentationAgentSkill {
+  skill_key: string;
+  label: string;
+  group: string;
+  description: string;
+  implemented: boolean;
+  required_for_situation_types: string[];
+  outputs: string[];
+  dependencies: string[];
+}
+
+export interface DocumentationAgentReport {
+  subject_type: 'special_situation' | 'research_case';
+  subject_id: string;
+  case_type: string;
+  documentation_status: DocumentationAgentStatus;
+  summary: string;
+  course_chapters: Array<{
+    chapter_id: string;
+    title: string;
+    relevance: string;
+    reason: string;
+  }>;
+  applicable_playbooks: string[];
+  checklist: DocumentationAgentChecklistItem[];
+  documents_found: DocumentationAgentDocument[];
+  documents_missing: DocumentationAgentDocument[];
+  critical_missing_documents: DocumentationAgentDocument[];
+  required_information: Array<Record<string, unknown>>;
+  required_skills: DocumentationAgentSkill[];
+  implemented_skills: DocumentationAgentSkill[];
+  missing_skills: DocumentationAgentSkill[];
+  blocking_issues: string[];
+  manual_actions: string[];
+  suggested_searches: Array<Record<string, unknown>>;
+  next_best_action: string;
+  warnings: string[];
+  guardrails: Record<string, boolean>;
+}
+
+export interface DocumentationExtractionField {
+  id: string;
+  situation_id: string;
+  candidate_source_id: string;
+  document_key: string;
+  source_url: string | null;
+  source_title: string | null;
+  field_key: string;
+  field_label: string;
+  extracted_value: string | null;
+  confidence: number | null;
+  source_snippet: string | null;
+  section_reference: string | null;
+  status: 'draft' | 'accepted' | 'rejected' | 'edited';
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export type KnowledgeEntryType = 'document' | 'term' | 'playbook' | 'field';
+
+export interface KnowledgeEntry {
+  knowledge_key: string;
+  title: string;
+  type: KnowledgeEntryType;
+  summary: string;
+  badges: string[];
+  applies_to: {
+    situation_types: string[];
+    playbooks: string[];
+    document_keys: string[];
+    field_keys: string[];
+  };
+  why_it_matters: string;
+  where_it_usually_appears: {
+    primary_sources: string[];
+    secondary_sources: string[];
+    source_notes: string | null;
+  };
+  typical_sections: string[];
+  search_terms: string[];
+  helps_complete_fields: Array<{
+    field_key: string;
+    label: string;
+    importance: 'critical' | 'high' | 'medium' | 'low';
+  }>;
+  course_references: Array<{
+    chapter_id: string;
+    title: string;
+    relevance: 'primary' | 'secondary';
+    reason: string;
+  }>;
+  course_examples: Array<{
+    label: string;
+    example_type: 'concept' | 'document_review' | 'risk' | 'workflow';
+    text: string;
+    visibility: 'internal_only';
+    source: 'course_notes' | 'dani_notes' | 'swissedge_summary';
+  }>;
+  common_mistakes: string[];
+  manual_verification_checklist: string[];
+  related_entries: Array<{
+    knowledge_key: string;
+    label: string;
+    relation: 'related_document' | 'related_term' | 'required_for' | 'explains';
+  }>;
+  guardrail: string;
+}
+
 export type PromotionReadinessLevel =
   | 'not_ready'
   | 'needs_documentation'
@@ -545,6 +690,73 @@ export async function addSituationResource(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(typeof body?.detail === 'string' ? body.detail : `HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function fetchSituationDocumentationExtractions(
+  situationId: string,
+): Promise<DocumentationExtractionField[]> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/situations/${situationId}/documentation-extractions`);
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(typeof body?.detail === 'string' ? body.detail : `HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function readSituationDocumentationSourceDraft(
+  situationId: string,
+  payload: { candidate_source_id: string; document_key: string },
+): Promise<DocumentationExtractionField[]> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/situations/${situationId}/documentation-extractions/read-draft`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(typeof body?.detail === 'string' ? body.detail : `HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function reviewDocumentationExtractionField(
+  fieldId: string,
+  payload: { status: 'accepted' | 'rejected' | 'edited'; extracted_value?: string; reviewed_by?: string },
+): Promise<DocumentationExtractionField> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/documentation-extractions/${fieldId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(typeof body?.detail === 'string' ? body.detail : `HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function fetchKnowledgeEntry(knowledgeKey: string): Promise<KnowledgeEntry> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/knowledge/${knowledgeKey}`);
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(typeof body?.detail === 'string' ? body.detail : `HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function fetchKnowledgeEntries(filters?: {
+  type?: KnowledgeEntryType;
+  situation_type?: string;
+}): Promise<KnowledgeEntry[]> {
+  const url = new URL(`${API_BASE_URL}/api/investment/knowledge`);
+  if (filters?.type) url.searchParams.append('type', filters.type);
+  if (filters?.situation_type) url.searchParams.append('situation_type', filters.situation_type);
+  const response = await fetch(url.toString());
   if (!response.ok) {
     const body = await response.json().catch(() => ({ detail: response.statusText }));
     throw new Error(typeof body?.detail === 'string' ? body.detail : `HTTP ${response.status}`);
@@ -797,6 +1009,12 @@ export async function fetchSituationSecDocumentAcquisitionPreview(id: string): P
 export async function fetchSituationDocumentPackage(id: string): Promise<DocumentPackage> {
   const response = await fetch(`${API_BASE_URL}/api/investment/situations/${id}/document-package`);
   if (!response.ok) throw new Error(`Failed to fetch situation document package: ${response.statusText}`);
+  return response.json();
+}
+
+export async function fetchSituationDocumentationAgentReport(id: string): Promise<DocumentationAgentReport> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/situations/${id}/documentation-agent-report`);
+  if (!response.ok) throw new Error(`Failed to fetch situation documentation agent report: ${response.statusText}`);
   return response.json();
 }
 
@@ -1594,6 +1812,12 @@ export async function fetchResearchCaseSecDocumentAcquisitionPreview(id: string)
 export async function fetchResearchCaseDocumentPackage(id: string): Promise<DocumentPackage> {
   const response = await fetch(`${API_BASE_URL}/api/investment/research-cases/${id}/document-package`);
   if (!response.ok) throw new Error(`Failed to fetch research case document package: ${response.statusText}`);
+  return response.json();
+}
+
+export async function fetchResearchCaseDocumentationAgentReport(id: string): Promise<DocumentationAgentReport> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/research-cases/${id}/documentation-agent-report`);
+  if (!response.ok) throw new Error(`Failed to fetch research case documentation agent report: ${response.statusText}`);
   return response.json();
 }
 

@@ -16,6 +16,7 @@ from backend.services.investment.evidence_links import (
     build_research_case_evidence_links,
     build_situation_evidence_links,
 )
+from backend.services.investment.methodology_workspace import WORKSPACE_KEY
 from backend.services.investment.sec_document_acquisition import (
     build_research_case_sec_document_acquisition_preview,
     build_situation_sec_document_acquisition_preview,
@@ -107,6 +108,43 @@ def test_research_case_document_package_matches_documents_and_sources():
     assert offer.status == "found"
     assert press.status == "found"
     assert package.readiness_level in {"useful_incomplete", "mostly_ready", "ready_for_manual_evaluation"}
+
+
+def test_candidate_source_maps_to_document_without_verifying_or_marking_found():
+    sit = _situation("tender_offer")
+    sit.filing_type = "SC TO-I"
+    sit.evaluation["sec_detection"]["detected_form_type"] = "SC TO-I"
+    sit.evaluation[WORKSPACE_KEY] = {
+        "resource_candidates": [
+            {
+                "resource_candidate_id": "candidate-offer",
+                "title": "Offer to Purchase candidate",
+                "url": "https://example.com/offer-to-purchase.pdf",
+                "source_type": "sec_filing",
+                "source_domain": "example.com",
+                "status": "candidate_found",
+                "confidence": "medium",
+                "related_resource_ids": ["offer_to_purchase"],
+                "related_check_ids": ["extract_tender_terms"],
+                "discovered_by": "manual",
+                "discovered_at": "2026-05-18T00:00:00Z",
+                "notes": "Candidate only; requires Dani review.",
+            }
+        ],
+        "required_resources": [],
+        "checklist": [],
+        "search_suggestions": [],
+    }
+    evidence = build_situation_evidence_links(sit)
+    sec_preview = build_situation_sec_document_acquisition_preview(sit)
+
+    package = build_situation_document_package(sit, evidence_links=evidence, sec_preview=sec_preview)
+
+    offer = next(item for item in package.documents if item.document_key == "offer_to_purchase")
+    assert offer.status == "needs_manual_check"
+    assert offer.verified is False
+    assert offer.matched_links[0]["status"] == "candidate_found"
+    assert "needs review" in (offer.notes or "")
 
 
 @pytest.mark.asyncio

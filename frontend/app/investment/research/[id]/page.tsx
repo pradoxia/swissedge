@@ -11,6 +11,7 @@ import { HistoricalAnaloguesPanel } from '@/app/components/HistoricalAnaloguesPa
 import { CaseCompletionWorkbench } from '@/app/components/CaseCompletionWorkbench';
 import { SecDocumentAcquisitionPanel } from '@/app/components/SecDocumentAcquisitionPanel';
 import { DocumentPackagePanel } from '@/app/components/DocumentPackagePanel';
+import { DocumentationAgentPanel } from '@/app/components/DocumentationAgentPanel';
 import {
   acquireResearchCaseSecDocuments,
   fetchResearchCase,
@@ -19,6 +20,7 @@ import {
   fetchResearchCaseEvidenceLinks,
   fetchResearchCaseDocumentationGuide,
   fetchResearchCaseDocumentPackage,
+  fetchResearchCaseDocumentationAgentReport,
   fetchResearchCaseEvaluationPrep,
   fetchResearchCaseHistoricalAnalogues,
   fetchResearchCaseIntelligenceScore,
@@ -47,6 +49,7 @@ import {
   type ResearchCaseEvidenceLinksPackage,
   type CaseDocumentationGuidePackage,
   type DocumentPackage,
+  type DocumentationAgentReport,
   type EvaluationPrepPackage,
   type HistoricalAnaloguesPackage,
   type IntelligenceScorePackage,
@@ -2038,6 +2041,7 @@ export default function ResearchDetailPage() {
   const [operationalView, setOperationalView] = useState<OperationalViewPackage | null>(null);
   const [secDocumentAcquisition, setSecDocumentAcquisition] = useState<SecDocumentAcquisitionPackage | null>(null);
   const [documentPackage, setDocumentPackage] = useState<DocumentPackage | null>(null);
+  const [documentationAgentReport, setDocumentationAgentReport] = useState<DocumentationAgentReport | null>(null);
   const [historicalAnalogues, setHistoricalAnalogues] = useState<HistoricalAnaloguesPackage | null>(null);
   const [activityTimeline, setActivityTimeline] = useState<CaseActivityTimelinePackage | null>(null);
   const [prepLoading, setPrepLoading] = useState(true);
@@ -2057,6 +2061,8 @@ export default function ResearchDetailPage() {
   const [secDocumentAcquiring, setSecDocumentAcquiring] = useState(false);
   const [documentPackageError, setDocumentPackageError] = useState<string | null>(null);
   const [documentPackageLoading, setDocumentPackageLoading] = useState(false);
+  const [documentationAgentReportError, setDocumentationAgentReportError] = useState<string | null>(null);
+  const [documentationAgentReportLoading, setDocumentationAgentReportLoading] = useState(false);
   const [historicalAnaloguesError, setHistoricalAnaloguesError] = useState<string | null>(null);
   const [historicalAnaloguesLoading, setHistoricalAnaloguesLoading] = useState(false);
   const [activityTimelineError, setActivityTimelineError] = useState<string | null>(null);
@@ -2229,6 +2235,19 @@ export default function ResearchDetailPage() {
     }
   }
 
+  async function loadDocumentationAgentReport() {
+    try {
+      setDocumentationAgentReportLoading(true);
+      setDocumentationAgentReportError(null);
+      const data = await fetchResearchCaseDocumentationAgentReport(id);
+      setDocumentationAgentReport(data);
+    } catch (err) {
+      setDocumentationAgentReportError(err instanceof Error ? err.message : 'Failed to load documentation agent report');
+    } finally {
+      setDocumentationAgentReportLoading(false);
+    }
+  }
+
   async function loadHistoricalAnalogues() {
     try {
       setHistoricalAnaloguesLoading(true);
@@ -2273,6 +2292,7 @@ export default function ResearchDetailPage() {
       await loadEvidenceLinks();
       await loadOperationalView();
       await loadDocumentPackage();
+      await loadDocumentationAgentReport();
     } catch (err) {
       setSecDocumentAcquisitionError(err instanceof Error ? err.message : 'Failed to acquire SEC document metadata');
     } finally {
@@ -2291,6 +2311,7 @@ export default function ResearchDetailPage() {
     loadOperationalView();
     loadSecDocumentAcquisition();
     loadDocumentPackage();
+    loadDocumentationAgentReport();
     loadHistoricalAnalogues();
     loadActivityTimeline();
   }, [id]);
@@ -2575,6 +2596,12 @@ export default function ResearchDetailPage() {
           packageData={documentPackage}
           loading={documentPackageLoading}
           error={documentPackageError}
+        />
+
+        <DocumentationAgentPanel
+          report={documentationAgentReport}
+          loading={documentationAgentReportLoading}
+          error={documentationAgentReportError}
         />
 
         <HistoricalAnaloguesPanel

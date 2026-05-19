@@ -1,7 +1,7 @@
 'use client';
 
 import type { CSSProperties } from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -19,12 +19,16 @@ import { HistoricalAnaloguesPanel } from '@/app/components/HistoricalAnaloguesPa
 import { CaseCompletionWorkbench } from '@/app/components/CaseCompletionWorkbench';
 import { SecDocumentAcquisitionPanel } from '@/app/components/SecDocumentAcquisitionPanel';
 import { DocumentPackagePanel } from '@/app/components/DocumentPackagePanel';
+import { DocumentationAgentPanel } from '@/app/components/DocumentationAgentPanel';
+import { DocumentationTasksPanel } from '@/app/components/DocumentationTasksPanel';
 import {
   addSituationResource,
   acquireSituationSecDocuments,
   fetchSituationActivityTimeline,
   fetchSituationDocumentationGuide,
   fetchSituationDocumentPackage,
+  fetchSituationDocumentationAgentReport,
+  fetchSituationDocumentationExtractions,
   fetchSituationEvidenceLinks,
   fetchSituationCompletionWorkbench,
   fetchSituationHistoricalAnalogues,
@@ -33,6 +37,8 @@ import {
   fetchSituationSecDocumentAcquisitionPreview,
   fetchSituation,
   promoteSituationToResearchCase,
+  readSituationDocumentationSourceDraft,
+  reviewDocumentationExtractionField,
   updateSituationResourceCandidate,
   updateSituationWorkflowStatus,
   type MethodologyChecklistItem,
@@ -45,6 +51,9 @@ import {
   type CaseActivityTimelinePackage,
   type CaseCompletionPackage,
   type DocumentPackage,
+  type DocumentationAgentDocument,
+  type DocumentationAgentReport,
+  type DocumentationExtractionField,
   type HistoricalAnaloguesPackage,
   type OfficialSourceFinderPackage,
   type SecDocumentAcquisitionPackage,
@@ -120,27 +129,23 @@ function groupChecklist(items: MethodologyChecklistItem[]) {
 function SituationQuickLinks({
   situation,
   researchCaseId,
-  evidenceLinks,
 }: {
   situation: Situation;
   researchCaseId?: string;
-  evidenceLinks: SituationEvidenceLinksPackage | null;
 }) {
+  const archiveUrl = situation.filing_url
+    ? situation.filing_url.slice(0, situation.filing_url.lastIndexOf('/') + 1)
+    : null;
   const links = [
-    { label: 'Kanban board', href: '/investment/situations', external: false },
-    { label: 'Intelligence KPIs', href: '/investment/intelligence', external: false },
+    { label: 'Back to Kanban', href: '/investment/situations', external: false },
     { label: 'Evaluation detail', href: `/investment/evaluations/${situation.id}`, external: false },
     ...(researchCaseId ? [{ label: 'ResearchCase', href: `/investment/research/${researchCaseId}`, external: false }] : []),
     ...(situation.filing_url ? [{ label: 'SEC filing', href: situation.filing_url, external: true }] : []),
-    ...(evidenceLinks?.links ?? []).filter(link => link.url).slice(0, 4).map(link => ({
-      label: link.label || link.source_type,
-      href: link.url!,
-      external: true,
-    })),
+    ...(archiveUrl ? [{ label: 'SEC archive directory', href: archiveUrl, external: true }] : []),
   ];
 
   return (
-    <SectionCard title="Quick Links">
+    <SectionCard title="Operational Links">
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8 }}>
         {links.map((link, index) => (
           link.external ? (
@@ -155,7 +160,7 @@ function SituationQuickLinks({
         ))}
       </div>
       <div style={{ marginTop: 8, fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)' }}>
-        Links are opened manually. The UI does not fetch SEC document bodies or crawl linked pages.
+        Links open manually. The UI does not fetch SEC document bodies or crawl linked pages.
       </div>
     </SectionCard>
   );
@@ -264,7 +269,7 @@ function CaseDocumentationGuidePanel({
       <div style={{ display: 'grid', gap: 16 }}>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
           <div style={{ background: 'var(--bg-subtle)', border: '1px solid var(--border-default)', borderRadius: 8, padding: '10px 14px' }}>
-            <div style={MONO_LABEL}>Documentation quality</div>
+            <div style={MONO_LABEL}>Metadata structure</div>
             <div style={{ fontSize: 22, fontWeight: 700 }}>{guide.documentation_quality.score}/100</div>
             <StatusBadge value={guide.documentation_quality.level} />
           </div>
@@ -452,18 +457,18 @@ function PromotionReadinessPanel({
 }) {
   const topEvidence = readiness?.supporting_evidence.slice(0, 3) ?? [];
   return (
-    <SectionCard title="Promotion Readiness">
+    <SectionCard title="Manual Promotion Package">
       <div style={{ display: 'grid', gap: 10 }}>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           <span className="status-badge status-badge--readonly">
             {readiness ? readiness.readiness_level.replaceAll('_', ' ') : 'not loaded'}
           </span>
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-muted)' }}>
-            Score {readiness?.readiness_score ?? '-'}/100
+            Structure check: {readiness?.readiness_score ?? '-'}/100
           </span>
         </div>
         <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-          Ready for manual promotion does not mean investment approval. This panel does not create a ResearchCase.
+          Manual package only. This panel does not create a ResearchCase or approve an investment.
         </div>
         {loading && <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Loading promotion readiness...</div>}
         {error && <InfoBanner variant="warning">{error}</InfoBanner>}
@@ -491,7 +496,7 @@ function PromotionReadinessPanel({
             )}
             {topEvidence.length > 0 && (
               <div>
-                <div style={MONO_LABEL}>Top supporting evidence</div>
+                <div style={MONO_LABEL}>Top mapped metadata links</div>
                 <div style={{ display: 'grid', gap: 4 }}>
                   {topEvidence.map((item, index) => (
                     <div key={`${String(item.label ?? 'evidence')}-${index}`} style={{ fontSize: 12, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -525,6 +530,9 @@ export default function SpecialSituationMethodologyPage() {
     notes: '',
     related_resource_id: '',
     related_check_id: '',
+    task_document_key: '',
+    task_checklist_id: '',
+    task_source_hint: '',
   });
   const [resourceMessage, setResourceMessage] = useState<string | null>(null);
   const [resourceError, setResourceError] = useState<string | null>(null);
@@ -550,6 +558,15 @@ export default function SpecialSituationMethodologyPage() {
   const [documentPackage, setDocumentPackage] = useState<DocumentPackage | null>(null);
   const [documentPackageError, setDocumentPackageError] = useState<string | null>(null);
   const [documentPackageLoading, setDocumentPackageLoading] = useState(false);
+  const [documentationAgentReport, setDocumentationAgentReport] = useState<DocumentationAgentReport | null>(null);
+  const [documentationAgentReportError, setDocumentationAgentReportError] = useState<string | null>(null);
+  const [documentationAgentReportLoading, setDocumentationAgentReportLoading] = useState(false);
+  const [documentationExtractions, setDocumentationExtractions] = useState<DocumentationExtractionField[]>([]);
+  const [documentationExtractionsError, setDocumentationExtractionsError] = useState<string | null>(null);
+  const [readingDraftKey, setReadingDraftKey] = useState<string | null>(null);
+  const [reviewingExtractionId, setReviewingExtractionId] = useState<string | null>(null);
+  const [editingExtractionId, setEditingExtractionId] = useState<string | null>(null);
+  const [editingExtractionValue, setEditingExtractionValue] = useState('');
   const [promotionReadiness, setPromotionReadiness] = useState<PromotionReadinessPackage | null>(null);
   const [promotionReadinessError, setPromotionReadinessError] = useState<string | null>(null);
   const [promotionReadinessLoading, setPromotionReadinessLoading] = useState(false);
@@ -560,7 +577,9 @@ export default function SpecialSituationMethodologyPage() {
   const [activityTimelineError, setActivityTimelineError] = useState<string | null>(null);
   const [activityTimelineLoading, setActivityTimelineLoading] = useState(false);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [advancedToolsOpen, setAdvancedToolsOpen] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const manualResourceUrlRef = useRef<HTMLInputElement | null>(null);
 
   async function load() {
     try {
@@ -572,6 +591,48 @@ export default function SpecialSituationMethodologyPage() {
       setError(err instanceof Error ? err.message : 'Failed to load situation');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function refreshDocumentationIntakeData() {
+    try {
+      setEvidenceLinksError(null);
+      setDocumentPackageLoading(true);
+      setDocumentPackageError(null);
+      setDocumentationAgentReportLoading(true);
+      setDocumentationAgentReportError(null);
+      setDocumentationExtractionsError(null);
+
+      const [linksResult, packageResult, reportResult, extractionsResult] = await Promise.allSettled([
+        fetchSituationEvidenceLinks(id),
+        fetchSituationDocumentPackage(id),
+        fetchSituationDocumentationAgentReport(id),
+        fetchSituationDocumentationExtractions(id),
+      ]);
+
+      if (linksResult.status === 'fulfilled') {
+        setEvidenceLinks(linksResult.value);
+      } else {
+        setEvidenceLinksError(linksResult.reason instanceof Error ? linksResult.reason.message : 'Failed to load evidence links');
+      }
+      if (packageResult.status === 'fulfilled') {
+        setDocumentPackage(packageResult.value);
+      } else {
+        setDocumentPackageError(packageResult.reason instanceof Error ? packageResult.reason.message : 'Failed to load document package');
+      }
+      if (reportResult.status === 'fulfilled') {
+        setDocumentationAgentReport(reportResult.value);
+      } else {
+        setDocumentationAgentReportError(reportResult.reason instanceof Error ? reportResult.reason.message : 'Failed to load documentation agent report');
+      }
+      if (extractionsResult.status === 'fulfilled') {
+        setDocumentationExtractions(extractionsResult.value);
+      } else {
+        setDocumentationExtractionsError(extractionsResult.reason instanceof Error ? extractionsResult.reason.message : 'Failed to load draft extracted fields');
+      }
+    } finally {
+      setDocumentPackageLoading(false);
+      setDocumentationAgentReportLoading(false);
     }
   }
 
@@ -642,6 +703,27 @@ export default function SpecialSituationMethodologyPage() {
         setDocumentPackageLoading(false);
       }
     }
+    async function loadDocumentationAgentReport() {
+      try {
+        setDocumentationAgentReportLoading(true);
+        setDocumentationAgentReportError(null);
+        const data = await fetchSituationDocumentationAgentReport(id);
+        setDocumentationAgentReport(data);
+      } catch (err) {
+        setDocumentationAgentReportError(err instanceof Error ? err.message : 'Failed to load documentation agent report');
+      } finally {
+        setDocumentationAgentReportLoading(false);
+      }
+    }
+    async function loadDocumentationExtractions() {
+      try {
+        setDocumentationExtractionsError(null);
+        const data = await fetchSituationDocumentationExtractions(id);
+        setDocumentationExtractions(data);
+      } catch (err) {
+        setDocumentationExtractionsError(err instanceof Error ? err.message : 'Failed to load draft extracted fields');
+      }
+    }
     async function loadPromotionReadiness() {
       try {
         setPromotionReadinessLoading(true);
@@ -685,6 +767,8 @@ export default function SpecialSituationMethodologyPage() {
     if (id) loadOfficialSourceFinder();
     if (id) loadSecDocumentAcquisition();
     if (id) loadDocumentPackage();
+    if (id) loadDocumentationAgentReport();
+    if (id) loadDocumentationExtractions();
     if (id) loadPromotionReadiness();
     if (id) loadHistoricalAnalogues();
     if (id) loadActivityTimeline();
@@ -736,21 +820,116 @@ export default function SpecialSituationMethodologyPage() {
     setResourceMessage(null);
     setResourceError(null);
     try {
+      const relatedResourceIds = Array.from(new Set([
+        resourceForm.related_resource_id,
+        resourceForm.task_document_key,
+      ].filter(Boolean)));
+      const relatedCheckIds = Array.from(new Set([
+        resourceForm.related_check_id,
+        resourceForm.task_checklist_id,
+      ].filter(Boolean)));
       const result = await addSituationResource(situation.id, {
         title: resourceForm.title,
         url: resourceForm.url,
         source_type: resourceForm.source_type,
         notes: resourceForm.notes || undefined,
-        related_resource_ids: resourceForm.related_resource_id ? [resourceForm.related_resource_id] : undefined,
-        related_check_ids: resourceForm.related_check_id ? [resourceForm.related_check_id] : undefined,
+        related_resource_ids: relatedResourceIds.length > 0 ? relatedResourceIds : undefined,
+        related_check_ids: relatedCheckIds.length > 0 ? relatedCheckIds : undefined,
       });
       setSituation(result.situation);
-      setResourceForm({ title: '', url: '', source_type: 'other', notes: '', related_resource_id: '', related_check_id: '' });
-      setResourceMessage(result.created ? 'Resource candidate added.' : 'Resource candidate already exists.');
+      setResourceForm({
+        title: '',
+        url: '',
+        source_type: 'other',
+        notes: '',
+        related_resource_id: '',
+        related_check_id: '',
+        task_document_key: '',
+        task_checklist_id: '',
+        task_source_hint: '',
+      });
+      setResourceMessage(result.created ? 'Candidate source added — needs review.' : 'Candidate source already exists — needs review.');
+      await refreshDocumentationIntakeData();
     } catch (err) {
       setResourceError(err instanceof Error ? err.message : 'Failed to add resource');
     } finally {
       setSavingResource(false);
+    }
+  }
+
+  function sourceTypeForTask(task: DocumentationAgentDocument): string {
+    if (task.source_hint === 'SEC') return 'sec_filing';
+    if (task.source_hint === 'company_ir') return 'company_ir';
+    return 'other';
+  }
+
+  function handleTaskAddSourceLink(task: DocumentationAgentDocument) {
+    const relatedResource = requiredResources.find(resource => resource.resource_id === task.document_key);
+    const relatedChecklist = documentationAgentReport?.checklist.find(item =>
+      item.required_document_keys.includes(task.document_key) ||
+      item.missing_document_keys.includes(task.document_key) ||
+      item.manual_check_document_keys.includes(task.document_key),
+    );
+    const relatedWorkspaceCheck = relatedChecklist
+      ? workspace?.checklist.find(item => item.check_id === relatedChecklist.key)
+      : null;
+
+    setAdvancedToolsOpen(true);
+    setResourceForm(current => ({
+      ...current,
+      title: current.title || task.label,
+      source_type: current.source_type === 'other' ? sourceTypeForTask(task) : current.source_type,
+      related_resource_id: relatedResource?.resource_id ?? current.related_resource_id,
+      related_check_id: relatedWorkspaceCheck?.check_id ?? current.related_check_id,
+      task_document_key: task.document_key,
+      task_checklist_id: relatedChecklist?.key ?? '',
+      task_source_hint: task.source_hint,
+      notes: current.notes || `Candidate source for ${task.label}. Source hint: ${task.source_hint}. Requires Dani manual review; not verified.`,
+    }));
+
+    window.setTimeout(() => {
+      document.getElementById('add-resource-manually')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      manualResourceUrlRef.current?.focus();
+    }, 100);
+  }
+
+  async function handleReadAndMapDraft(task: DocumentationAgentDocument, candidateSourceId: string) {
+    if (!situation) return;
+    const key = `${task.document_key}:${candidateSourceId}`;
+    setReadingDraftKey(key);
+    setDocumentationExtractionsError(null);
+    try {
+      const rows = await readSituationDocumentationSourceDraft(situation.id, {
+        candidate_source_id: candidateSourceId,
+        document_key: task.document_key,
+      });
+      setDocumentationExtractions(current => {
+        const retained = current.filter(row => !(row.candidate_source_id === candidateSourceId && row.document_key === task.document_key));
+        return [...rows, ...retained];
+      });
+    } catch (err) {
+      setDocumentationExtractionsError(err instanceof Error ? err.message : 'Failed to read and map draft fields');
+    } finally {
+      setReadingDraftKey(null);
+    }
+  }
+
+  async function handleReviewExtraction(field: DocumentationExtractionField, status: 'accepted' | 'rejected' | 'edited', value?: string) {
+    setReviewingExtractionId(field.id);
+    setDocumentationExtractionsError(null);
+    try {
+      const updated = await reviewDocumentationExtractionField(field.id, {
+        status,
+        extracted_value: value,
+        reviewed_by: 'Dani',
+      });
+      setDocumentationExtractions(current => current.map(item => item.id === updated.id ? updated : item));
+      setEditingExtractionId(null);
+      setEditingExtractionValue('');
+    } catch (err) {
+      setDocumentationExtractionsError(err instanceof Error ? err.message : 'Failed to review draft field');
+    } finally {
+      setReviewingExtractionId(null);
     }
   }
 
@@ -846,66 +1025,22 @@ export default function SpecialSituationMethodologyPage() {
         backLabel="Special Situations"
         badge={<StatusBadge value={situation.status} />}
         actions={
-          <Link href={`/investment/evaluations/${situation.id}`} className="btn btn--secondary btn--sm">
-            Evaluation Detail
-          </Link>
+          <>
+            <Link href="/investment/situations" className="btn btn--secondary btn--sm">
+              Back to Kanban
+            </Link>
+            <Link href={`/investment/evaluations/${situation.id}`} className="btn btn--secondary btn--sm">
+              Evaluation Detail
+            </Link>
+          </>
         }
       />
 
       <InfoBanner variant="guardrail">
-        Detected does not mean evaluated. Checklist attached does not mean verified. Resource listed does not mean evidence accepted. Final verification remains human-reviewed.
+        Manual review only · Metadata only · No auto-verification · No investment recommendation.
       </InfoBanner>
 
       {error && <ErrorBanner message={error} />}
-
-      <CaseDocumentationGuidePanel
-        guide={documentationGuide}
-        error={documentationGuideError}
-        onCopy={copyText}
-        copiedKey={copiedKey}
-      />
-
-      <CaseCompletionWorkbench
-        workbench={completionWorkbench}
-        loading={completionWorkbenchLoading}
-        error={completionWorkbenchError}
-      />
-
-      <OfficialSourceFinderPanel
-        finder={officialSourceFinder}
-        loading={officialSourceFinderLoading}
-        error={officialSourceFinderError}
-        copiedKey={copiedKey}
-        onCopy={copyText}
-      />
-
-      <SecDocumentAcquisitionPanel
-        packageData={secDocumentAcquisition}
-        loading={secDocumentAcquisitionLoading}
-        acquiring={secDocumentAcquiring}
-        error={secDocumentAcquisitionError}
-        copiedKey={copiedKey}
-        onCopy={copyText}
-        onAcquire={handleSecDocumentAcquisition}
-      />
-
-      <DocumentPackagePanel
-        packageData={documentPackage}
-        loading={documentPackageLoading}
-        error={documentPackageError}
-      />
-
-      <PromotionReadinessPanel
-        readiness={promotionReadiness}
-        loading={promotionReadinessLoading}
-        error={promotionReadinessError}
-      />
-
-      <HistoricalAnaloguesPanel
-        analogues={historicalAnalogues}
-        loading={historicalAnaloguesLoading}
-        error={historicalAnaloguesError}
-      />
 
       {/* Compact top summary strip */}
       <div className="card" style={{ padding: '14px 18px', display: 'flex', flexWrap: 'wrap', gap: '14px 32px', alignItems: 'flex-start' }}>
@@ -932,29 +1067,137 @@ export default function SpecialSituationMethodologyPage() {
         )}
       </div>
 
+      <div style={{ marginTop: 16, marginBottom: 16 }}>
+        <SituationQuickLinks
+          situation={situation}
+          researchCaseId={researchCaseId}
+        />
+      </div>
+
+      <DocumentationTasksPanel
+        report={documentationAgentReport}
+        situation={situation}
+        onAddSourceLink={handleTaskAddSourceLink}
+        extractionFields={documentationExtractions}
+        extractionError={documentationExtractionsError}
+        readingDraftKey={readingDraftKey}
+        reviewingExtractionId={reviewingExtractionId}
+        editingExtractionId={editingExtractionId}
+        editingExtractionValue={editingExtractionValue}
+        onReadAndMapDraft={handleReadAndMapDraft}
+        onReviewExtraction={handleReviewExtraction}
+        onStartEditExtraction={(field) => {
+          setEditingExtractionId(field.id);
+          setEditingExtractionValue(field.extracted_value ?? '');
+        }}
+        onCancelEditExtraction={() => {
+          setEditingExtractionId(null);
+          setEditingExtractionValue('');
+        }}
+        onEditExtractionValue={setEditingExtractionValue}
+      />
+
+      <div style={{ marginTop: 16 }}>
+        <DocumentationAgentPanel
+          report={documentationAgentReport}
+          loading={documentationAgentReportLoading}
+          error={documentationAgentReportError}
+          showGuardrailNote={false}
+        />
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, marginTop: 16 }}>
+        <DocumentPackagePanel
+          packageData={documentPackage}
+          loading={documentPackageLoading}
+          error={documentPackageError}
+        />
+
+        <SectionCard title="Evidence Links / Source Traceability">
+          {evidenceLinksError && (
+            <InfoBanner variant="warning">{evidenceLinksError}</InfoBanner>
+          )}
+          <EvidenceLinksPanel
+            title="SpecialSituation evidence links"
+            links={evidenceLinks?.links ?? []}
+            guardrails={[]}
+            searchSuggestions={(evidenceLinks?.search_suggestions ?? searchSuggestions).slice(0, 3)}
+            emptyText="No stored evidence links are available for this situation yet."
+            compact
+          />
+        </SectionCard>
+      </div>
+
+      <details
+        open={advancedToolsOpen}
+        onToggle={event => setAdvancedToolsOpen(event.currentTarget.open)}
+        style={{ marginTop: 16, marginBottom: 20 }}
+      >
+        <summary style={{ cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+          Advanced tools
+        </summary>
+        <div style={{ display: 'grid', gap: 16, marginTop: 14 }}>
+          <CaseDocumentationGuidePanel
+            guide={documentationGuide}
+            error={documentationGuideError}
+            onCopy={copyText}
+            copiedKey={copiedKey}
+          />
+
+          <CaseCompletionWorkbench
+            workbench={completionWorkbench}
+            loading={completionWorkbenchLoading}
+            error={completionWorkbenchError}
+          />
+
+          <OfficialSourceFinderPanel
+            finder={officialSourceFinder}
+            loading={officialSourceFinderLoading}
+            error={officialSourceFinderError}
+            copiedKey={copiedKey}
+            onCopy={copyText}
+          />
+
+          <SecDocumentAcquisitionPanel
+            packageData={secDocumentAcquisition}
+            loading={secDocumentAcquisitionLoading}
+            acquiring={secDocumentAcquiring}
+            error={secDocumentAcquisitionError}
+            copiedKey={copiedKey}
+            onCopy={copyText}
+            onAcquire={handleSecDocumentAcquisition}
+          />
+
+          <HistoricalAnaloguesPanel
+            analogues={historicalAnalogues}
+            loading={historicalAnaloguesLoading}
+            error={historicalAnaloguesError}
+          />
+
+          <div>
+            {activityTimelineLoading && (
+              <InfoBanner variant="info">Loading derived timeline...</InfoBanner>
+            )}
+            <CaseActivityTimeline
+              title="Case Activity Log"
+              events={activityTimeline?.events ?? []}
+              error={activityTimelineError}
+            />
+          </div>
+        </div>
+      </details>
+
+      <PromotionReadinessPanel
+        readiness={promotionReadiness}
+        loading={promotionReadinessLoading}
+        error={promotionReadinessError}
+      />
+
       {!workspace && (
         <InfoBanner variant="warning">
           No methodology workspace attached yet. Run the manual backfill CLI after backend deployment.
         </InfoBanner>
       )}
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16, marginBottom: 20 }}>
-        <SituationQuickLinks
-          situation={situation}
-          researchCaseId={researchCaseId}
-          evidenceLinks={evidenceLinks}
-        />
-        <div>
-          {activityTimelineLoading && (
-            <InfoBanner variant="info">Loading derived timeline...</InfoBanner>
-          )}
-          <CaseActivityTimeline
-            title="Case Activity Log"
-            events={activityTimeline?.events ?? []}
-            error={activityTimelineError}
-          />
-        </div>
-      </div>
 
       {workspace && (
         <>
@@ -1119,23 +1362,22 @@ export default function SpecialSituationMethodologyPage() {
             </SectionCard>
             </div>
 
-            <div id="situation-evidence-links" style={{ scrollMarginTop: 80 }}>
-            <SectionCard title="Evidence Links / Source Traceability">
-              {evidenceLinksError && (
-                <InfoBanner variant="warning">{evidenceLinksError}</InfoBanner>
-              )}
-              <EvidenceLinksPanel
-                title="SpecialSituation evidence links"
-                links={evidenceLinks?.links ?? []}
-                guardrails={evidenceLinks?.guardrails ?? []}
-                searchSuggestions={evidenceLinks?.search_suggestions ?? searchSuggestions}
-                emptyText="No stored evidence links are available for this situation yet."
-              />
-            </SectionCard>
-            </div>
-
-            <SectionCard title="Add Resource Manually">
+            <div id="add-resource-manually" style={{ scrollMarginTop: 80 }}>
+            <SectionCard title="Add Source Link Manually">
               <div style={{ display: 'grid', gap: 10 }}>
+                {resourceForm.task_document_key && (
+                  <div style={{ padding: 10, border: '1px solid var(--border-default)', borderRadius: 8, background: 'var(--bg-subtle)' }}>
+                    <div style={{ fontSize: 12, fontWeight: 650, color: 'var(--text-primary)' }}>
+                      Mapping source link to: {resourceForm.title || resourceForm.task_document_key}
+                    </div>
+                    <div style={{ marginTop: 4, fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)', lineHeight: 1.5 }}>
+                      Document key: {resourceForm.task_document_key}
+                      {resourceForm.task_source_hint ? ` · Source hint: ${resourceForm.task_source_hint}` : ''}
+                      {resourceForm.task_checklist_id ? ` · Checklist: ${resourceForm.task_checklist_id}` : ''}
+                      {' · Candidate only; not read, extracted, or verified.'}
+                    </div>
+                  </div>
+                )}
                 <div>
                   <div style={MONO_LABEL}>Title</div>
                   <input
@@ -1148,6 +1390,8 @@ export default function SpecialSituationMethodologyPage() {
                 <div>
                   <div style={MONO_LABEL}>URL</div>
                   <input
+                    id="manual-resource-url"
+                    ref={manualResourceUrlRef}
                     value={resourceForm.url}
                     onChange={e => setResourceForm({ ...resourceForm, url: e.target.value })}
                     placeholder="https://..."
@@ -1218,6 +1462,7 @@ export default function SpecialSituationMethodologyPage() {
                 {resourceError && <span style={{ fontSize: 12, color: '#8b2020' }}>{resourceError}</span>}
               </div>
             </SectionCard>
+            </div>
 
           </div>
 
