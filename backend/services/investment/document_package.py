@@ -210,12 +210,12 @@ def _match_item(row: TemplateRow, *, evidence_links: list, suggested_pool: list[
     found_links = [
         link
         for link in matched
-        if str(getattr(link, "status", "") or "") not in {"candidate_found", "manual_review_required"}
+        if str(getattr(link, "status", "") or "") not in {"candidate_found", "manual_review_required", "uploaded_pending_review", "source_link_pending_review", "draft_extracted"}
     ]
     candidate_links = [
         link
         for link in matched
-        if str(getattr(link, "status", "") or "") in {"candidate_found", "manual_review_required"}
+        if str(getattr(link, "status", "") or "") in {"candidate_found", "manual_review_required", "uploaded_pending_review", "source_link_pending_review", "draft_extracted"}
     ]
     found = [link.model_dump() for link in found_links]
     candidates = [link.model_dump() for link in candidate_links]

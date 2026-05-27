@@ -210,7 +210,17 @@ class SECEdgarAdapter(InvestmentSource):
     Requires SEC_USER_AGENT env var with your email.
     """
 
-    FILING_TYPES = ["SC TO-T", "SC TO-I", "Form 10", "8-K"]
+    FILING_TYPES = [
+        "SC TO-T",
+        "SC TO-I",
+        "Form 10",
+        "8-K",
+        "SC 14D9",
+        "DEFM14A",
+        "PREM14A",
+        "DFAN14A",
+        "S-4",
+    ]
 
     async def search_recent(self, hours_back: int = 6) -> list[Filing]:
         filings, _diagnostics = await self.search_recent_with_diagnostics(hours_back=hours_back)

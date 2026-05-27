@@ -54,16 +54,28 @@ export interface RequiredResourceItem {
 
 export interface ResourceCandidate {
   resource_candidate_id: string;
+  documentation_source_id?: string | null;
+  document_key?: string | null;
+  case_type?: string | null;
+  case_id?: string | null;
   title: string;
-  url: string;
+  url: string | null;
   source_type: string;
-  source_domain: string;
+  source_domain: string | null;
+  original_filename?: string | null;
+  stored_path?: string | null;
+  mime_type?: string | null;
+  verified?: boolean;
   status: string;
   confidence: string;
   related_resource_ids: string[];
+  related_required_resource_ids?: string[];
   related_check_ids: string[];
+  related_checklist_item_ids?: string[];
   discovered_by: string;
   discovered_at: string;
+  created_at?: string | null;
+  updated_at?: string | null;
   notes: string | null;
 }
 
@@ -689,6 +701,56 @@ export async function addSituationResource(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(typeof body?.detail === 'string' ? body.detail : `HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function addSituationDocumentationSourceLink(
+  situationId: string,
+  payload: {
+    url: string;
+    document_key: string;
+    title?: string;
+    source_type?: string;
+    related_required_resource_ids?: string[];
+    related_checklist_item_ids?: string[];
+  },
+): Promise<{ source: ResourceCandidate; verified: false; guardrails: string[] }> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/situations/${situationId}/documentation-sources/link`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(typeof body?.detail === 'string' ? body.detail : `HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function uploadSituationDocumentationSource(
+  situationId: string,
+  payload: {
+    file: File;
+    document_key: string;
+    title?: string;
+    related_required_resource_ids?: string[];
+    related_checklist_item_ids?: string[];
+  },
+): Promise<{ source: ResourceCandidate; verified: false; guardrails: string[] }> {
+  const formData = new FormData();
+  formData.append('file', payload.file);
+  formData.append('document_key', payload.document_key);
+  if (payload.title) formData.append('title', payload.title);
+  if (payload.related_required_resource_ids?.length) formData.append('related_required_resource_ids', payload.related_required_resource_ids.join(','));
+  if (payload.related_checklist_item_ids?.length) formData.append('related_checklist_item_ids', payload.related_checklist_item_ids.join(','));
+  const response = await fetch(`${API_BASE_URL}/api/investment/situations/${situationId}/documentation-sources/upload`, {
+    method: 'POST',
+    body: formData,
   });
   if (!response.ok) {
     const body = await response.json().catch(() => ({ detail: response.statusText }));
@@ -1440,6 +1502,38 @@ export async function fetchCronUpcoming(days = 3): Promise<CronUpcomingResponse>
   const response = await fetch(`${API_BASE_URL}/api/observability/cron/upcoming?days=${days}`);
   if (!response.ok) {
     throw new Error(`Failed to fetch cron schedule: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export interface MissionControlAgent {
+  agent_name: string;
+  display_name: string;
+  purpose: string;
+  runtime: string;
+  current_status: string;
+  model: string | null;
+  total_runs: number;
+  failed_runs: number;
+  last_run: string | null;
+  total_cost_usd: number;
+  last_outcome: string | null;
+  last_error: string | null;
+  warnings?: string[];
+  recommended_next_action?: string | null;
+}
+
+export interface MissionControlResponse {
+  generated_at: string;
+  total_agents: number;
+  total_cost_usd: number;
+  agents: MissionControlAgent[];
+}
+
+export async function fetchMissionControl(): Promise<MissionControlResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/observability/mission-control`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch mission control: ${response.statusText}`);
   }
   return response.json();
 }

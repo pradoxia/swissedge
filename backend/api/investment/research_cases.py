@@ -98,6 +98,10 @@ from backend.services.investment.document_package import (
     DocumentPackage,
     build_research_case_document_package,
 )
+from backend.services.investment.documentation_agent import (
+    DocumentationAgentReport,
+    build_research_case_documentation_report,
+)
 from backend.services.investment.operational_view import (
     OperationalViewPackage,
     build_operational_view_package,
@@ -230,6 +234,11 @@ async def get_case_document_package(research_case_id: str, db: AsyncSession = De
         sec_preview=sec_preview,
         source_situation=source_situation,
     )
+
+
+@router.get("/research-cases/{research_case_id}/documentation-agent-report", response_model=DocumentationAgentReport)
+async def get_case_documentation_agent_report(research_case_id: str, db: AsyncSession = Depends(get_db)):
+    return await build_research_case_documentation_report(research_case_id, db)
 
 
 @router.get("/research-cases/{research_case_id}/official-source-finder", response_model=OfficialSourceFinderPackage)

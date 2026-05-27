@@ -98,6 +98,30 @@ class DetectionRun(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
 
 
+class DocumentationExtractionField(Base):
+    __tablename__ = "documentation_extraction_fields"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    situation_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("special_situations.id", ondelete="CASCADE"), nullable=False)
+    candidate_source_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    document_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    source_url: Mapped[str | None] = mapped_column(Text)
+    source_title: Mapped[str | None] = mapped_column(Text)
+    field_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    field_label: Mapped[str] = mapped_column(Text, nullable=False)
+    extracted_value: Mapped[str | None] = mapped_column(Text)
+    confidence: Mapped[float | None] = mapped_column(Float)
+    source_snippet: Mapped[str | None] = mapped_column(Text)
+    section_reference: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="draft")
+    reviewed_by: Mapped[str | None] = mapped_column(Text)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now, nullable=False)
+
+    situation: Mapped["SpecialSituation"] = relationship()
+
+
 class InvestorContact(Base):
     __tablename__ = "investor_contacts"
 

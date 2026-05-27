@@ -6,12 +6,21 @@ function label(value: string): string {
   return value.replaceAll('_', ' ');
 }
 
+function statusLabel(value: string): string {
+  if (value === 'mostly_documented') return 'Metadata mapped';
+  if (value === 'ready_for_manual_review') return 'Manual review package available';
+  if (value === 'useful_incomplete') return 'Needs documentation review';
+  if (value === 'found_metadata') return 'Metadata mapped';
+  if (value === 'needs_manual_check') return 'Needs manual check';
+  return label(value);
+}
+
 function badgeClass(value: string): string {
-  if (value === 'ready_for_manual_review') return 'status-badge status-badge--active';
+  if (value === 'ready_for_manual_review') return 'status-badge status-badge--manual';
   if (value === 'mostly_documented') return 'status-badge status-badge--partial';
   if (value === 'useful_incomplete') return 'status-badge status-badge--preview';
   if (value === 'blocked') return 'status-badge status-badge--danger';
-  if (value === 'found_metadata') return 'status-badge status-badge--active';
+  if (value === 'found_metadata') return 'status-badge status-badge--readonly';
   if (value === 'needs_manual_check') return 'status-badge status-badge--manual';
   if (value === 'missing') return 'status-badge status-badge--preview';
   return 'status-badge status-badge--readonly';
@@ -38,7 +47,7 @@ export function DocumentationAgentPanel({
           <div className="card-title">Case Diagnostic Summary</div>
           <div className="card-desc">Compact diagnostic summary. Documentation Tasks is the working area.</div>
         </div>
-        {report && <span className={badgeClass(report.documentation_status)}>{label(report.documentation_status)}</span>}
+        {report && <span className={badgeClass(report.documentation_status)}>{statusLabel(report.documentation_status)}</span>}
       </div>
 
       {loading && <p className="card-desc" style={{ marginTop: 12 }}>Loading documentation report...</p>}
@@ -88,7 +97,7 @@ export function DocumentationAgentPanel({
                 {report.checklist.slice(0, 5).map(item => (
                   <div key={item.key} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', fontSize: 12 }}>
                     <span style={{ color: 'var(--text-muted)' }}>{item.label}</span>
-                    <span className={badgeClass(item.status)}>{label(item.status)}</span>
+                    <span className={badgeClass(item.status)}>{statusLabel(item.status)}</span>
                   </div>
                 ))}
               </div>

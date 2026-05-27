@@ -21,6 +21,8 @@ import { SecDocumentAcquisitionPanel } from '@/app/components/SecDocumentAcquisi
 import { DocumentPackagePanel } from '@/app/components/DocumentPackagePanel';
 import { DocumentationAgentPanel } from '@/app/components/DocumentationAgentPanel';
 import { DocumentationTasksPanel } from '@/app/components/DocumentationTasksPanel';
+import { SECTransparencyPanel } from '@/app/components/SECTransparencyPanel';
+import { EducationStudyGuidePanel } from '@/app/components/EducationStudyGuidePanel';
 import {
   addSituationResource,
   acquireSituationSecDocuments,
@@ -87,7 +89,7 @@ const WORKFLOW_OPTIONS = [
   ['triage_needed', 'Triage Needed'],
   ['needs_resources', 'Needs Resources'],
   ['checklist_in_progress', 'Checklist In Progress'],
-  ['ready_for_research_case', 'Ready for ResearchCase'],
+  ['ready_for_research_case', 'ResearchCase package'],
   ['watchlist', 'Watchlist'],
   ['ignored', 'Ignored'],
 ] as const;
@@ -109,12 +111,115 @@ function display(value: unknown): string {
   return String(value);
 }
 
+function classificationStrengthLabel(value: unknown): string {
+  const normalized = String(value ?? '').toLowerCase();
+  if (normalized === 'high') return 'Strong';
+  if (normalized === 'medium') return 'Moderate';
+  if (normalized === 'low') return 'Weak';
+  return 'Needs review';
+}
+
 function resourceStatusClass(status: string): string {
   if (status === 'missing') return 'status-badge--preview';
   if (status === 'candidate_found') return 'status-badge--partial';
-  if (status === 'evidence_found' || status === 'verified') return 'status-badge--active';
+  if (status === 'evidence_found') return 'status-badge--manual';
+  if (status === 'verified') return 'status-badge--active';
   if (status === 'rejected') return 'status-badge--danger';
   return 'status-badge--readonly';
+}
+
+function resourceStatusLabel(status: string): string {
+  if (status === 'candidate_found') return 'Candidate mapped';
+  if (status === 'evidence_found') return 'Mapped for review';
+  if (status === 'verified') return 'Manually verified';
+  return status.replaceAll('_', ' ');
+}
+
+function candidateUrl(candidate: ResourceCandidate): string {
+  return candidate.url ?? '';
+}
+
+function candidateFilename(candidate: ResourceCandidate): string {
+  const title = candidate.original_filename || candidate.title;
+  const url = candidateUrl(candidate);
+  if (title && title.trim()) return title.trim();
+  if (!url) return 'SEC file';
+  try {
+    const pathname = new URL(url).pathname;
+    return decodeURIComponent(pathname.split('/').filter(Boolean).pop() ?? 'SEC file');
+  } catch {
+    return url.split('/').filter(Boolean).pop() ?? 'SEC file';
+  }
+}
+
+function secDirectoryFromCandidate(candidate: ResourceCandidate): string | null {
+  const url = candidateUrl(candidate);
+  if (!url) return null;
+  const index = url.lastIndexOf('/');
+  return index > 'https://'.length ? url.slice(0, index + 1) : url;
+}
+
+function isSecPackageCandidate(candidate: ResourceCandidate): boolean {
+  const url = candidateUrl(candidate).toLowerCase();
+  const sourceType = candidate.source_type.toLowerCase();
+  const domain = String(candidate.source_domain ?? '').toLowerCase();
+  return sourceType === 'sec_filing' || domain.includes('sec.gov') || url.includes('sec.gov/archives/');
+}
+
+function secFileKind(candidate: ResourceCandidate): string {
+  const text = `${candidateFilename(candidate)} ${candidate.title} ${candidate.notes ?? ''}`.toLowerCase();
+  if (text.includes('offer') && text.includes('purchase')) return 'Likely Offer to Purchase';
+  if (text.includes('transmittal')) return 'Likely Letter of Transmittal';
+  if (text.includes('exhibit') || /\bex[-_]?/i.test(text)) return 'Likely exhibit';
+  if (text.includes('filingsummary.xml') || text.includes('filing summary')) return 'Filing summary';
+  if (text.endsWith('.txt') || text.includes('complete submission')) return 'Complete submission text';
+  if (text.includes('index')) return 'SEC index file';
+  return 'Candidate SEC file';
+}
+
+function secFileRank(candidate: ResourceCandidate): number {
+  const kind = secFileKind(candidate);
+  if (kind === 'Likely Offer to Purchase') return 0;
+  if (kind === 'Likely Letter of Transmittal') return 1;
+  if (kind === 'Likely exhibit') return 2;
+  if (kind === 'Filing summary') return 3;
+  if (kind === 'Complete submission text') return 4;
+  if (kind === 'SEC index file') return 8;
+  return 6;
+}
+
+function caseStatusLabel(status: string, hasResearchCase: boolean): string {
+  if (status === 'promoted') return hasResearchCase ? 'Linked to ResearchCase' : 'ResearchCase created';
+  if (status === 'documented') return 'Metadata mapped';
+  return status.replaceAll('_', ' ');
+}
+
+function checklistStatusLabel(status: string): string {
+  if (status === 'evidence_found') return 'Mapped for review';
+  if (status === 'verified') return 'Manually verified';
+  if (status === 'completed') return 'Completed manually';
+  return status.replaceAll('_', ' ');
+}
+
+function guideQualityLabel(value: string): string {
+  if (value === 'good') return 'Structure mapped';
+  if (value === 'excellent') return 'Structure check: complete';
+  if (value === 'ready') return 'Structure check: complete';
+  if (value === 'mostly_ready') return 'Package mapped';
+  return value.replaceAll('_', ' ');
+}
+
+function promotionReadinessLabel(value: string): string {
+  if (value === 'ready_for_manual_promotion') return 'Manual promotion package available';
+  if (value === 'ready_for_research_case') return 'ResearchCase package available';
+  if (value === 'ready') return 'Manual promotion package available';
+  return value.replaceAll('_', ' ');
+}
+
+function structureCheckLabel(score: number | null | undefined): string {
+  if (score === null || score === undefined) return 'Structure check: not loaded';
+  if (score >= 100) return 'Structure check: complete';
+  return `Structure check: ${score}/100 structure only`;
 }
 
 function groupChecklist(items: MethodologyChecklistItem[]) {
@@ -269,14 +374,14 @@ function CaseDocumentationGuidePanel({
       <div style={{ display: 'grid', gap: 16 }}>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
           <div style={{ background: 'var(--bg-subtle)', border: '1px solid var(--border-default)', borderRadius: 8, padding: '10px 14px' }}>
-            <div style={MONO_LABEL}>Metadata structure</div>
+            <div style={MONO_LABEL}>Workspace structure</div>
             <div style={{ fontSize: 22, fontWeight: 700 }}>{guide.documentation_quality.score}/100</div>
-            <StatusBadge value={guide.documentation_quality.level} />
+            <span className="status-badge status-badge--readonly">{guideQualityLabel(guide.documentation_quality.level)}</span>
           </div>
           <div style={{ flex: '1 1 260px', minWidth: 0 }}>
             <div style={{ fontSize: 13, color: 'var(--text-primary)', marginBottom: 4 }}>{guide.documentation_quality.summary}</div>
             <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-muted)' }}>
-              Derived from current case state · Manual research plan · No autonomous agent run yet · No document body has been fetched
+              Structure score only · evidence review still required. Derived from current case state · Manual research plan · No document body has been fetched
             </div>
           </div>
         </div>
@@ -363,7 +468,7 @@ function CaseDocumentationGuidePanel({
           <div style={MONO_LABEL}>Evidence links / resource candidates</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             <span className="status-badge status-badge--readonly">Candidate-only: {guide.missing_evidence.candidate_only_resources.length}</span>
-            <span className="status-badge status-badge--partial">Evidence not verified: {guide.missing_evidence.evidence_found_not_verified.length}</span>
+            <span className="status-badge status-badge--partial">Mapped for review, not verified: {guide.missing_evidence.evidence_found_not_verified.length}</span>
             <span className="status-badge status-badge--readonly">Rejected: {guide.missing_evidence.rejected_resources.length}</span>
           </div>
         </div>
@@ -435,13 +540,112 @@ function ResourceTable({ resources }: { resources: RequiredResourceItem[] }) {
               </td>
               <td style={{ color: 'var(--text-muted)' }}>{r.source_type}</td>
               <td>
-                <span className={`status-badge ${resourceStatusClass(r.status)}`}>{r.status}</span>
+                <span className={`status-badge ${resourceStatusClass(r.status)}`}>{resourceStatusLabel(r.status)}</span>
               </td>
               <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{r.expected_source}</td>
             </tr>
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function CandidateCard({
+  candidate,
+  requiredResources,
+  checklist,
+  savingCandidateId,
+  copiedKey,
+  onCopy,
+  onPatch,
+}: {
+  candidate: ResourceCandidate;
+  requiredResources: RequiredResourceItem[];
+  checklist: MethodologyChecklistItem[];
+  savingCandidateId: string | null;
+  copiedKey: string | null;
+  onCopy: (text: string, key: string) => void;
+  onPatch: (candidate: ResourceCandidate, payload: { status?: string; notes?: string; related_resource_ids?: string[]; related_check_ids?: string[] }) => void;
+}) {
+  return (
+    <div
+      className="card"
+      style={{ padding: '10px 14px', display: 'grid', gap: 10 }}
+    >
+      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-primary)', marginBottom: 2 }}>{candidate.title}</div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', wordBreak: 'break-all', marginBottom: 6 }}>{candidate.url}</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+            <span className={`status-badge ${resourceStatusClass(candidate.status)}`}>{resourceStatusLabel(candidate.status)}</span>
+            <span className="status-badge status-badge--readonly">{isSecPackageCandidate(candidate) ? 'Candidate SEC file' : candidate.source_type}</span>
+            <span className="status-badge status-badge--manual">Needs review</span>
+            <span className="status-badge status-badge--readonly">Not verified</span>
+            {candidate.source_domain && <span className="status-badge status-badge--readonly">{candidate.source_domain}</span>}
+            {candidate.notes && (
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{candidate.notes}</span>
+            )}
+          </div>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, flexShrink: 0 }}>
+          <a href={candidate.url ?? '#'} target="_blank" rel="noreferrer" className="btn btn--secondary btn--sm">
+            Open
+          </a>
+          <button
+            className="btn btn--ghost btn--sm"
+            onClick={() => onCopy(candidate.url ?? '', candidate.resource_candidate_id)}
+          >
+            {copiedKey === candidate.resource_candidate_id ? 'Copied' : 'Copy URL'}
+          </button>
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        <select
+          value={candidate.related_resource_ids?.[0] ?? ''}
+          disabled={savingCandidateId === candidate.resource_candidate_id}
+          onChange={e => onPatch(candidate, {
+            related_resource_ids: e.target.value ? [e.target.value] : [],
+          })}
+          style={{ ...INPUT_STYLE, cursor: 'pointer' }}
+        >
+          <option value="">Link required resource</option>
+          {requiredResources.map(resource => (
+            <option key={resource.resource_id} value={resource.resource_id}>{resource.title}</option>
+          ))}
+        </select>
+        <select
+          value={candidate.related_check_ids?.[0] ?? ''}
+          disabled={savingCandidateId === candidate.resource_candidate_id}
+          onChange={e => onPatch(candidate, {
+            related_check_ids: e.target.value ? [e.target.value] : [],
+          })}
+          style={{ ...INPUT_STYLE, cursor: 'pointer' }}
+        >
+          <option value="">Link checklist item</option>
+          {checklist.map(item => (
+            <option key={item.check_id} value={item.check_id}>{item.title}</option>
+          ))}
+        </select>
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button
+          className="btn btn--secondary btn--sm"
+          disabled={savingCandidateId === candidate.resource_candidate_id || candidate.status === 'candidate_found' || candidate.status === 'evidence_found'}
+          onClick={() => onPatch(candidate, { status: 'candidate_found' })}
+        >
+          Map candidate to required document
+        </button>
+        <button
+          className="btn btn--ghost btn--sm"
+          disabled={savingCandidateId === candidate.resource_candidate_id || candidate.status === 'rejected'}
+          onClick={() => onPatch(candidate, { status: 'rejected' })}
+        >
+          Reject
+        </button>
+      </div>
     </div>
   );
 }
@@ -461,10 +665,10 @@ function PromotionReadinessPanel({
       <div style={{ display: 'grid', gap: 10 }}>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           <span className="status-badge status-badge--readonly">
-            {readiness ? readiness.readiness_level.replaceAll('_', ' ') : 'not loaded'}
+            {readiness ? promotionReadinessLabel(readiness.readiness_level) : 'not loaded'}
           </span>
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-muted)' }}>
-            Structure check: {readiness?.readiness_score ?? '-'}/100
+            {structureCheckLabel(readiness?.readiness_score)}
           </span>
         </div>
         <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5 }}>
@@ -785,6 +989,12 @@ export default function SpecialSituationMethodologyPage() {
   const requiredOnly = requiredResources.filter(r => r.required_or_optional === 'required');
   const optionalOnly = requiredResources.filter(r => r.required_or_optional !== 'required');
   const resourceCandidates = workspace?.resource_candidates ?? [];
+  const secPackageCandidates = resourceCandidates
+    .filter(isSecPackageCandidate)
+    .sort((a, b) => secFileRank(a) - secFileRank(b) || candidateFilename(a).localeCompare(candidateFilename(b)));
+  const visibleSecFiles = secPackageCandidates.filter(candidate => secFileRank(candidate) <= 4).slice(0, 5);
+  const otherCandidates = resourceCandidates.filter(candidate => !isSecPackageCandidate(candidate));
+  const secDirectoryUrl = secPackageCandidates.map(secDirectoryFromCandidate).find(Boolean) ?? situation?.filing_url ?? null;
   const searchSuggestions = workspace?.search_suggestions ?? [];
   const workflowStatus = workspace?.workflow_status ?? (situation?.status === 'detected' ? 'new_detection' : situation?.status ?? 'new_detection');
   const researchCaseId = workspace?.research_case_id;
@@ -1023,7 +1233,7 @@ export default function SpecialSituationMethodologyPage() {
         subtitle="Methodology workspace"
         backHref="/investment/situations"
         backLabel="Special Situations"
-        badge={<StatusBadge value={situation.status} />}
+        badge={<StatusBadge value={situation.status} label={caseStatusLabel(situation.status, Boolean(researchCaseId))} />}
         actions={
           <>
             <Link href="/investment/situations" className="btn btn--secondary btn--sm">
@@ -1051,7 +1261,7 @@ export default function SpecialSituationMethodologyPage() {
           ['Filing', secDetection.detected_form_type ?? situation.filing_type],
           ['Filing Date', secDetection.filing_date],
           ['Playbook', secDetection.selected_playbook ?? situation.selected_playbook],
-          ['Confidence', secDetection.detection_confidence],
+          ['Classification Strength', classificationStrengthLabel(secDetection.detection_confidence)],
         ] as [string, unknown][]).map(([label, value]) => (
           <div key={label}>
             <div style={MONO_LABEL}>{label}</div>
@@ -1071,6 +1281,22 @@ export default function SpecialSituationMethodologyPage() {
         <SituationQuickLinks
           situation={situation}
           researchCaseId={researchCaseId}
+        />
+      </div>
+
+      <div style={{ marginBottom: 16 }}>
+        <SECTransparencyPanel
+          situation={situation}
+          secDetection={secDetection as Record<string, unknown>}
+          documentPackage={documentPackage}
+          evidenceLinks={evidenceLinks}
+        />
+      </div>
+
+      <div style={{ marginBottom: 16 }}>
+        <EducationStudyGuidePanel
+          situation={situation}
+          report={documentationAgentReport}
         />
       </div>
 
@@ -1224,7 +1450,7 @@ export default function SpecialSituationMethodologyPage() {
                               <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-primary)', marginBottom: 2 }}>{item.title}</div>
                               <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>{item.description}</div>
                             </div>
-                            <StatusBadge value={item.status} />
+                            <StatusBadge value={item.status} label={checklistStatusLabel(item.status)} />
                           </div>
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 8 }}>
                             {item.required_evidence_types.map(et => (
@@ -1276,86 +1502,78 @@ export default function SpecialSituationMethodologyPage() {
                   No resource candidates stored yet. Run Resource Scout via CLI, or add manually below.
                 </InfoBanner>
               ) : (
-                <div style={{ display: 'grid', gap: 8 }}>
-                  {resourceCandidates.map(candidate => (
-                    <div
-                      key={candidate.resource_candidate_id}
-                      className="card"
-                      style={{ padding: '10px 14px', display: 'grid', gap: 10 }}
-                    >
-                      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-primary)', marginBottom: 2 }}>{candidate.title}</div>
-                          <div style={{ fontSize: 11, color: 'var(--text-muted)', wordBreak: 'break-all', marginBottom: 6 }}>{candidate.url}</div>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                            <span className={`status-badge ${resourceStatusClass(candidate.status)}`}>{candidate.status}</span>
-                            <span className="status-badge status-badge--readonly">{candidate.source_type}</span>
-                            <span className="status-badge status-badge--readonly">{candidate.confidence}</span>
-                            <span className="status-badge status-badge--readonly">{candidate.source_domain}</span>
-                            {candidate.notes && (
-                              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{candidate.notes}</span>
-                            )}
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {secPackageCandidates.length > 0 && (
+                    <div className="card" style={{ padding: '12px 14px', display: 'grid', gap: 10 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>SEC filing package</div>
+                          <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                            <span className="status-badge status-badge--partial">{secPackageCandidates.length} files available</span>
+                            <span className="status-badge status-badge--readonly">metadata only</span>
+                            <span className="status-badge status-badge--manual">Needs review</span>
+                            <span className="status-badge status-badge--readonly">Not verified</span>
                           </div>
                         </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, flexShrink: 0 }}>
-                          <a href={candidate.url} target="_blank" rel="noreferrer" className="btn btn--secondary btn--sm">
-                            Open ↗
+                        {secDirectoryUrl && (
+                          <a href={secDirectoryUrl} target="_blank" rel="noreferrer" className="btn btn--secondary btn--sm">
+                            Open SEC directory
                           </a>
-                          <button
-                            className="btn btn--ghost btn--sm"
-                            onClick={() => copyText(candidate.url, candidate.resource_candidate_id)}
-                          >
-                            {copiedKey === candidate.resource_candidate_id ? 'Copied' : 'Copy URL'}
-                          </button>
+                        )}
+                      </div>
+
+                      {visibleSecFiles.length > 0 && (
+                        <div style={{ display: 'grid', gap: 6 }}>
+                          <div style={MONO_LABEL}>Likely useful files</div>
+                          {visibleSecFiles.map(candidate => (
+                            <div key={candidate.resource_candidate_id} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', fontSize: 12 }}>
+                              <div style={{ minWidth: 0 }}>
+                                <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{secFileKind(candidate)}</span>
+                                <span style={{ color: 'var(--text-muted)' }}> · {candidateFilename(candidate)}</span>
+                              </div>
+                              {candidate.url && (
+                                <a href={candidate.url} target="_blank" rel="noreferrer" className="btn btn--ghost btn--sm">
+                                  Open
+                                </a>
+                              )}
+                            </div>
+                          ))}
                         </div>
-                      </div>
+                      )}
 
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                        <select
-                          value={candidate.related_resource_ids?.[0] ?? ''}
-                          disabled={savingCandidateId === candidate.resource_candidate_id}
-                          onChange={e => handleCandidatePatch(candidate, {
-                            related_resource_ids: e.target.value ? [e.target.value] : [],
-                          })}
-                          style={{ ...INPUT_STYLE, cursor: 'pointer' }}
-                        >
-                          <option value="">Link required resource</option>
-                          {requiredResources.map(resource => (
-                            <option key={resource.resource_id} value={resource.resource_id}>{resource.title}</option>
+                      <details>
+                        <summary style={{ cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-muted)' }}>
+                          Show all SEC files
+                        </summary>
+                        <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
+                          {secPackageCandidates.map(candidate => (
+                            <CandidateCard
+                              key={candidate.resource_candidate_id}
+                              candidate={candidate}
+                              requiredResources={requiredResources}
+                              checklist={workspace.checklist}
+                              savingCandidateId={savingCandidateId}
+                              copiedKey={copiedKey}
+                              onCopy={copyText}
+                              onPatch={handleCandidatePatch}
+                            />
                           ))}
-                        </select>
-                        <select
-                          value={candidate.related_check_ids?.[0] ?? ''}
-                          disabled={savingCandidateId === candidate.resource_candidate_id}
-                          onChange={e => handleCandidatePatch(candidate, {
-                            related_check_ids: e.target.value ? [e.target.value] : [],
-                          })}
-                          style={{ ...INPUT_STYLE, cursor: 'pointer' }}
-                        >
-                          <option value="">Link checklist item</option>
-                          {workspace.checklist.map(item => (
-                            <option key={item.check_id} value={item.check_id}>{item.title}</option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                        <button
-                          className="btn btn--secondary btn--sm"
-                          disabled={savingCandidateId === candidate.resource_candidate_id || candidate.status === 'evidence_found'}
-                          onClick={() => handleCandidatePatch(candidate, { status: 'evidence_found' })}
-                        >
-                          Mark evidence found
-                        </button>
-                        <button
-                          className="btn btn--ghost btn--sm"
-                          disabled={savingCandidateId === candidate.resource_candidate_id || candidate.status === 'rejected'}
-                          onClick={() => handleCandidatePatch(candidate, { status: 'rejected' })}
-                        >
-                          Reject
-                        </button>
-                      </div>
+                        </div>
+                      </details>
                     </div>
+                  )}
+
+                  {otherCandidates.map(candidate => (
+                    <CandidateCard
+                      key={candidate.resource_candidate_id}
+                      candidate={candidate}
+                      requiredResources={requiredResources}
+                      checklist={workspace.checklist}
+                      savingCandidateId={savingCandidateId}
+                      copiedKey={copiedKey}
+                      onCopy={copyText}
+                      onPatch={handleCandidatePatch}
+                    />
                   ))}
                 </div>
               )}
@@ -1516,7 +1734,7 @@ export default function SpecialSituationMethodologyPage() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                 {([
                   ['Total Checks', progress?.total_checks ?? 0],
-                  ['Evidence Found', progress?.evidence_found ?? 0],
+                  ['Mapped for Review', progress?.evidence_found ?? 0],
                   ['Verified', progress?.verified_checks ?? 0],
                   ['Missing Required', progress?.missing_required_resources ?? 0],
                   ['Candidates', progress?.candidate_resources ?? resourceCandidates.filter(item => item.status === 'candidate_found').length],

@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, date, timezone
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -79,6 +79,11 @@ from backend.services.investment.documentation_extraction import (
     list_extraction_fields,
     read_and_store_draft_fields,
     review_extraction_field,
+)
+from backend.services.investment.documentation_sources import (
+    add_link_documentation_source,
+    add_uploaded_document_source,
+    list_documentation_sources,
 )
 from backend.services.investment.knowledge_base import (
     KnowledgeEntry,
@@ -189,6 +194,15 @@ class DocumentationExtractionReadRequest(BaseModel):
     document_key: str
 
 
+class DocumentationSourceLinkCreate(BaseModel):
+    url: str
+    document_key: str
+    title: str | None = None
+    source_type: str = "source_link"
+    related_required_resource_ids: list[str] = []
+    related_checklist_item_ids: list[str] = []
+
+
 class DocumentationExtractionReviewRequest(BaseModel):
     status: str
     extracted_value: str | None = None
@@ -196,6 +210,12 @@ class DocumentationExtractionReviewRequest(BaseModel):
 
 
 # ── Serializers ───────────────────────────────────────────────────────────────
+
+def _split_form_ids(value: str | None) -> list[str]:
+    if not value:
+        return []
+    return [item.strip() for item in value.split(",") if item.strip()]
+
 
 def _extract_v2_fields(evaluation: dict | None) -> dict:
     """Extract v2 schema fields from evaluation JSON for dashboard display."""
@@ -765,6 +785,86 @@ async def get_situation_documentation_extractions(
     return [DocumentationExtractionFieldRead.from_orm(row) for row in rows]
 
 
+@router.get("/situations/{situation_id}/documentation-sources")
+async def get_situation_documentation_sources(situation_id: str, db: AsyncSession = Depends(get_db)):
+    situation = await db.get(SpecialSituation, uuid.UUID(situation_id))
+    if not situation:
+        raise HTTPException(status_code=404, detail="Situation not found")
+    return list_documentation_sources(situation)
+
+
+@router.post("/situations/{situation_id}/documentation-sources/link")
+async def create_situation_documentation_source_link(
+    situation_id: str,
+    body: DocumentationSourceLinkCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    situation = await db.get(SpecialSituation, uuid.UUID(situation_id))
+    if not situation:
+        raise HTTPException(status_code=404, detail="Situation not found")
+    try:
+        candidate = add_link_documentation_source(
+            situation,
+            url=body.url,
+            document_key=body.document_key,
+            title=body.title,
+            source_type=body.source_type,
+            related_required_resource_ids=body.related_required_resource_ids,
+            related_checklist_item_ids=body.related_checklist_item_ids,
+        )
+        await db.commit()
+        return {
+            "source": candidate,
+            "verified": False,
+            "guardrails": [
+                "Adding a link does not verify the document.",
+                "No extraction runs until Dani manually requests Read & map draft.",
+            ],
+        }
+    except ValueError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+@router.post("/situations/{situation_id}/documentation-sources/upload")
+async def upload_situation_documentation_source(
+    situation_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    situation = await db.get(SpecialSituation, uuid.UUID(situation_id))
+    if not situation:
+        raise HTTPException(status_code=404, detail="Situation not found")
+    try:
+        form = await request.form()
+        file = form.get("file")
+        document_key = str(form.get("document_key") or "").strip()
+        if not isinstance(file, UploadFile):
+            raise ValueError("file is required")
+        if not document_key:
+            raise ValueError("document_key is required")
+        candidate = await add_uploaded_document_source(
+            situation,
+            file=file,
+            document_key=document_key,
+            title=str(form.get("title") or "") or None,
+            related_required_resource_ids=_split_form_ids(str(form.get("related_required_resource_ids") or "")),
+            related_checklist_item_ids=_split_form_ids(str(form.get("related_checklist_item_ids") or "")),
+        )
+        await db.commit()
+        return {
+            "source": candidate,
+            "verified": False,
+            "guardrails": [
+                "Uploading a document does not verify it.",
+                "No extraction runs until Dani manually requests Read & map draft.",
+            ],
+        }
+    except ValueError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
 @router.post("/situations/{situation_id}/documentation-extractions/read-draft", response_model=list[DocumentationExtractionFieldRead])
 async def read_situation_documentation_source_draft(
     situation_id: str,
@@ -775,6 +875,25 @@ async def read_situation_documentation_source_draft(
         db,
         uuid.UUID(situation_id),
         candidate_source_id=body.candidate_source_id,
+        document_key=body.document_key,
+    )
+    await db.commit()
+    return [DocumentationExtractionFieldRead.from_orm(row) for row in rows]
+
+
+@router.post("/situations/{situation_id}/documentation-sources/{source_id}/extract-draft", response_model=list[DocumentationExtractionFieldRead])
+async def extract_situation_documentation_source_draft(
+    situation_id: str,
+    source_id: str,
+    body: DocumentationExtractionReadRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    if body.candidate_source_id != source_id:
+        raise HTTPException(status_code=422, detail="candidate_source_id must match source_id")
+    rows = await read_and_store_draft_fields(
+        db,
+        uuid.UUID(situation_id),
+        candidate_source_id=source_id,
         document_key=body.document_key,
     )
     await db.commit()

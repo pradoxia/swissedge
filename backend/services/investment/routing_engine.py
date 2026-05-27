@@ -27,11 +27,11 @@ def detect_form_type(filing: Filing) -> str:
     elif form.startswith("PREM14A"):
         return "PREM14A"
     elif "SC TO-T" in form or "SC 13E-4" in form:
-        return "SC TO-T"
+        return "SC TO-T/A" if "/A" in form else "SC TO-T"
     elif "SC TO-I" in form or "SC 13E-1" in form:
-        return "SC TO-I"
-    elif "SC 14D-9" in form or "SCHEDULE 14D-9" in form:
-        return "SC 14D-9"
+        return "SC TO-I/A" if "/A" in form else "SC TO-I"
+    elif "SC 14D9" in form or "SC 14D-9" in form or "SCHEDULE 14D-9" in form:
+        return "SC 14D9/A" if "/A" in form else "SC 14D9"
     elif "FORM 10" in form or form == "10":
         return "Form 10"
     elif "14-12B" in form or "FORM 14-12B" in form:
@@ -49,7 +49,7 @@ def detect_form_type(filing: Filing) -> str:
     elif "13E-3" in form:
         return "13E-3"
     elif form.startswith("S-4"):
-        return "S-4"
+        return "S-4/A" if "/A" in form else "S-4"
 
     return form
 
@@ -68,7 +68,7 @@ def detect_situation_type(filing: Filing) -> dict:
     summary_lower = filing.summary.lower() if filing.summary else ""
 
     # High-confidence form-based detection
-    if form_type == "SC TO-T":
+    if form_type in ("SC TO-T", "SC TO-T/A"):
         return {
             "situation_type": "merger_arbitrage",
             "subtype": "acquisition_tender_offer",
@@ -77,7 +77,7 @@ def detect_situation_type(filing: Filing) -> dict:
             "reason_code": "form_sc_to_t",
         }
 
-    if form_type == "SC TO-I":
+    if form_type in ("SC TO-I", "SC TO-I/A"):
         return {
             "situation_type": "tender_offer",
             "subtype": "self_tender",
@@ -104,11 +104,20 @@ def detect_situation_type(filing: Filing) -> dict:
             "reason_code": "activist_ownership_form",
         }
 
+    if form_type == "SC 14D9" or form_type == "SC 14D9/A":
+        return {
+            "situation_type": "merger_arbitrage",
+            "subtype": "target_company_tender_recommendation",
+            "detection_confidence": "MEDIUM",
+            "detected_signal": f"Form type: {form_type} (target company tender recommendation)",
+            "reason_code": "target_tender_recommendation_form",
+        }
+
     if form_type == "DFAN14A":
         return {
             "situation_type": "proxy_fight",
             "subtype": "proxy_contest",
-            "detection_confidence": "HIGH",
+            "detection_confidence": "MEDIUM",
             "detected_signal": f"Form type: {form_type} (dissident proxy solicitation)",
             "reason_code": "proxy_solicitation_form",
         }
@@ -231,7 +240,7 @@ def detect_situation_type(filing: Filing) -> dict:
         }
 
     # S-4 (stock-for-stock merger)
-    if form_type == "S-4":
+    if form_type in ("S-4", "S-4/A"):
         return {
             "situation_type": "merger",
             "subtype": "stock_for_stock_merger",

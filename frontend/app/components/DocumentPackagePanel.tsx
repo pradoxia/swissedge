@@ -4,6 +4,15 @@ import { KnowledgeInfoButton } from '@/app/components/KnowledgeInfoButton';
 import type { DocumentPackage, DocumentPackageItem } from '@/lib/api';
 
 function readinessLabel(value: string): string {
+  if (value === 'mostly_ready') return 'Package mapped';
+  if (value === 'ready_for_manual_review') return 'Manual review package available';
+  return value.replaceAll('_', ' ');
+}
+
+function documentStatusLabel(value: string): string {
+  if (value === 'found') return 'Metadata mapped';
+  if (value === 'suggested') return 'Suggested source';
+  if (value === 'needs_manual_check') return 'Needs manual check';
   return value.replaceAll('_', ' ');
 }
 
@@ -20,7 +29,7 @@ function knowledgeKeyForDocument(documentKey: string): string | null {
 }
 
 function statusClass(status: string): string {
-  if (status === 'found') return 'status-badge status-badge--active';
+  if (status === 'found') return 'status-badge status-badge--readonly';
   if (status === 'suggested') return 'status-badge status-badge--partial';
   if (status === 'missing') return 'status-badge status-badge--preview';
   if (status === 'needs_manual_check') return 'status-badge status-badge--manual';
@@ -44,7 +53,7 @@ function DocumentRow({ item }: { item: DocumentPackageItem }) {
           </div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{item.priority} / {item.source_hint}</div>
         </div>
-        <span className={statusClass(item.status)}>{item.status.replaceAll('_', ' ')}</span>
+        <span className={statusClass(item.status)}>{documentStatusLabel(item.status)}</span>
       </div>
       {links.length > 0 && (
         <div style={{ display: 'grid', gap: 4 }}>

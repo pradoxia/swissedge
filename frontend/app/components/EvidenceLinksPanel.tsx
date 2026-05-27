@@ -7,10 +7,18 @@ function label(value: string): string {
 }
 
 function badgeClass(value: string): string {
-  if (value === 'evidence_found' || value === 'verified') return 'status-badge status-badge--active';
+  if (value === 'verified') return 'status-badge status-badge--active';
+  if (value === 'evidence_found') return 'status-badge status-badge--manual';
   if (value === 'candidate_found' || value === 'metadata_only') return 'status-badge status-badge--partial';
   if (value === 'rejected') return 'status-badge status-badge--danger';
   return 'status-badge status-badge--readonly';
+}
+
+function statusLabel(value: string): string {
+  if (value === 'evidence_found') return 'Mapped for review';
+  if (value === 'candidate_found') return 'Candidate source';
+  if (value === 'verified') return 'Manually verified';
+  return label(value);
 }
 
 export function EvidenceLinksPanel({
@@ -49,7 +57,7 @@ export function EvidenceLinksPanel({
       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
         <span className="status-badge status-badge--readonly">{label(link.source_type)}</span>
         <span className="status-badge status-badge--readonly">{label(link.origin)}</span>
-        <span className={badgeClass(link.status)}>{label(link.status)}</span>
+        <span className={badgeClass(link.status)}>{statusLabel(link.status)}</span>
         {link.metadata_only && <span className="status-badge status-badge--preview">Metadata only</span>}
         {!link.verified && <span className="status-badge status-badge--preview">Not verified</span>}
       </div>
@@ -81,7 +89,7 @@ export function EvidenceLinksPanel({
           Traceability only — no AI evaluation, no recommendation, no publishing.
         </div>
         <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)', marginTop: 4 }}>
-          Links are metadata-only. No document body has been fetched. Evidence found does not mean verified.
+          Links are metadata-only. No document body has been fetched. Mapped candidates are not verified.
         </div>
       </div>
 
@@ -104,7 +112,7 @@ export function EvidenceLinksPanel({
           {hiddenLinks.length > 0 && (
             <details>
               <summary style={{ cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-muted)' }}>
-                Show all evidence links
+                Show all stored links
               </summary>
               <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
                 {hiddenLinks.map(renderLink)}

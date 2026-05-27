@@ -26,6 +26,22 @@ function knowledgeKeyForPlaybook(playbook: string | null | undefined): string | 
   return null;
 }
 
+function knowledgeKeyForField(fieldKey: string): string | null {
+  const aliases: Record<string, string> = {
+    offer_price: 'offer_price',
+    expiration_date: 'expiration_date',
+    withdrawal_rights: 'withdrawal_rights',
+    proration_terms: 'proration',
+    odd_lot_priority: 'odd_lot_priority',
+    source_of_funds: 'source_of_funds',
+    conditions_of_offer: 'conditions_of_offer',
+    key_conditions: 'conditions_of_offer',
+    amendments: 'amendments',
+    amendments_mentioned: 'amendments',
+  };
+  return aliases[fieldKey] ?? null;
+}
+
 function badgeClass(value: string): string {
   if (value === 'found_metadata') return 'status-badge status-badge--active';
   if (value === 'accepted' || value === 'edited') return 'status-badge status-badge--active';
@@ -71,7 +87,7 @@ function whyItMatters(report: DocumentationAgentReport, docKey: string): string 
 function candidateSources(doc: DocumentationAgentDocument): Array<Record<string, unknown>> {
   return [...doc.matched_links, ...doc.suggested_links].filter(link => {
     const status = typeof link.status === 'string' ? link.status : '';
-    return status === 'candidate_found' || status === 'manual_review_required' || status === 'suggested';
+    return ['candidate_found', 'manual_review_required', 'suggested', 'uploaded_pending_review', 'source_link_pending_review', 'draft_extracted'].includes(status);
   });
 }
 
@@ -90,9 +106,58 @@ function sourceDomain(link: Record<string, unknown>): string | null {
   }
 }
 
+function isSecPackageLink(link: Record<string, unknown>): boolean {
+  const sourceType = String(link.source_type ?? '').toLowerCase();
+  const domain = String(link.source_domain ?? '').toLowerCase();
+  const url = String(link.url ?? '').toLowerCase();
+  return sourceType === 'sec_filing' || domain.includes('sec.gov') || url.includes('sec.gov/archives/');
+}
+
 function candidateId(link: Record<string, unknown>): string | null {
   const value = link.candidate_source_id ?? link.resource_candidate_id ?? link.id;
   return typeof value === 'string' && value ? value : null;
+}
+
+function isUploadedSource(link: Record<string, unknown>): boolean {
+  return link.source_type === 'uploaded_file' || typeof link.stored_path === 'string';
+}
+
+function sourceStateLabel(link: Record<string, unknown> | undefined): string {
+  const status = String(link?.status ?? '');
+  if (status === 'uploaded_pending_review') return 'Uploaded — not reviewed';
+  if (status === 'draft_extracted') return 'Draft extracted — not verified';
+  if (status === 'source_link_pending_review' || status === 'candidate_found') return 'Candidate source added — needs review';
+  if (status === 'manual_review_required') return 'Unsupported source — upload readable document';
+  return 'Candidate source added — needs review';
+}
+
+function candidateSummaryLabel(candidates: Array<Record<string, unknown>>, latestCandidate: Record<string, unknown> | undefined, linkedCount: number, uploadedCount: number): string {
+  const secFileCount = candidates.filter(isSecPackageLink).length;
+  if (secFileCount > 1) return `Candidate SEC package linked · ${secFileCount} files · not verified`;
+  if (!latestCandidate) return '';
+  return `${linkedCount} linked · ${uploadedCount} uploaded · ${sourceTitle(latestCandidate)}${sourceDomain(latestCandidate) ? ` / ${sourceDomain(latestCandidate)}` : ''} · not verified`;
+}
+
+function reviewChecklist(report: DocumentationAgentReport): string[] {
+  const type = report.case_type;
+  if (type === 'merger_arbitrage') {
+    return [
+      'Open SEC directory',
+      'Identify Offer to Purchase',
+      'Identify Schedule 14D-9 / deal documents / conditions',
+      'Add source links or uploaded documents',
+      'Run draft extraction only when the source is readable',
+      'Review draft fields manually',
+    ];
+  }
+  return [
+    'Open SEC directory',
+    'Identify Offer to Purchase',
+    'Identify Letter of Transmittal',
+    'Add source links or uploaded documents',
+    'Run draft extraction only when the source is readable',
+    'Review draft fields manually',
+  ];
 }
 
 function pendingDocuments(report: DocumentationAgentReport): DocumentationAgentDocument[] {
@@ -134,7 +199,13 @@ function ExtractionFieldRow({
     <div style={{ border: '1px solid var(--border-default)', borderRadius: 6, padding: 10, display: 'grid', gap: 8 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 12, fontWeight: 650, color: 'var(--text-primary)' }}>{field.field_label}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 12, fontWeight: 650, color: 'var(--text-primary)' }}>{field.field_label}</span>
+            <KnowledgeInfoButton knowledgeKey={knowledgeKeyForField(field.field_key)} label={field.field_label} />
+          </div>
+          <div style={{ marginTop: 2, fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)' }}>
+            {field.field_key} · draft / not verified
+          </div>
           {editing ? (
             <input
               value={editingValue}
@@ -184,9 +255,11 @@ export function DocumentationTasksPanel({
   report,
   situation,
   onAddSourceLink,
+  onUploadDocument,
   extractionFields = [],
   extractionError = null,
   readingDraftKey = null,
+  uploadingDocumentKey = null,
   reviewingExtractionId = null,
   editingExtractionId = null,
   editingExtractionValue = '',
@@ -199,9 +272,11 @@ export function DocumentationTasksPanel({
   report: DocumentationAgentReport | null;
   situation: Situation;
   onAddSourceLink?: (task: DocumentationAgentDocument) => void;
+  onUploadDocument?: (task: DocumentationAgentDocument, file: File) => void;
   extractionFields?: DocumentationExtractionField[];
   extractionError?: string | null;
   readingDraftKey?: string | null;
+  uploadingDocumentKey?: string | null;
   reviewingExtractionId?: string | null;
   editingExtractionId?: string | null;
   editingExtractionValue?: string;
@@ -284,6 +359,14 @@ export function DocumentationTasksPanel({
         <div style={{ padding: 10, border: '1px solid var(--border-default)', borderRadius: 8, fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)', lineHeight: 1.5 }}>
           SwissEdge may store or extract draft information, but Dani must review and approve before anything becomes verified evidence.
         </div>
+        <div style={{ padding: 12, border: '1px solid var(--border-default)', borderRadius: 8, background: 'var(--bg-subtle)' }}>
+          <div className="section-title" style={{ marginBottom: 8 }}>Today's review checklist</div>
+          <ul style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 4 }}>
+            {reviewChecklist(report).map(item => (
+              <li key={item} style={{ fontSize: 12, color: 'var(--text-muted)' }}>{item}</li>
+            ))}
+          </ul>
+        </div>
         {extractionError && (
           <div style={{ padding: 10, border: '1px solid var(--status-preview-border)', borderRadius: 8, color: 'var(--status-preview-text)', fontSize: 12 }}>
             {extractionError}
@@ -302,6 +385,9 @@ export function DocumentationTasksPanel({
               const latestCandidate = candidates[0];
               const latestDomain = latestCandidate ? sourceDomain(latestCandidate) : null;
               const latestCandidateId = latestCandidate ? candidateId(latestCandidate) : null;
+              const uploadedCount = candidates.filter(isUploadedSource).length;
+              const linkCount = candidates.length - uploadedCount;
+              const candidateSummary = candidateSummaryLabel(candidates, latestCandidate, linkCount, uploadedCount);
               const fields = extractionFields.filter(field => field.document_key === doc.document_key);
               const acceptedFields = fields.filter(field => field.status === 'accepted' || field.status === 'edited');
               const draftFields = fields.filter(field => field.status === 'draft');
@@ -330,11 +416,9 @@ export function DocumentationTasksPanel({
 
                   {latestCandidate && (
                     <div style={{ padding: 8, border: '1px solid var(--border-default)', borderRadius: 6, background: 'var(--bg-subtle)', fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.45 }}>
-                      <strong style={{ color: 'var(--text-primary)' }}>Candidate source added — needs review</strong>
-                      <div>
-                        {candidates.length} candidate source{candidates.length === 1 ? '' : 's'} · {sourceTitle(latestCandidate)}
-                        {latestDomain ? ` / ${latestDomain}` : ''} · not verified
-                      </div>
+                      <strong style={{ color: 'var(--text-primary)' }}>{sourceStateLabel(latestCandidate)}</strong>
+                      <div>{candidateSummary}</div>
+                      {latestDomain && !candidateSummary.includes(latestDomain) && <div>{latestDomain}</div>}
                     </div>
                   )}
 
@@ -420,6 +504,19 @@ export function DocumentationTasksPanel({
                     >
                       Add source link
                     </button>
+                    <label className="btn btn--secondary btn--sm" style={{ cursor: uploadingDocumentKey === doc.document_key ? 'wait' : 'pointer' }}>
+                      {uploadingDocumentKey === doc.document_key ? 'Uploading...' : 'Upload document'}
+                      <input
+                        type="file"
+                        disabled={!onUploadDocument || uploadingDocumentKey === doc.document_key}
+                        style={{ display: 'none' }}
+                        onChange={event => {
+                          const file = event.target.files?.[0];
+                          if (file) onUploadDocument?.(doc, file);
+                          event.currentTarget.value = '';
+                        }}
+                      />
+                    </label>
                     {latestCandidateId && (
                       <button
                         type="button"
@@ -430,11 +527,16 @@ export function DocumentationTasksPanel({
                         {readingDraftKey === `${doc.document_key}:${latestCandidateId}` ? 'Reading draft...' : 'Read & map draft'}
                       </button>
                     )}
+                    {!latestCandidateId && (
+                      <span style={{ alignSelf: 'center', fontSize: 11, color: 'var(--text-faint)' }}>
+                        Read & map draft enables after a source is linked or uploaded.
+                      </span>
+                    )}
                     <span style={{ alignSelf: 'center', fontSize: 11, color: 'var(--text-faint)' }}>
-                      Opens manual source form below.
+                      Uploading or linking does not verify it.
                     </span>
                     <span style={{ alignSelf: 'center', fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)' }}>
-                      Coming next: Upload document · Mark reviewed manually
+                      Coming next: Mark reviewed manually
                     </span>
                   </div>
                 </div>

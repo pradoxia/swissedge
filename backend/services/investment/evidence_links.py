@@ -24,6 +24,7 @@ GUARDRAILS = [
 
 class EvidenceLink(BaseModel):
     id: str
+    candidate_source_id: str | None = None
     label: str
     url: str | None = None
     source_type: str
@@ -127,6 +128,7 @@ def _stable_id(*parts: Any) -> str:
 def _link(
     *,
     label: str,
+    candidate_source_id: str | None = None,
     url: str | None,
     source_type: str,
     origin: str,
@@ -142,6 +144,7 @@ def _link(
 ) -> EvidenceLink:
     return EvidenceLink(
         id=_stable_id(origin, source_type, url, label, status),
+        candidate_source_id=candidate_source_id,
         label=label,
         url=url,
         source_type=source_type,
@@ -170,6 +173,8 @@ def _merge_links(links: list[EvidenceLink]) -> list[EvidenceLink]:
         existing.linked_checklist_item_ids = sorted(set(existing.linked_checklist_item_ids + link.linked_checklist_item_ids))
         if existing.status == "metadata_only" and link.status != "metadata_only":
             existing.status = link.status
+        if not existing.candidate_source_id and link.candidate_source_id:
+            existing.candidate_source_id = link.candidate_source_id
         if not existing.notes and link.notes:
             existing.notes = link.notes
     return list(merged.values())
@@ -184,6 +189,7 @@ def _candidate_links(candidates: list, *, company_name: str | None = None, detec
         url = candidate.get("url")
         links.append(_link(
             label=str(candidate.get("title") or candidate.get("source_domain") or "Resource candidate"),
+            candidate_source_id=str(candidate.get("resource_candidate_id") or "") or None,
             url=str(url) if isinstance(url, str) and url else None,
             source_type=str(candidate.get("source_type") or _source_type(url, "manual_resource")),
             origin=origin,
