@@ -66,6 +66,7 @@ from backend.services.investment.detection_readiness import (
     DetectionReadinessPackage,
     build_detection_readiness,
 )
+from backend.services.investment.scan_orchestrator import run_special_situation_scan
 from backend.services.investment.document_package import (
     DocumentPackage,
     build_situation_document_package,
@@ -528,118 +529,31 @@ async def evaluate_v2_manual(
 
 @router.post("/scan")
 async def scan_situations(hours_back: int = 6, db: AsyncSession = Depends(get_db)):
-    """Scan SEC EDGAR for recent filings and evaluate them."""
-    run_id = await run_logger.start_run(
+    """Manual SEC EDGAR scan trigger using the shared Sprint 2 orchestrator."""
+    summary = await run_special_situation_scan(
         db,
-        agent_name="investment_scanner",
-        agent_type="fastapi",
-        module="api.investment.router",
-        runtime="fastapi",
-        trigger_source="api_call",
-        task_name="scan_situations",
-        input_summary=f"Scanning SEC EDGAR for filings in last {hours_back}h",
+        source="sec_edgar",
+        trigger_type="manual",
+        hours_back=hours_back,
+        dry_run=False,
     )
-
-    api_calls: list[dict] = []
-    new_situations: list[dict] = []
-    funnel = _empty_scanner_funnel(hours_back)
-
-    try:
-        filings, sec_diagnostics = await _sec.search_recent_with_diagnostics(hours_back=hours_back)
-        funnel.update(sec_diagnostics)
-        funnel.update({
-            "parsed_filings_total": len(filings),
-            "classified_candidates_count": sum(1 for f in filings if f.situation_type),
-            "classified_candidates_by_type": _count_classified_by_type(filings),
-        })
-        api_calls.append({
-            "source": "sec_edgar",
-            "url": "https://efts.sec.gov/LATEST/search-index",
-            "filings_returned": len(filings),
-            "diagnostics": funnel,
-            "errors": None,
-        })
-    except Exception as e:
-        api_calls.append({"source": "sec_edgar", "errors": str(e)})
-        await run_logger.fail_run(db, run_id, f"SEC EDGAR scan failed: {e}")
-        await db.commit()
-        raise HTTPException(status_code=502, detail=f"SEC EDGAR scan failed: {e}")
-
-    total_input_tokens = 0
-    total_output_tokens = 0
-    eval_model: str | None = None
-
-    for filing in filings:
-        if not filing.situation_type:
-            funnel["skipped_unclassified_count"] += 1
-            continue
-
-        existing = await db.execute(
-            select(SpecialSituation).where(SpecialSituation.filing_url == filing.url)
-        )
-        if existing.scalars().first():
-            funnel["skipped_duplicate_count"] += 1
-            continue
-
-        evaluation: dict = {}
-        try:
-            funnel["evaluated_count"] += 1
-            evaluation, usage = await evaluate_situation(filing)
-            eval_model = usage.get("model")
-            in_tok = usage.get("input_tokens", 0) or 0
-            out_tok = usage.get("output_tokens", 0) or 0
-            total_input_tokens += in_tok
-            total_output_tokens += out_tok
-            await run_logger.log_ai_usage(
-                db,
-                run_id=run_id,
-                agent_name="investment_evaluator",
-                provider=usage.get("provider", "openai"),
-                model=usage.get("model", "gpt-4o-mini"),
-                prompt_name="situation_evaluator",
-                input_tokens=in_tok,
-                output_tokens=out_tok,
-            )
-        except Exception as e:
-            funnel["evaluation_error_count"] += 1
-            evaluation = {"error": str(e), "disclaimer": "This is not financial advice."}
-
-        sit = SpecialSituation(
-            situation_type=filing.situation_type,
-            company_name=filing.company,
-            ticker=filing.ticker,
-            filing_type=filing.filing_type,
-            filing_url=filing.url,
-            status="detected",
-            evaluation=evaluation,
-            source_urls=[filing.url],
-        )
-        db.add(sit)
-        await db.flush()
-        new_situations.append(_serialize(sit))
-
-    funnel["created_count"] = len(new_situations)
-    if api_calls and api_calls[0].get("source") == "sec_edgar":
-        api_calls[0]["diagnostics"] = funnel
-
-    await run_logger.finish_run(
-        db,
-        run_id,
-        output_summary=f"Scanned 1 source. {len(filings)} filings found. {len(new_situations)} new situations created.",
-        final_outcome=f"{len(new_situations)} new situations stored",
-        outcome_score=1,
-        model_used=eval_model,
-        input_tokens=total_input_tokens or None,
-        output_tokens=total_output_tokens or None,
-        api_calls_made=api_calls,
-        database_records_created={"special_situations": len(new_situations)},
-    )
-    await db.commit()
-
+    if str(summary.get("status", "")).startswith("failed_"):
+        detail = "; ".join(summary.get("errors") or []) or "SEC EDGAR scan failed"
+        raise HTTPException(status_code=502, detail=detail)
     return {
-        "scanned_filings": len(filings),
-        "new_situations": len(new_situations),
-        "situations": new_situations,
+        "scanned_filings": summary.get("parsed_filings", summary.get("filings_fetched", 0)),
+        "new_situations": summary.get("new_special_situations_created", 0),
+        "situations": summary.get("created_situations", []),
+        "detection_run": {
+            "id": summary.get("run_id"),
+            "source": summary.get("source"),
+            "trigger_type": summary.get("trigger_type"),
+            "status": summary.get("status"),
+            "duplicates_skipped": summary.get("duplicates_skipped", 0),
+            "warnings": summary.get("warnings", []),
+            "errors": summary.get("errors", []),
+        },
+        "summary": summary,
     }
 
 

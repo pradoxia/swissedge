@@ -56,8 +56,9 @@ function durationLabel(ms: unknown): string {
 
 function statusBadgeClass(status: unknown): string {
   const s = safeStr(status).toLowerCase();
-  if (s === 'success')                  return 'status-badge status-badge--active';
-  if (s === 'failed' || s === 'error')  return 'status-badge status-badge--preview';
+  if (s === 'success' || s === 'success_with_results' || s === 'success_empty') return 'status-badge status-badge--active';
+  if (s === 'failed' || s === 'error' || s.startsWith('failed_')) return 'status-badge status-badge--preview';
+  if (s === 'partial' || s === 'partial_success') return 'status-badge status-badge--manual';
   if (s === 'running')                  return 'status-badge status-badge--partial';
   return 'status-badge status-badge--readonly';
 }
@@ -253,10 +254,12 @@ export default function RadarStatusPage() {
     `cron: ${loadingCron ? 'loading' : cronError ? `ERR: ${cronError}` : `ok (${allCronEntries.length} entries, ${sortedDayKeys.length} days)`}`,
   ];
   const detectionMode = !latestDetectionRun
-    ? 'disabled'
-    : latestDetectionRun.dry_run
-      ? 'dry-run'
-      : 'live-create';
+    ? 'scheduled pending'
+    : latestDetectionRun.trigger_type === 'scheduled' && !latestDetectionRun.dry_run
+      ? 'scheduled active'
+      : latestDetectionRun.trigger_type === 'scheduled'
+        ? 'scheduled pending'
+        : 'manual';
 
   return (
     <div className="page-container--wide">
@@ -451,7 +454,7 @@ export default function RadarStatusPage() {
           </div>
         ) : (
           <>
-            {latestDetectionRun.status === 'failed' && (
+            {(latestDetectionRun.status === 'failed' || latestDetectionRun.status.startsWith('failed_')) && (
               <div style={{ padding: 12, borderRadius: 8, border: '1px solid var(--status-error-border)', color: 'var(--status-error-text)', fontSize: 12, marginBottom: 12 }}>
                 Latest SEC EDGAR detection run failed. Review the stored error before scheduling.
               </div>
@@ -464,7 +467,9 @@ export default function RadarStatusPage() {
             </div>
             <div style={{ display: 'grid', gap: '8px' }}>
               <Row label="Scheduling status" value={safeText(detectionRunStatus?.status)} />
-              <Row label="Mode" value={detectionMode} />
+              <Row label="Runtime mode" value={detectionMode} />
+              <Row label="Source" value={safeText(latestDetectionRun.source)} />
+              <Row label="Trigger type" value={safeText(latestDetectionRun.trigger_type)} />
               <Row label="Cron default" value={detectionRunStatus?.cron_safe_defaults.enabled_default === false ? 'disabled' : 'enabled'} />
               <Row label="Latest run" value={formatDate(latestDetectionRun.started_at)} />
               <Row label="Latest success" value={formatDate(detectionRunStatus?.latest_successful_run?.started_at)} />
@@ -472,6 +477,8 @@ export default function RadarStatusPage() {
               <Row label="Parsed filings" value={numberText(latestDetectionRun.parsed_filings)} />
               <Row label="Unclassified" value={numberText(latestDetectionRun.unclassified_filings)} />
               <Row label="Duplicates" value={numberText(latestDetectionRun.duplicates_skipped)} />
+              <Row label="Warnings" value={Array.isArray(latestDetectionRun.warnings) && latestDetectionRun.warnings.length > 0 ? latestDetectionRun.warnings.join(' | ') : '—'} />
+              <Row label="Errors" value={Array.isArray(latestDetectionRun.errors) && latestDetectionRun.errors.length > 0 ? latestDetectionRun.errors.join(' | ') : '—'} />
               <Row label="Runtime" value={latestDetectionRun.runtime_seconds != null ? `${Math.round(latestDetectionRun.runtime_seconds * 10) / 10}s` : '—'} />
               <Row label="Forms checked" value={Array.isArray(latestDetectionRun.forms_checked_json) ? latestDetectionRun.forms_checked_json.join(', ') : safeText(latestDetectionRun.forms_checked_json)} />
             </div>

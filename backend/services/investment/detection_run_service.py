@@ -19,11 +19,21 @@ RUNNING = "running"
 SUCCESS = "success"
 PARTIAL = "partial"
 FAILED = "failed"
+SUCCESS_STATUSES = {SUCCESS, "success_with_results", "success_empty"}
+PARTIAL_STATUSES = {PARTIAL, "partial_success"}
+FAILED_STATUSES = {
+    FAILED,
+    "failed_source_error",
+    "failed_config_error",
+    "failed_database_error",
+    "failed_unknown",
+}
 
 
 class DetectionRunRead(BaseModel):
     id: str
     source: str
+    trigger_type: str | None = None
     started_at: str | None
     finished_at: str | None
     status: str
@@ -45,6 +55,9 @@ class DetectionRunRead(BaseModel):
     per_form_summary: Any = None
     per_form_summary_json: Any = None
     summary_json: Any = None
+    warnings: list[str] = []
+    errors: list[str] = []
+    config_status: Any = None
     error_message: str | None = None
     created_at: str | None
 
@@ -57,6 +70,7 @@ def serialize_detection_run(run: DetectionRun) -> dict[str, Any]:
     return DetectionRunRead(
         id=str(run.id),
         source=run.source,
+        trigger_type=summary.get("trigger_type"),
         started_at=run.started_at.isoformat() if run.started_at else None,
         finished_at=run.finished_at.isoformat() if run.finished_at else None,
         status=run.status,
@@ -78,6 +92,9 @@ def serialize_detection_run(run: DetectionRun) -> dict[str, Any]:
         per_form_summary=run.per_form_summary_json or fallback_counters["per_form_summary_json"],
         per_form_summary_json=run.per_form_summary_json or fallback_counters["per_form_summary_json"],
         summary_json=run.summary_json,
+        warnings=summary.get("warnings") if isinstance(summary.get("warnings"), list) else [],
+        errors=summary.get("errors") if isinstance(summary.get("errors"), list) else [],
+        config_status=summary.get("config"),
         error_message=run.error_message,
         created_at=run.created_at.isoformat() if run.created_at else None,
     ).model_dump()
@@ -252,8 +269,8 @@ async def get_latest_runs(db: AsyncSession, *, limit: int = 20) -> list[Detectio
 def build_detection_run_status(runs: list[DetectionRun], *, now: datetime | None = None) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
     latest = runs[0] if runs else None
-    latest_success = next((run for run in runs if run.status == SUCCESS), None)
-    latest_failed = next((run for run in runs if run.status == FAILED), None)
+    latest_success = next((run for run in runs if run.status in SUCCESS_STATUSES), None)
+    latest_failed = next((run for run in runs if run.status in FAILED_STATUSES), None)
     recent_errors_count = sum((run.errors_count or 0) for run in runs)
     age_minutes = None
     if latest and latest.started_at:
@@ -263,7 +280,7 @@ def build_detection_run_status(runs: list[DetectionRun], *, now: datetime | None
         status = "no_runs"
     elif age_minutes is not None and age_minutes > 24 * 60:
         status = "stale"
-    elif latest.status in {FAILED, RUNNING} or recent_errors_count:
+    elif latest.status in FAILED_STATUSES or latest.status in PARTIAL_STATUSES or latest.status == RUNNING or recent_errors_count:
         status = "warning"
     else:
         status = "healthy"

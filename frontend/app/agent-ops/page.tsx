@@ -9,6 +9,7 @@ import {
   fetchAgentOpsProposals,
   fetchAgentOpsRooms,
   fetchDaniWeberMetrics,
+  fetchDetectionRunStatus,
   fetchExecutiveReview,
   fetchFontanaReport,
   updateAgentOpsProposal,
@@ -19,6 +20,7 @@ import {
   type AgentOpsProposalStatus,
   type AgentOpsRoom,
   type DaniWeberMetrics,
+  type DetectionRunStatus,
   type ExecutiveReviewPackage,
   type FontanaDiagnosticReport,
 } from '@/lib/api';
@@ -233,7 +235,7 @@ const AGENT_IDENTITIES: AgentIdentity[] = [
     name: 'Fontana',
     keyHint: 'fontana',
     room: 'agent_ops',
-    title: 'CTO / Project Governor',
+    title: 'CTO / System Governor',
     mission: 'Summarizes project diagnostics, operational status, and future sprint options without runtime authority.',
     watches: ['Agent Ops diagnostics', 'project state docs', 'review posture'],
     outputs: ['project diagnostics', 'next sprint options', 'operational status'],
@@ -269,6 +271,9 @@ type ProposalType = (typeof PROPOSAL_TYPES)[number];
 type ExecutiveCard = {
   title: string;
   role: string;
+  mode: string;
+  cadence: string;
+  endpoint: string;
   focus: string;
   signal: string;
   next: string;
@@ -339,6 +344,10 @@ function safeText(value: unknown, fallback = '-'): string {
   if (value === null || value === undefined || value === '') return fallback;
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value);
   return fallback;
+}
+
+function pluralize(count: number, singular: string, plural = `${singular}s`): string {
+  return count === 0 ? `no ${plural}` : `${count} ${count === 1 ? singular : plural}`;
 }
 
 function formatDate(value: string | null | undefined): string {
@@ -413,6 +422,17 @@ function Badge({ value }: { value: string }) {
   );
 }
 
+function RoleChip({ value }: { value: string }) {
+  return (
+    <span
+      className="mt-1 inline-flex max-w-full items-center rounded-full px-2 py-1 text-left font-mono leading-4"
+      style={{ background: '#EEEDFE', color: '#26215C', fontSize: 11, overflowWrap: 'anywhere' }}
+    >
+      {value}
+    </span>
+  );
+}
+
 function EmptyState({ title, description }: { title: string; description: string }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-slate-50 p-8 text-center">
@@ -443,13 +463,18 @@ function ExecutiveOfficeSection({
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Executive Office</p>
-          <h2 className="mt-1 text-lg font-semibold text-slate-950">COO / CTO Governance Layer</h2>
+          <h2 className="mt-1 text-lg font-semibold text-slate-950">Executive Office — Operations (COO) & Technology (CTO) Governance</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-            Deterministic office view for human approval and audit. No chat, live AI, autonomous execution, scanner run, evaluator change, cron change, or deploy is triggered here.
+            Governance is diagnostic-only. All actions require human approval. This page does not trigger chat, live AI,
+            autonomous execution, scanner runs, evaluator changes, cron changes, or deploys.
           </p>
         </div>
-        <Badge value="proposal-only" />
+        <Badge value="diagnostic_only" />
       </div>
+
+      <p className="mb-4 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+        COO observes process · CTO interprets technical state · Executive Review combines both · Proposals await Dani&apos;s approval
+      </p>
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {cards.map(card => (
@@ -457,14 +482,22 @@ function ExecutiveOfficeSection({
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-sm font-semibold text-slate-950">{card.title}</p>
-                <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-slate-400">{card.role}</p>
+                <RoleChip value={card.role} />
               </div>
-              <Badge value="manual" />
+              <Badge value="runtime pending" />
             </div>
+            <div className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-3">
+              <SmallStat label="Mode" value={card.mode} />
+              <SmallStat label="Cadence" value={card.cadence} />
+              <SmallStat label="Endpoint" value={card.endpoint} />
+            </div>
+            {(card.title === 'Dani Weber' || card.title === 'Fontana') && (
+              <p className="mt-3 text-xs text-slate-500">Intended cadence: every 4h · runtime not active yet</p>
+            )}
             <ProposalText label="Focus" value={card.focus} />
-            <ProposalText label="Last deterministic signal" value={card.signal} />
+            <ProposalText label="Last status" value={card.signal} />
             <ProposalText label="Next user action" value={card.next} />
-            <p className="mt-3 text-xs text-slate-500">No autonomous execution.</p>
+            <p className="mt-3 text-xs text-slate-500">Read-only diagnostic panel. Recommendations are not approved tasks.</p>
           </div>
         ))}
       </div>
@@ -472,16 +505,19 @@ function ExecutiveOfficeSection({
       <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div>
-            <p className="text-sm font-semibold text-emerald-950">Dani Weber COO Metrics</p>
-            <p className="mt-1 text-sm text-emerald-900">Process/funnel snapshot only. Findings become proposals; they do not execute changes.</p>
+            <p className="text-sm font-semibold text-emerald-950">Dani Weber — COO / Operations Governor</p>
+            <p className="mt-1 text-sm text-emerald-900">Process/funnel snapshot only. Operational recommendations require Dani approval.</p>
           </div>
-          <Badge value="read-only" />
+          <div className="flex flex-wrap gap-2">
+            <Badge value="diagnostic_only" />
+            <Badge value="Every 4 hours" />
+          </div>
         </div>
         <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
           <SmallStat label="Signals" value={daniMetrics?.total_special_situations ?? 0} />
           <SmallStat label="Promoted" value={`${daniMetrics?.promotion_rate_to_research_case.rate_percent ?? 0}%`} />
           <SmallStat label="Missing resources" value={daniMetrics?.documentation_blockers.missing_required_resources ?? 0} />
-          <SmallStat label="Noise rows" value={daniMetrics?.low_priority_or_noise_count ?? 0} />
+          <SmallStat label="Noise items" value={daniMetrics?.low_priority_or_noise_count ?? 0} />
         </div>
         <p className="mt-3 text-xs leading-5 text-emerald-900">
           Top bottleneck: {topBottleneck ? `${topBottleneck.title} (${topBottleneck.count})` : 'No dominant bottleneck loaded.'}
@@ -492,7 +528,7 @@ function ExecutiveOfficeSection({
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div>
             <p className="text-sm font-semibold text-blue-950">Executive Review</p>
-            <p className="mt-1 text-sm text-blue-900">COO and CTO findings combined into approval-based next steps.</p>
+            <p className="mt-1 text-sm text-blue-900">Read-only governance summary. It is not an investment recommendation, case approval, or final decision.</p>
           </div>
           <Badge value="read-only" />
         </div>
@@ -508,13 +544,13 @@ function ExecutiveOfficeSection({
             />
             <ProposalText
               label="Joint recommendation"
-              value={executiveReview?.joint_recommendations[0]?.recommended_action ?? 'Continue deterministic monitoring until Dani approves a process-improvement sprint.'}
+              value={executiveReview?.joint_recommendations[0]?.recommended_action ?? 'No recommendations available. Continue deterministic monitoring until Dani approves a process-improvement sprint.'}
             />
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
             <Badge value={`${executiveReview?.joint_findings.length ?? 0} finding(s)`} />
-            <Badge value={`${executiveReview?.pending_approval_items.length ?? 0} approval item(s)`} />
-            <Badge value="no auto-apply" />
+            <Badge value={pluralize(executiveReview?.pending_approval_items.length ?? 0, 'approval item')} />
+            <Badge value="manual approval only" />
           </div>
         </div>
         <div className="grid gap-3 lg:grid-cols-3">
@@ -536,8 +572,8 @@ function ExecutiveOfficeSection({
       <div id="executive-proposals" className="mt-5 scroll-mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div>
-            <p className="text-sm font-semibold text-amber-950">Improvement Proposals v1</p>
-            <p className="mt-1 text-sm text-amber-900">Read-only proposal model. Persisted Agent Ops proposals can still be reviewed in the Learning Proposals section below.</p>
+            <p className="text-sm font-semibold text-amber-950">Governance Proposals / Improvement Proposals</p>
+            <p className="mt-1 text-sm text-amber-900">Read-only proposal model. Persisted Agent Ops proposals can be reviewed by a human in the Learning Proposals section below.</p>
           </div>
           <Badge value={`${proposals.length} proposed`} />
         </div>
@@ -563,7 +599,7 @@ function ExecutiveOfficeSection({
                 <SmallStat label="Risk" value={proposal.risk} />
                 <SmallStat label="Complexity" value={proposal.complexity} />
               </div>
-              <p className="mt-3 text-xs font-medium text-amber-900">Requires Dani approval before implementation.</p>
+              <p className="mt-3 text-xs font-medium text-amber-900">Proposed task only — requires Dani approval before implementation.</p>
             </div>
           ))}
         </div>
@@ -592,8 +628,12 @@ function SectionShell({
         <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
       </div>
       {error && (
-        <div className="border-b border-amber-200 bg-amber-50 px-5 py-3">
-          <p className="text-sm text-amber-900">{error}. Backend may not yet be deployed or migrated.</p>
+        <div className={`border-b px-5 py-3 ${id === 'fontana' ? 'border-slate-200 bg-slate-50' : 'border-amber-200 bg-amber-50'}`}>
+          <p className={`text-sm ${id === 'fontana' ? 'text-slate-600' : 'text-amber-900'}`}>
+            {id === 'fontana'
+              ? 'Fontana runtime not yet active. This is expected — the report populates once the agent is scheduled.'
+              : `${error}. Backend may not yet be deployed or migrated.`}
+          </p>
         </div>
       )}
       <div className="p-5">{children}</div>
@@ -646,8 +686,8 @@ function identityForAgent(agent: AgentOpsAgent): AgentIdentity {
     room: agent.room_key ?? 'agent_ops',
     title: agentCallsign(agent),
     mission: agent.role ?? 'Observer/manual role documented in Agent Ops.',
-    watches: ['loaded Agent Ops rows', 'manual review state'],
-    outputs: ['activity rows', 'diagnostics when present'],
+    watches: ['loaded Agent Ops entries', 'manual review state'],
+    outputs: ['activity items', 'diagnostics when present'],
     currentMode: agent.autonomy_level || 'observer-only',
     futureMode: 'manual-approved sprint required',
     scheduler: 'disabled in this sprint',
@@ -750,6 +790,7 @@ export default function AgentOpsPage() {
   const [proposals, setProposals] = useState<AgentOpsProposal[]>([]);
   const [fontanaReport, setFontanaReport] = useState<FontanaDiagnosticReport | null>(null);
   const [daniWeberMetrics, setDaniWeberMetrics] = useState<DaniWeberMetrics | null>(null);
+  const [detectionRunStatus, setDetectionRunStatus] = useState<DetectionRunStatus | null>(null);
   const [executiveReview, setExecutiveReview] = useState<ExecutiveReviewPackage | null>(null);
   const [loading, setLoading] = useState(true);
   const [errors, setErrors] = useState<Record<string, string | null>>({});
@@ -771,6 +812,7 @@ export default function AgentOpsPage() {
       proposalsResult,
       fontanaResult,
       daniMetricsResult,
+      detectionStatusResult,
       executiveReviewResult,
     ] = await Promise.allSettled([
       fetchAgentOpsRooms(),
@@ -780,6 +822,7 @@ export default function AgentOpsPage() {
       fetchAgentOpsProposals({ limit: 25 }),
       fetchFontanaReport(),
       fetchDaniWeberMetrics(),
+      fetchDetectionRunStatus(),
       fetchExecutiveReview(),
     ]);
 
@@ -803,6 +846,9 @@ export default function AgentOpsPage() {
 
     if (daniMetricsResult.status === 'fulfilled') setDaniWeberMetrics(daniMetricsResult.value);
     else nextErrors.daniWeberMetrics = daniMetricsResult.reason instanceof Error ? daniMetricsResult.reason.message : 'Failed to load Dani Weber metrics';
+
+    if (detectionStatusResult.status === 'fulfilled') setDetectionRunStatus(detectionStatusResult.value);
+    else nextErrors.detectionRunStatus = detectionStatusResult.reason instanceof Error ? detectionStatusResult.reason.message : 'Failed to load scanner status';
 
     if (executiveReviewResult.status === 'fulfilled') setExecutiveReview(executiveReviewResult.value);
     else nextErrors.executiveReview = executiveReviewResult.reason instanceof Error ? executiveReviewResult.reason.message : 'Failed to load Executive Review';
@@ -880,7 +926,7 @@ export default function AgentOpsPage() {
   }, [activity, agents, diagnostics]);
 
   const nextManualActions = [
-    'Open case-related diagnostic rows and resolve missing evidence gaps manually.',
+    'Open case-related diagnostics and resolve missing evidence gaps manually.',
     'Use Official Source Finder queries from case pages; SwissEdge does not run them.',
     'Reject noisy candidates and map manually reviewed sources to resources/checklist items.',
     'Review Fontana bottlenecks before planning the next sprint.',
@@ -889,37 +935,51 @@ export default function AgentOpsPage() {
   const executiveCards = useMemo<ExecutiveCard[]>(() => {
     const pendingProposalCount = proposals.filter(proposal => proposal.status === 'proposed').length;
     const warningCount = diagnostics.filter(item => ['warning', 'error', 'critical'].includes(item.severity)).length;
-    const fontanaSignal = fontanaReport?.summary ?? 'Fontana report not loaded; deterministic placeholder only.';
+    const fontanaSignal = fontanaReport?.summary ?? 'Fontana report not loaded yet.';
     const promotionRate = daniWeberMetrics?.promotion_rate_to_research_case.rate_percent ?? 0;
     const missingResources = daniWeberMetrics?.documentation_blockers.missing_required_resources ?? 0;
     const topCooBottleneck = daniWeberMetrics?.top_bottlenecks[0]?.title ?? 'No dominant COO bottleneck loaded.';
     return [
       {
-        title: 'Dani Weber Office — COO',
-        role: 'Process governor / approval authority',
+        title: 'Dani Weber',
+        role: 'COO · Operations Governor',
+        mode: 'diagnostic_only',
+        cadence: 'Every 4 hours',
+        endpoint: 'GET /api/investment/executive/dani-weber-metrics',
         focus: 'Process flow, bottlenecks, promotion rate, documentation quality, noise reduction, and source/skill/process improvements.',
-        signal: `${daniWeberMetrics?.total_special_situations ?? 0} signal(s), ${promotionRate}% promoted, ${missingResources} missing required resource(s). Top bottleneck: ${topCooBottleneck}`,
+        signal: `${pluralize(daniWeberMetrics?.total_special_situations ?? 0, 'signal')}, ${promotionRate}% promoted, ${pluralize(missingResources, 'missing required resource', 'missing required resources')}. Top bottleneck: ${topCooBottleneck}`,
         next: 'Review proposed changes, accept/defer/reject status only, and approve implementation in a future sprint.',
       },
       {
-        title: 'Fontana Office — CTO',
-        role: 'Deterministic technology audit',
+        title: 'Fontana',
+        role: 'CTO · System Governor',
+        mode: 'diagnostic_only',
+        cadence: 'Every 4 hours',
+        endpoint: 'GET /api/investment/intelligence/fontana-report',
         focus: 'Technology, architecture, product coherence, technical debt, guardrails, and sprint recommendations.',
         signal: fontanaSignal,
         next: 'Inspect bottlenecks and technical findings before selecting the next implementation batch.',
       },
       {
         title: 'Executive Review',
-        role: 'COO / CTO feedback loop',
+        role: 'Read-only governance summary',
+        mode: 'diagnostic_only',
+        cadence: 'On page load',
+        endpoint: 'GET /api/investment/executive/review',
         focus: 'Combines COO process findings with CTO interpretation for approval-based next steps.',
-        signal: `${activity.length} activity row(s), ${diagnostics.length} diagnostic row(s), ${proposals.length} persisted proposal row(s), ${pendingProposalCount} pending proposal(s).`,
+        signal: activity.length === 0 && diagnostics.length === 0 && proposals.length === 0
+          ? 'No activity, diagnostics, or proposals recorded yet.'
+          : `${pluralize(activity.length, 'activity item')}, ${pluralize(diagnostics.length, 'diagnostic')}, and ${pluralize(proposals.length, 'persisted proposal')} recorded. ${pluralize(pendingProposalCount, 'pending proposal')} awaiting review.`,
         next: 'Compare process and technical findings, then choose which proposal stays in the manual queue.',
       },
       {
         title: 'Pending Improvement Proposals',
         role: 'Manual proposal queue',
+        mode: 'human_review',
+        cadence: 'On page load',
+        endpoint: 'GET /api/agent-ops/proposals',
         focus: 'Proposal status review only. Proposals require Dani approval before implementation.',
-        signal: `${pendingProposalCount} persisted proposal(s) still proposed.`,
+        signal: pendingProposalCount === 0 ? 'No persisted proposals are currently proposed.' : `${pluralize(pendingProposalCount, 'persisted proposal')} currently proposed.`,
         next: 'Use Learning Proposals below for status review; implementation remains a separate Dani-approved sprint.',
       },
     ];
@@ -932,15 +992,15 @@ export default function AgentOpsPage() {
     return [
       {
         cooFindingCategory: 'COO funnel bottleneck',
-        ctoInterpretation: cooBottleneck ? `${cooBottleneck.title}: ${cooBottleneck.count} item(s) in deterministic metrics.` : 'No dominant Dani Weber COO bottleneck loaded.',
-        jointRecommendation: 'Use COO metrics to choose a future process-improvement sprint; do not auto-apply proposals.',
+        ctoInterpretation: cooBottleneck ? `${cooBottleneck.title}: ${pluralize(cooBottleneck.count, 'item')} in the latest status data.` : 'No dominant Dani Weber COO bottleneck loaded.',
+        jointRecommendation: 'Use COO metrics to choose a future process-improvement sprint; keep proposals manual until Dani approves implementation.',
         approvalRequired: 'Dani approval required',
         relatedProductArea: 'Executive Office',
         guardrailNote: 'Dani Weber metrics are read-only and do not create cases, verify evidence, run evaluator, or trigger scans.',
       },
       {
         cooFindingCategory: 'Documentation throughput',
-        ctoInterpretation: caseWarnings > 0 ? `${caseWarnings} case-related warning row(s) need traceability review.` : 'No case-related warning rows loaded in Agent Ops.',
+        ctoInterpretation: caseWarnings > 0 ? `${pluralize(caseWarnings, 'case-related warning')} need traceability review.` : 'No case-related warnings loaded in Agent Ops.',
         jointRecommendation: 'Keep evidence review manual and resolve missing documentation before promotion or editorial work.',
         approvalRequired: 'Dani approval required',
         relatedProductArea: 'Evidence Room',
@@ -956,7 +1016,7 @@ export default function AgentOpsPage() {
       },
       {
         cooFindingCategory: 'Improvement proposal flow',
-        ctoInterpretation: `${proposedCount} persisted Agent Ops proposal(s) are awaiting manual review.`,
+        ctoInterpretation: `${pluralize(proposedCount, 'persisted Agent Ops proposal')} awaiting manual review.`,
         jointRecommendation: 'Review proposal status only; implementation belongs in a future explicit sprint.',
         approvalRequired: 'Dani approval required',
         relatedProductArea: 'Agent Ops',
@@ -972,7 +1032,7 @@ export default function AgentOpsPage() {
       proposal_type: inferProposalType(proposal),
       owner: proposal.agent_key?.toLowerCase().includes('fontana') ? 'Fontana' : 'Executive Review',
       problem: proposal.problem_statement,
-      evidence: proposal.source_diagnostic_id ? `Linked diagnostic ${proposal.source_diagnostic_id.slice(0, 8)}.` : 'Loaded from existing Agent Ops proposal row.',
+      evidence: proposal.source_diagnostic_id ? `Linked diagnostic ${proposal.source_diagnostic_id.slice(0, 8)}.` : 'Loaded from an existing Agent Ops proposal.',
       recommendation: proposal.proposed_change,
       expected_impact: proposal.expected_benefit ?? 'Expected impact requires manual review before implementation.',
       risk: proposal.risk_level,
@@ -980,7 +1040,7 @@ export default function AgentOpsPage() {
       approval_status: proposal.status === 'accepted' ? 'approved' : proposal.status === 'archived' || proposal.status === 'implemented' ? 'deferred' : proposal.status,
       requires_dani_approval: true,
     }));
-    const deterministicFallbacks: ImprovementProposalV1[] = [
+    const fallbackProposals: ImprovementProposalV1[] = [
       {
         id: 'ap-simplify-legacy-surfaces',
         title: 'Keep legacy investment surfaces de-emphasized',
@@ -1014,7 +1074,7 @@ export default function AgentOpsPage() {
         title: 'Add Executive Office KPI snapshot later',
         proposal_type: 'ADD_KPI',
         owner: 'Fontana',
-        problem: 'Executive Office currently summarizes loaded operational rows but does not persist a KPI snapshot.',
+        problem: 'Executive Office currently summarizes loaded operational entries but does not persist a KPI snapshot.',
         evidence: 'Agent Ops already has rooms, diagnostics, proposals, and Fontana report data available.',
         recommendation: 'Defer persisted KPI snapshots until Dani approves the exact metrics.',
         expected_impact: 'Keeps AP small while identifying a clean future measurement surface.',
@@ -1024,7 +1084,7 @@ export default function AgentOpsPage() {
         requires_dani_approval: true,
       },
     ];
-    return [...mapped, ...deterministicFallbacks].slice(0, 6);
+    return [...mapped, ...fallbackProposals].slice(0, 6);
   }, [proposals]);
 
   async function reviewProposal(proposal: AgentOpsProposal, status: AgentOpsProposalStatus) {
@@ -1060,9 +1120,9 @@ export default function AgentOpsPage() {
         <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Platform Observability</p>
-            <h1 className="mb-2 text-3xl font-semibold tracking-tight text-slate-950">Agent Ops</h1>
+            <h1 className="mb-2 text-3xl font-semibold tracking-tight text-slate-950">Agent Operations & Governance</h1>
             <p className="max-w-3xl text-sm leading-6 text-slate-600">
-              Read-only operating rooms for SwissEdge agents: who they are, what they watch, where they log, and which cases/problems they touch.
+              The governance surface for SwissEdge agents — what each one does, when it runs, and what stays under human control.
             </p>
           </div>
           <div className="flex flex-col items-start gap-2 md:items-end">
@@ -1081,11 +1141,37 @@ export default function AgentOpsPage() {
         </div>
 
         <div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 p-4 shadow-sm">
-          <p className="text-sm font-semibold text-blue-950">Observability-first guardrail</p>
+          <p className="text-sm font-semibold text-blue-950">Always-visible governance guardrail</p>
           <p className="mt-1 text-sm leading-6 text-blue-900">
-            Agent Ops is observability-first. This page does not trigger scans, change cron, enable evaluator v2, call live AI,
-            deploy, or apply learning proposals automatically.
+            Agent Ops is observability-first and diagnostic-only. This page does not trigger scans, change cron, enable evaluator v2,
+            call live AI, deploy, or turn proposals into implemented work.
           </p>
+        </div>
+
+        <div className="mb-6 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-slate-950">SEC EDGAR scanner status</p>
+              <p className="mt-1 text-sm text-slate-500">Read-only DetectionRun summary. Agent Ops does not trigger scans.</p>
+            </div>
+            <Link href="/investment/radar-status" className="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50">
+              Open Radar Status
+            </Link>
+          </div>
+          {errors.detectionRunStatus ? (
+            <p className="mt-3 text-sm text-amber-700">{errors.detectionRunStatus}</p>
+          ) : !detectionRunStatus?.latest_run ? (
+            <p className="mt-3 text-sm text-slate-500">No SEC EDGAR detection runs recorded yet. Scheduled runtime is pending.</p>
+          ) : (
+            <div className="mt-3 grid grid-cols-2 gap-2 text-xs md:grid-cols-6">
+              <SmallStat label="Status" value={detectionRunStatus.latest_run.status} />
+              <SmallStat label="Source" value={detectionRunStatus.latest_run.source} />
+              <SmallStat label="Trigger" value={detectionRunStatus.latest_run.trigger_type ?? '-'} />
+              <SmallStat label="Created" value={detectionRunStatus.latest_run.special_situations_created} />
+              <SmallStat label="Duplicates" value={detectionRunStatus.latest_run.duplicates_skipped} />
+              <SmallStat label="Errors" value={detectionRunStatus.latest_run.errors_count} />
+            </div>
+          )}
         </div>
 
         <ExecutiveOfficeSection
@@ -1100,7 +1186,7 @@ export default function AgentOpsPage() {
           {[
             ['Rooms', rooms.length],
             ['Agents', agents.length],
-            ['Activity rows', activity.length],
+            ['Activity items', activity.length],
             ['Diagnostics', diagnostics.length],
             ['Proposals', proposals.length],
           ].map(([label, value]) => (
@@ -1116,7 +1202,7 @@ export default function AgentOpsPage() {
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="text-sm font-semibold text-slate-950">Agent Roster</h2>
-                <p className="mt-1 text-sm text-slate-500">Visual identities are deterministic placeholders; no external images are fetched.</p>
+                <p className="mt-1 text-sm text-slate-500">Visual identities are stable placeholders; no external images are fetched.</p>
               </div>
               <Badge value="manual-only" />
             </div>
@@ -1148,7 +1234,7 @@ export default function AgentOpsPage() {
                     <div className="mt-3 grid grid-cols-2 gap-2 text-xs md:grid-cols-4">
                       <SmallStat label="Logs" value={activityCountForAgent(agent, activity)} />
                       <SmallStat label="Problems" value={problemCountForAgent(agent, diagnostics)} />
-                      <SmallStat label="Case rows" value={caseActivityCountForAgent(agent, activity, diagnostics)} />
+                      <SmallStat label="Case entries" value={caseActivityCountForAgent(agent, activity, diagnostics)} />
                       <SmallStat label="Room" value={agent.room_key ?? '-'} />
                     </div>
                   </Link>
@@ -1163,13 +1249,13 @@ export default function AgentOpsPage() {
               <div>
                 <h2 className="text-sm font-semibold text-slate-950">Agent Workload & Next Manual Actions</h2>
                 <p className="mt-1 text-sm leading-6 text-slate-500">
-                  Derived from loaded Agent Ops rows only. Scheduler remains disabled; future frequency changes require an approved sprint.
+                  Derived from loaded Agent Ops entries only. Scheduler remains disabled; future frequency changes require an approved sprint.
                 </p>
               </div>
               <Badge value="observer/manual-only" />
             </div>
             {agentWorkload.length === 0 ? (
-              <EmptyState title="No workload rows yet." description="Agent activity and diagnostics will appear after safe logging is present." />
+              <EmptyState title="No workload entries yet." description="Agent activity and diagnostics will appear after safe logging is present." />
             ) : (
               <div className="grid gap-2">
                 {agentWorkload.map(({ agent, identity, logs, problems, caseRows }) => (
@@ -1184,7 +1270,7 @@ export default function AgentOpsPage() {
                     <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
                       <SmallStat label="Logs" value={logs} />
                       <SmallStat label="Problems" value={problems} />
-                      <SmallStat label="Case rows" value={caseRows} />
+                      <SmallStat label="Case entries" value={caseRows} />
                     </div>
                   </div>
                 ))}
@@ -1252,13 +1338,13 @@ export default function AgentOpsPage() {
             title="Quality Sentinel"
             subtitle="Documentation gaps and risks"
             rows={qualityGapRows}
-            empty="No related warning rows loaded yet."
+            empty="No related warnings loaded yet."
           />
           <AgentTimelineCard
             title="Fontana"
-            subtitle="Diagnostics pending / no autonomous report yet"
+            subtitle="Diagnostic-only · Not yet scheduled"
             rows={fontanaRows}
-            empty="No Fontana activity rows. Runtime remains unimplemented."
+            empty="No Fontana activity items. Runtime remains unimplemented."
           />
         </div>
 
@@ -1270,6 +1356,9 @@ export default function AgentOpsPage() {
             </div>
             <Badge value="observer-only" />
           </div>
+          <p className="mb-4 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+            All metrics below are derived from stored Agent Ops entries. No scheduler or autonomous scan is active.
+          </p>
           <div className="grid gap-4 lg:grid-cols-3">
             {AGENT_IDENTITIES.map(identity => {
               const matchingAgent = agents.find(agent => {
@@ -1417,7 +1506,7 @@ export default function AgentOpsPage() {
                   </table>
                 </div>
               )}
-              <p className="mt-4 text-xs text-slate-500">No agent shown here has autonomous production powers. Fontana runtime is not implemented in this sprint.</p>
+              <p className="mt-4 text-xs text-slate-500">No agent shown here has autonomous production powers. Governance panels are read-only and diagnostic-only.</p>
             </SectionShell>
 
             <ActivitySection items={activity} error={errors.activity} />
@@ -1426,7 +1515,7 @@ export default function AgentOpsPage() {
             <SectionShell id="proposals" title="Learning Proposals" subtitle="Human-supervised improvement proposals. Changing proposal status does not change production behavior." error={errors.proposals}>
               <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
                 <p className="text-sm text-amber-900">
-                  Review actions only update proposal status and notes. They do not run code, deploy, change scanner/evaluator behavior, or apply proposals.
+                  Review actions only update proposal status and notes. They do not run code, deploy, change scanner/evaluator behavior, or implement proposals.
                 </p>
               </div>
               {proposals.length === 0 ? (
@@ -1487,14 +1576,14 @@ export default function AgentOpsPage() {
 
             <SectionShell
               id="fontana"
-              title="Fontana Diagnostic Report"
-              subtitle="Deterministic observer report. No autonomous changes, live AI, evaluator, scanner, or external fetch is called."
+              title="Fontana — CTO / System Governor"
+              subtitle="Mode: diagnostic_only. Cadence: Every 4 hours. Endpoint: GET /api/investment/intelligence/fontana-report."
               error={errors.fontana}
             >
               {!fontanaReport ? (
                 <PlaceholderPanel
-                  title="Fontana report endpoint is not available yet."
-                  description="Fontana remains an advisor/documenter concept only and cannot deploy, modify production, trigger scans, change cron, or enable evaluator v2."
+                  title="Awaiting first diagnostic run."
+                  description="Endpoint unavailable or no report loaded yet. Fontana cannot deploy, modify production, trigger scans, change cron, or enable evaluator v2."
                   items={FONTANA_SECTIONS}
                 />
               ) : (
@@ -1503,8 +1592,9 @@ export default function AgentOpsPage() {
                     <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Summary</p>
                     <p className="mt-2 text-sm leading-6 text-slate-700">{fontanaReport.summary}</p>
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <Badge value={fontanaReport.mode} />
+                      <Badge value="diagnostic_only" />
                       <Badge value="read-only" />
+                      <Badge value="Every 4 hours" />
                     </div>
                   </div>
                   <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
@@ -1524,9 +1614,9 @@ export default function AgentOpsPage() {
                     </ul>
                   </div>
                   <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Next Manual Steps</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Proposed engineering tasks — require Dani approval</p>
                     <ul className="mt-2 space-y-1">
-                      {fontanaReport.recommended_manual_next_steps.map(item => (
+                      {(fontanaReport.recommended_manual_next_steps.length > 0 ? fontanaReport.recommended_manual_next_steps : ['No recommendations available.']).map(item => (
                         <li key={item} className="text-sm leading-6 text-slate-700">{item}</li>
                       ))}
                     </ul>
@@ -1534,7 +1624,7 @@ export default function AgentOpsPage() {
                   <div className="rounded-md border border-slate-200 bg-slate-50 p-4 lg:col-span-2">
                     <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Guardrails</p>
                     <div className="mt-2 flex flex-wrap gap-2">
-                      {fontanaReport.guardrails.map(guardrail => (
+                      {(fontanaReport.guardrails.length > 0 ? fontanaReport.guardrails : ['Read-only diagnostics. All recommendations require Dani approval.']).map(guardrail => (
                         <Badge key={guardrail} value={guardrail} />
                       ))}
                     </div>
@@ -1569,9 +1659,6 @@ function AgentTimelineCard({
         </div>
         <Badge value="manual" />
       </div>
-      <p className="mt-3 text-sm leading-6 text-slate-600">
-        Derived from loaded Agent Ops rows only. No scheduler, runtime, or autonomous case scan is active.
-      </p>
       {rows.length === 0 ? (
         <p className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">{empty}</p>
       ) : (
@@ -1602,10 +1689,13 @@ function AgentTimelineCard({
 }
 
 function SmallStat({ label, value }: { label: string; value: string | number }) {
+  const isZeroValue = value === 0 || value === '0' || value === '0%';
+  const isEndpoint = label.toLowerCase() === 'endpoint';
   return (
     <div className="rounded-md border border-slate-200 bg-white px-2 py-1.5">
-      <p className="font-semibold text-slate-800">{value}</p>
+      <p className={`font-semibold text-slate-800 ${isEndpoint ? 'break-all' : ''}`} style={isEndpoint ? { overflowWrap: 'anywhere' } : undefined}>{value}</p>
       <p className="mt-0.5 uppercase tracking-wide text-slate-400">{label}</p>
+      {isZeroValue && <p className="mt-1 text-[10px] lowercase tracking-normal text-slate-400">no runs yet</p>}
     </div>
   );
 }
@@ -1625,7 +1715,7 @@ function ProposalText({ label, value }: { label: string; value: string }) {
 
 function ActivitySection({ items, error }: { items: AgentOpsActivity[]; error?: string | null }) {
   return (
-    <SectionShell id="activity" title="Activity Feed" subtitle="Latest Agent Ops activity rows. Logger integration is not wired into scanner/evaluator yet." error={error}>
+    <SectionShell id="activity" title="Activity Feed" subtitle="Latest Agent Ops activity items. Logger integration is not wired into scanner/evaluator yet." error={error}>
       {items.length === 0 ? (
         <EmptyState title="No Agent Ops activity has been logged yet." description="Logger integration is not wired into scanner/evaluator yet." />
       ) : (

@@ -925,6 +925,7 @@ export async function fetchSituations(params?: {
 export interface DetectionRun {
   id: string;
   source: string;
+  trigger_type?: string | null;
   started_at: string | null;
   finished_at: string | null;
   status: 'running' | 'success' | 'partial' | 'failed' | string;
@@ -941,6 +942,9 @@ export interface DetectionRun {
   forms_checked_json: unknown;
   per_form_summary_json: unknown;
   summary_json: unknown;
+  warnings?: string[];
+  errors?: string[];
+  config_status?: unknown;
   error_message: string | null;
   created_at: string | null;
 }
@@ -1209,7 +1213,7 @@ export interface DaniWeberMetrics {
   cases_stuck_by_phase: Array<{
     phase: string;
     count: number;
-    cases: Array<{ id: string; title: string; href: string }>;
+    cases: Array<{ id: string | null; title: string; href: string | null }>;
   }>;
   low_priority_or_noise_count: number;
   top_bottlenecks: Array<{ id: string; title: string; count: number; severity: string }>;

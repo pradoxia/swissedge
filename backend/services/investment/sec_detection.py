@@ -57,6 +57,7 @@ class SecDetectionRunSummary:
     ignored_reasons: dict[str, int] = field(default_factory=dict)
     special_situations_created: int = 0
     special_situations_updated: int = 0
+    created_situations: list[dict[str, Any]] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     rate_limit_backoff_events: list[dict[str, Any]] = field(default_factory=list)
     dry_run: bool = False
@@ -99,6 +100,7 @@ class SecDetectionRunSummary:
             "ignored_reasons_summary": self.ignored_reasons,
             "special_situations_created": self.special_situations_created,
             "special_situations_updated": self.special_situations_updated,
+            "created_situations": self.created_situations,
             "errors": self.errors,
             "rate_limit_backoff_events": self.rate_limit_backoff_events,
             "dry_run": self.dry_run,
@@ -196,6 +198,7 @@ async def run_sec_edgar_detection(
     hours_back: int = 36,
     dry_run: bool = True,
     adapter: SECEdgarAdapter | None = None,
+    trigger_type: str | None = None,
 ) -> dict[str, Any]:
     summary = SecDetectionRunSummary(
         started_at=_utc_now_iso(),
@@ -261,7 +264,7 @@ async def run_sec_edgar_detection(
         summary.classification_reports.append(report)
         if existing or batch_duplicate:
             if not dry_run and _needs_detection_evidence_update(existing):
-                existing.evaluation = _build_minimal_evidence(filing, decision, report)
+                existing.evaluation = _build_minimal_evidence(filing, decision, report, trigger_type=trigger_type)
                 existing.updated_at = datetime.now(timezone.utc)
                 await db.flush()
                 summary.special_situations_updated += 1
@@ -280,12 +283,25 @@ async def run_sec_edgar_detection(
             filing_type=decision["detected_form_type"],
             filing_url=filing.url,
             status="detected",
-            evaluation=_build_minimal_evidence(filing, decision, report),
+            evaluation=_build_minimal_evidence(filing, decision, report, trigger_type=trigger_type),
             source_urls=[filing.url] if filing.url else [],
         )
         db.add(sit)
         await db.flush()
         summary.special_situations_created += 1
+        summary.created_situations.append({
+            "id": str(sit.id),
+            "company_name": sit.company_name,
+            "ticker": sit.ticker,
+            "situation_type": sit.situation_type,
+            "filing_type": sit.filing_type,
+            "filing_url": sit.filing_url,
+            "status": sit.status,
+            "source": "sec_edgar",
+            "trigger_type": trigger_type or "manual",
+            "accession_number": filing.accession_number,
+            "cik": filing.cik,
+        })
         form_metrics["created"] += 1
 
     summary.completed_at = _utc_now_iso()
@@ -365,6 +381,8 @@ def _build_minimal_evidence(
     filing: Filing,
     decision: dict[str, Any],
     classification_report: dict[str, Any] | None = None,
+    *,
+    trigger_type: str | None = None,
 ) -> dict[str, Any]:
     evidence = {
         "detected_only": True,
@@ -384,6 +402,13 @@ def _build_minimal_evidence(
             "playbook_status": decision.get("playbook_status"),
         },
         "classification_report": classification_report or build_sec_classification_report(filing),
+        "creation_context": {
+            "created_by": "sec_edgar_scan",
+            "source": "sec_edgar",
+            "trigger_type": trigger_type or "manual",
+            "evidence_status": "metadata-only",
+            "requires_human_review": True,
+        },
         "summary": filing.summary,
         "disclaimer": "Detected from official SEC metadata for human review. This is not investment advice.",
     }

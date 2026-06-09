@@ -217,7 +217,7 @@ REGISTRY: dict[str, dict[str, Any]] = {
             "For each source, fetches recent filings via the source adapter. "
             "Classifies each filing via investment_classifier, evaluates via investment_evaluator. "
             "Creates SpecialSituation records for new unique filings. "
-            "Logs ai_usage for each evaluation call. Sets trigger_source=cron when called via cron."
+            "Scheduled execution uses scripts/run_special_situation_scan.py and records trigger_type=scheduled."
         ),
         "inputs": "Active sources from investment_sources table, hours_back param (default 6)",
         "outputs": "List of new SpecialSituation records saved to DB; scan summary",
@@ -230,7 +230,7 @@ REGISTRY: dict[str, dict[str, Any]] = {
         "failure_modes": ["SEC EDGAR rate limit", "DB write failure", "source misconfiguration"],
         "outcome_score_definition": "1 = scan completed; partial if some sources failed",
         "warnings": [],
-        "recommended_next_action": "Set up cron job: POST /api/investment/scan every 6h",
+        "recommended_next_action": "Use scripts/run_special_situation_scan.py for scheduled scans after Dani approval",
     },
     "investment_classifier": {
         "agent_name": "investment_classifier",
@@ -311,6 +311,82 @@ REGISTRY: dict[str, dict[str, Any]] = {
         "outcome_score_definition": "1 = content returned; 0 = empty or file missing",
         "warnings": ["course_index/ is git-ignored — files must be present on VPS separately"],
         "recommended_next_action": "Run scripts/ingest_course.py to generate course_index/ if missing on VPS",
+    },
+    "fontana": {
+        "agent_name": "fontana",
+        "display_name": "Fontana",
+        "purpose": "CTO / System Governor for read-only system diagnostics and engineering recommendations",
+        "runtime": "fastapi",
+        "module": "services.investment.fontana_report",
+        "owner": "GET /api/investment/intelligence/fontana-report",
+        "current_status": "active",
+        "instructions": (
+            "Diagnostic-only governance agent. Reviews system health, observability registry, scanner failures, "
+            "room alignment, stale/missing agents, and technical inconsistencies. Produces read-only engineering "
+            "recommendations that require Dani approval before implementation."
+        ),
+        "inputs": "Stored KPI data, Agent Ops metadata, detection runs, observability registry, case metadata",
+        "outputs": "Fontana diagnostic report with health, scope, findings, engineering tasks, and guardrail note",
+        "model": None,
+        "tools": ["FastAPI read endpoints", "PostgreSQL read queries"],
+        "permissions": "Read-only diagnostics; no write permissions; no auto-apply",
+        "human_approval_rules": "All recommendations require Dani approval before implementation",
+        "cost_metric": "Negligible (no AI)",
+        "success_metric": "Report generated without mutation and with visible guardrails",
+        "failure_modes": ["Missing KPI data", "stale observability data", "database unavailable"],
+        "outcome_score_definition": "1 = diagnostic report returned; 0 = endpoint error",
+        "warnings": [
+            "Diagnostic-only. No auto-fix, no production mutation, no investment recommendation, no case promotion."
+        ],
+        "recommended_next_action": "Review findings manually in Agent Ops / Executive Office",
+        "cadence_cron": "0 */4 * * *",
+        "run_mode": "diagnostic_only",
+        "endpoint": "GET /api/investment/intelligence/fontana-report",
+        "forbidden_actions": [
+            "auto_fix",
+            "production_mutation",
+            "investment_recommendation",
+            "case_promotion",
+            "buy_sell_language",
+        ],
+    },
+    "weber": {
+        "agent_name": "weber",
+        "display_name": "Dani Weber",
+        "purpose": "COO / Operations Governor for read-only workflow and bottleneck diagnostics",
+        "runtime": "fastapi",
+        "module": "services.investment.dani_weber_metrics",
+        "owner": "GET /api/investment/executive/dani-weber-metrics",
+        "current_status": "active",
+        "instructions": (
+            "Diagnostic-only governance agent. Reviews case workflow, funnel health, stuck cases, manual workload, "
+            "and why SpecialSituation rows are not progressing to ResearchCase rows. Produces read-only operational "
+            "next actions that require Dani approval before implementation."
+        ),
+        "inputs": "SpecialSituation rows, ResearchCase rows, documentation workspace metadata, extraction state",
+        "outputs": "Dani Weber metrics with funnel, stuck cases, bottlenecks, workload estimate, and guardrail note",
+        "model": None,
+        "tools": ["FastAPI read endpoints", "PostgreSQL read queries"],
+        "permissions": "Read-only diagnostics; no write permissions; no auto-apply",
+        "human_approval_rules": "All operational changes require Dani approval before implementation",
+        "cost_metric": "Negligible (no AI)",
+        "success_metric": "Metrics generated without mutation and with visible guardrails",
+        "failure_modes": ["No case data", "database unavailable", "stale workflow metadata"],
+        "outcome_score_definition": "1 = diagnostic metrics returned; 0 = endpoint error",
+        "warnings": [
+            "Diagnostic-only. No valuation conclusion, no investment recommendation, no auto-promotion, no discard."
+        ],
+        "recommended_next_action": "Review bottlenecks manually in Agent Ops / Executive Office",
+        "cadence_cron": "0 */4 * * *",
+        "run_mode": "diagnostic_only",
+        "endpoint": "GET /api/investment/executive/dani-weber-metrics",
+        "forbidden_actions": [
+            "investment_recommendation",
+            "valuation_conclusion",
+            "auto_promotion",
+            "discard_without_approval",
+            "data_mutation",
+        ],
     },
     "publisher_agent": {
         "agent_name": "publisher_agent",
