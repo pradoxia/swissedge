@@ -8,7 +8,6 @@ import {
   ErrorBanner,
   InfoBanner,
   LoadingState,
-  PageHeader,
   SectionCard,
   StatusBadge,
 } from '@/app/components/ui';
@@ -61,6 +60,7 @@ import {
   type SecDocumentAcquisitionPackage,
   type SituationEvidenceLinksPackage,
 } from '@/lib/api';
+import styles from './situation.module.css';
 
 const MONO_LABEL: CSSProperties = {
   fontFamily: 'var(--font-mono)',
@@ -109,6 +109,16 @@ const SOURCE_TYPES = [
 function display(value: unknown): string {
   if (value === null || value === undefined || value === '') return '-';
   return String(value);
+}
+
+function filingDate(situation: Situation, secDetection: Record<string, unknown>): string {
+  const value = secDetection.filing_date ?? situation.detected_at;
+  if (!value) return '-';
+  try {
+    return new Date(String(value)).toLocaleDateString();
+  } catch {
+    return String(value);
+  }
 }
 
 function classificationStrengthLabel(value: unknown): string {
@@ -579,9 +589,8 @@ function CandidateCard({
           <div style={{ fontSize: 11, color: 'var(--text-muted)', wordBreak: 'break-all', marginBottom: 6 }}>{candidate.url}</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
             <span className={`status-badge ${resourceStatusClass(candidate.status)}`}>{resourceStatusLabel(candidate.status)}</span>
-            <span className="status-badge status-badge--readonly">{isSecPackageCandidate(candidate) ? 'Candidate SEC file' : candidate.source_type}</span>
+            <span className="status-badge status-badge--readonly">{isSecPackageCandidate(candidate) ? 'Candidate SEC file · not verified' : candidate.source_type}</span>
             <span className="status-badge status-badge--manual">Needs review</span>
-            <span className="status-badge status-badge--readonly">Not verified</span>
             {candidate.source_domain && <span className="status-badge status-badge--readonly">{candidate.source_domain}</span>}
             {candidate.notes && (
               <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{candidate.notes}</span>
@@ -1216,7 +1225,7 @@ export default function SpecialSituationMethodologyPage() {
     }
   }
 
-  if (loading) return <div className="page-container--wide"><LoadingState label="Loading methodology workspace..." /></div>;
+  if (loading) return <div className="page-container--wide"><LoadingState label="Loading case workspace..." /></div>;
   if (error || !situation) {
     return (
       <div className="page-container--wide">
@@ -1226,614 +1235,643 @@ export default function SpecialSituationMethodologyPage() {
     );
   }
 
+  const workflowLabel = WORKFLOW_OPTIONS.find(([value]) => value === workflowStatus)?.[1] ?? caseStatusLabel(workflowStatus, Boolean(researchCaseId));
+  const headerPills = [
+    secDetection.situation_type ?? situation.situation_type,
+    secDetection.detected_form_type ?? situation.filing_type,
+    'SEC EDGAR',
+    filingDate(situation, secDetection as Record<string, unknown>),
+  ];
+
   return (
-    <div className="page-container--wide">
-      <PageHeader
-        title={situation.company_name}
-        subtitle="Methodology workspace"
-        backHref="/investment/situations"
-        backLabel="Special Situations"
-        badge={<StatusBadge value={situation.status} label={caseStatusLabel(situation.status, Boolean(researchCaseId))} />}
-        actions={
-          <>
-            <Link href="/investment/situations" className="btn btn--secondary btn--sm">
-              Back to Kanban
-            </Link>
-            <Link href={`/investment/evaluations/${situation.id}`} className="btn btn--secondary btn--sm">
-              Evaluation Detail
-            </Link>
-          </>
-        }
-      />
-
-      <InfoBanner variant="guardrail">
-        Manual review only · Metadata only · No auto-verification · No investment recommendation.
-      </InfoBanner>
-
-      {error && <ErrorBanner message={error} />}
-
-      {/* Compact top summary strip */}
-      <div className="card" style={{ padding: '14px 18px', display: 'flex', flexWrap: 'wrap', gap: '14px 32px', alignItems: 'flex-start' }}>
-        {([
-          ['Ticker', situation.ticker],
-          ['Type', secDetection.situation_type ?? situation.situation_type],
-          ['Subtype', secDetection.subtype],
-          ['Filing', secDetection.detected_form_type ?? situation.filing_type],
-          ['Filing Date', secDetection.filing_date],
-          ['Playbook', secDetection.selected_playbook ?? situation.selected_playbook],
-          ['Classification Strength', classificationStrengthLabel(secDetection.detection_confidence)],
-        ] as [string, unknown][]).map(([label, value]) => (
-          <div key={label}>
-            <div style={MONO_LABEL}>{label}</div>
-            <div style={{ fontSize: 13, color: 'var(--text-primary)' }}>{display(value)}</div>
+    <div className={styles.page}>
+      <header className={styles.header}>
+        <div className={styles.headerContent}>
+          <Link href="/investment/situations" className={styles.backLink}>
+            Back to Kanban
+          </Link>
+          <div className={styles.titleBlock}>
+            <div className={styles.titleRow}>
+              <h1 className={styles.title}>{situation.company_name}</h1>
+              {situation.ticker && <span className={styles.ticker}>{situation.ticker}</span>}
+              {headerPills.map((pill, index) => (
+                <span key={`${String(pill)}-${index}`} className={styles.statusPill}>
+                  {display(pill)}
+                </span>
+              ))}
+            </div>
+            <div className={styles.titleSubtitle}>
+              {workspace ? (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <span>Workflow</span>
+                  <select
+                    value={workflowStatus}
+                    disabled={savingWorkflow}
+                    onChange={e => handleWorkflowChange(e.target.value)}
+                    className={styles.workflowSelect}
+                    style={{ width: 'auto', minWidth: 190 }}
+                  >
+                    {WORKFLOW_OPTIONS.map(([value, label]) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                  </select>
+                  <span>Manual movement only — does not evaluate or publish</span>
+                </span>
+              ) : (
+                <span>{workflowLabel} · Manual movement only — does not evaluate or publish</span>
+              )}
+            </div>
           </div>
-        ))}
-        {situation.filing_url && (
-          <div style={{ marginLeft: 'auto', alignSelf: 'center' }}>
-            <a href={situation.filing_url} target="_blank" rel="noreferrer" className="btn btn--secondary btn--sm">
-              SEC Filing ↗
-            </a>
-          </div>
-        )}
-      </div>
-
-      <div style={{ marginTop: 16, marginBottom: 16 }}>
-        <SituationQuickLinks
-          situation={situation}
-          researchCaseId={researchCaseId}
-        />
-      </div>
-
-      <div style={{ marginBottom: 16 }}>
-        <SECTransparencyPanel
-          situation={situation}
-          secDetection={secDetection as Record<string, unknown>}
-          documentPackage={documentPackage}
-          evidenceLinks={evidenceLinks}
-        />
-      </div>
-
-      <div style={{ marginBottom: 16 }}>
-        <EducationStudyGuidePanel
-          situation={situation}
-          report={documentationAgentReport}
-        />
-      </div>
-
-      <DocumentationTasksPanel
-        report={documentationAgentReport}
-        situation={situation}
-        onAddSourceLink={handleTaskAddSourceLink}
-        extractionFields={documentationExtractions}
-        extractionError={documentationExtractionsError}
-        readingDraftKey={readingDraftKey}
-        reviewingExtractionId={reviewingExtractionId}
-        editingExtractionId={editingExtractionId}
-        editingExtractionValue={editingExtractionValue}
-        onReadAndMapDraft={handleReadAndMapDraft}
-        onReviewExtraction={handleReviewExtraction}
-        onStartEditExtraction={(field) => {
-          setEditingExtractionId(field.id);
-          setEditingExtractionValue(field.extracted_value ?? '');
-        }}
-        onCancelEditExtraction={() => {
-          setEditingExtractionId(null);
-          setEditingExtractionValue('');
-        }}
-        onEditExtractionValue={setEditingExtractionValue}
-      />
-
-      <div style={{ marginTop: 16 }}>
-        <DocumentationAgentPanel
-          report={documentationAgentReport}
-          loading={documentationAgentReportLoading}
-          error={documentationAgentReportError}
-          showGuardrailNote={false}
-        />
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, marginTop: 16 }}>
-        <DocumentPackagePanel
-          packageData={documentPackage}
-          loading={documentPackageLoading}
-          error={documentPackageError}
-        />
-
-        <SectionCard title="Evidence Links / Source Traceability">
-          {evidenceLinksError && (
-            <InfoBanner variant="warning">{evidenceLinksError}</InfoBanner>
-          )}
-          <EvidenceLinksPanel
-            title="SpecialSituation evidence links"
-            links={evidenceLinks?.links ?? []}
-            guardrails={[]}
-            searchSuggestions={(evidenceLinks?.search_suggestions ?? searchSuggestions).slice(0, 3)}
-            emptyText="No stored evidence links are available for this situation yet."
-            compact
-          />
-        </SectionCard>
-      </div>
-
-      <details
-        open={advancedToolsOpen}
-        onToggle={event => setAdvancedToolsOpen(event.currentTarget.open)}
-        style={{ marginTop: 16, marginBottom: 20 }}
-      >
-        <summary style={{ cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-          Advanced tools
-        </summary>
-        <div style={{ display: 'grid', gap: 16, marginTop: 14 }}>
-          <CaseDocumentationGuidePanel
-            guide={documentationGuide}
-            error={documentationGuideError}
-            onCopy={copyText}
-            copiedKey={copiedKey}
-          />
-
-          <CaseCompletionWorkbench
-            workbench={completionWorkbench}
-            loading={completionWorkbenchLoading}
-            error={completionWorkbenchError}
-          />
-
-          <OfficialSourceFinderPanel
-            finder={officialSourceFinder}
-            loading={officialSourceFinderLoading}
-            error={officialSourceFinderError}
-            copiedKey={copiedKey}
-            onCopy={copyText}
-          />
-
-          <SecDocumentAcquisitionPanel
-            packageData={secDocumentAcquisition}
-            loading={secDocumentAcquisitionLoading}
-            acquiring={secDocumentAcquiring}
-            error={secDocumentAcquisitionError}
-            copiedKey={copiedKey}
-            onCopy={copyText}
-            onAcquire={handleSecDocumentAcquisition}
-          />
-
-          <HistoricalAnaloguesPanel
-            analogues={historicalAnalogues}
-            loading={historicalAnaloguesLoading}
-            error={historicalAnaloguesError}
-          />
-
-          <div>
-            {activityTimelineLoading && (
-              <InfoBanner variant="info">Loading derived timeline...</InfoBanner>
+          <div className={styles.headerActions}>
+            {situation.filing_url && (
+              <a href={situation.filing_url} target="_blank" rel="noreferrer" className={styles.headerActionLink}>
+                Open SEC ↗
+              </a>
             )}
-            <CaseActivityTimeline
-              title="Case Activity Log"
-              events={activityTimeline?.events ?? []}
-              error={activityTimelineError}
-            />
           </div>
         </div>
-      </details>
+      </header>
 
-      <PromotionReadinessPanel
-        readiness={promotionReadiness}
-        loading={promotionReadinessLoading}
-        error={promotionReadinessError}
-      />
+      <main className={styles.canvas}>
+        <div className={styles.disclaimer}>
+          <span className={styles.disclaimerDot} />
+          <span>Manual review only · No auto-verification · No investment recommendation</span>
+        </div>
 
-      {!workspace && (
-        <InfoBanner variant="warning">
-          No methodology workspace attached yet. Run the manual backfill CLI after backend deployment.
-        </InfoBanner>
-      )}
+        {error && <ErrorBanner message={error} />}
 
-      {workspace && (
-        <>
-
-        <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-
-          {/* LEFT — main content */}
-          <div style={{ flex: '1 1 500px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 20 }}>
-
-            <div id="situation-methodology-checklist" style={{ scrollMarginTop: 80 }}>
-            <SectionCard title="Methodology Checklist">
-              <div style={{ display: 'grid', gap: 18 }}>
-                {Object.entries(checklistGroups).map(([section, items]) => (
-                  <div key={section}>
-                    <div className="section-header" style={{ marginBottom: 8 }}>
-                      <span className="section-title">{section}</span>
-                      <div className="section-line" />
-                    </div>
-                    <div style={{ display: 'grid', gap: 8 }}>
-                      {items.map(item => (
-                        <div key={item.check_id} className="card" style={{ padding: '10px 14px' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-primary)', marginBottom: 2 }}>{item.title}</div>
-                              <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>{item.description}</div>
-                            </div>
-                            <StatusBadge value={item.status} label={checklistStatusLabel(item.status)} />
-                          </div>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 8 }}>
-                            {item.required_evidence_types.map(et => (
-                              <span key={et} className="status-badge status-badge--readonly">{et}</span>
-                            ))}
-                            {item.human_review_required && (
-                              <span className="status-badge status-badge--preview">Human review</span>
-                            )}
-                          </div>
-                          {item.notes && (
-                            <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text-secondary)' }}>{item.notes}</div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
+        <div className={styles.layout}>
+          <div className={styles.main}>
+            <section className={styles.section} data-open="true">
+              <div className={styles.sectionHeader}>
+                <span className={styles.sectionTitle}>Documents</span>
               </div>
-            </SectionCard>
-            </div>
+              <div className={styles.sectionBody}>
+                <div style={{ display: 'grid', gap: 16 }}>
+                  <DocumentationTasksPanel
+                    report={documentationAgentReport}
+                    situation={situation}
+                    onAddSourceLink={handleTaskAddSourceLink}
+                    extractionFields={documentationExtractions}
+                    extractionError={documentationExtractionsError}
+                    readingDraftKey={readingDraftKey}
+                    reviewingExtractionId={reviewingExtractionId}
+                    editingExtractionId={editingExtractionId}
+                    editingExtractionValue={editingExtractionValue}
+                    onReadAndMapDraft={handleReadAndMapDraft}
+                    onReviewExtraction={handleReviewExtraction}
+                    onStartEditExtraction={(field) => {
+                      setEditingExtractionId(field.id);
+                      setEditingExtractionValue(field.extracted_value ?? '');
+                    }}
+                    onCancelEditExtraction={() => {
+                      setEditingExtractionId(null);
+                      setEditingExtractionValue('');
+                    }}
+                    onEditExtractionValue={setEditingExtractionValue}
+                  />
 
-            <div id="situation-required-resources" style={{ scrollMarginTop: 80 }}>
-            <SectionCard title="Required Resources">
-              {requiredResources.length === 0 ? (
-                <InfoBanner variant="info">No resources defined for this template.</InfoBanner>
-              ) : (
-                <div style={{ display: 'grid', gap: 14 }}>
-                  {requiredOnly.length > 0 && (
-                    <div>
-                      <div style={{ ...MONO_LABEL, marginBottom: 8 }}>Required ({requiredOnly.length})</div>
-                      <ResourceTable resources={requiredOnly} />
-                    </div>
-                  )}
-                  {optionalOnly.length > 0 && (
-                    <div>
-                      <div style={{ ...MONO_LABEL, marginBottom: 8 }}>Optional ({optionalOnly.length})</div>
-                      <ResourceTable resources={optionalOnly} />
-                    </div>
-                  )}
-                </div>
-              )}
-            </SectionCard>
-            </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
+                    <DocumentPackagePanel
+                      packageData={documentPackage}
+                      loading={documentPackageLoading}
+                      error={documentPackageError}
+                    />
 
-            <div id="situation-resource-candidates" style={{ scrollMarginTop: 80 }}>
-            <SectionCard title="Found / Candidate Resources">
-              {resourceCandidates.length === 0 ? (
-                <InfoBanner variant="info">
-                  No resource candidates stored yet. Run Resource Scout via CLI, or add manually below.
-                </InfoBanner>
-              ) : (
-                <div style={{ display: 'grid', gap: 10 }}>
-                  {secPackageCandidates.length > 0 && (
-                    <div className="card" style={{ padding: '12px 14px', display: 'grid', gap: 10 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                        <div>
-                          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>SEC filing package</div>
-                          <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                            <span className="status-badge status-badge--partial">{secPackageCandidates.length} files available</span>
-                            <span className="status-badge status-badge--readonly">metadata only</span>
-                            <span className="status-badge status-badge--manual">Needs review</span>
-                            <span className="status-badge status-badge--readonly">Not verified</span>
+                    <SectionCard title="Evidence Links / Source Traceability">
+                      {evidenceLinksError && (
+                        <InfoBanner variant="warning">{evidenceLinksError}</InfoBanner>
+                      )}
+                      <EvidenceLinksPanel
+                        title="SpecialSituation evidence links"
+                        links={evidenceLinks?.links ?? []}
+                        guardrails={[]}
+                        searchSuggestions={(evidenceLinks?.search_suggestions ?? searchSuggestions).slice(0, 3)}
+                        emptyText="No stored evidence links are available for this situation yet."
+                        compact
+                      />
+                    </SectionCard>
+                  </div>
+
+                  <details id="add-resource-manually" className={styles.section} style={{ scrollMarginTop: 80 }}>
+                    <summary className={styles.sectionHeader}>
+                      <span className={styles.sectionTitle}>Add source link</span>
+                    </summary>
+                    <div className={styles.sectionBody}>
+                      {workspace ? (
+                        <SectionCard title="Add source link">
+                    <div style={{ display: 'grid', gap: 10 }}>
+                      {resourceForm.task_document_key && (
+                        <div style={{ padding: 10, border: '1px solid var(--border-default)', borderRadius: 8, background: 'var(--bg-subtle)' }}>
+                          <div style={{ fontSize: 12, fontWeight: 650, color: 'var(--text-primary)' }}>
+                            Mapping source link to: {resourceForm.title || resourceForm.task_document_key}
                           </div>
-                        </div>
-                        {secDirectoryUrl && (
-                          <a href={secDirectoryUrl} target="_blank" rel="noreferrer" className="btn btn--secondary btn--sm">
-                            Open SEC directory
-                          </a>
-                        )}
-                      </div>
-
-                      {visibleSecFiles.length > 0 && (
-                        <div style={{ display: 'grid', gap: 6 }}>
-                          <div style={MONO_LABEL}>Likely useful files</div>
-                          {visibleSecFiles.map(candidate => (
-                            <div key={candidate.resource_candidate_id} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', fontSize: 12 }}>
-                              <div style={{ minWidth: 0 }}>
-                                <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{secFileKind(candidate)}</span>
-                                <span style={{ color: 'var(--text-muted)' }}> · {candidateFilename(candidate)}</span>
-                              </div>
-                              {candidate.url && (
-                                <a href={candidate.url} target="_blank" rel="noreferrer" className="btn btn--ghost btn--sm">
-                                  Open
-                                </a>
-                              )}
-                            </div>
-                          ))}
+                          <div style={{ marginTop: 4, fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)', lineHeight: 1.5 }}>
+                            Document key: {resourceForm.task_document_key}
+                            {resourceForm.task_source_hint ? ` · Source hint: ${resourceForm.task_source_hint}` : ''}
+                            {resourceForm.task_checklist_id ? ` · Checklist: ${resourceForm.task_checklist_id}` : ''}
+                            {' · Candidate only; not read, extracted, or verified.'}
+                          </div>
                         </div>
                       )}
-
-                      <details>
-                        <summary style={{ cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-muted)' }}>
-                          Show all SEC files
-                        </summary>
-                        <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
-                          {secPackageCandidates.map(candidate => (
-                            <CandidateCard
-                              key={candidate.resource_candidate_id}
-                              candidate={candidate}
-                              requiredResources={requiredResources}
-                              checklist={workspace.checklist}
-                              savingCandidateId={savingCandidateId}
-                              copiedKey={copiedKey}
-                              onCopy={copyText}
-                              onPatch={handleCandidatePatch}
-                            />
-                          ))}
+                      <div>
+                        <div style={MONO_LABEL}>Title</div>
+                        <input
+                          value={resourceForm.title}
+                          onChange={e => setResourceForm({ ...resourceForm, title: e.target.value })}
+                          placeholder="Optional; generated from domain if blank"
+                          style={INPUT_STYLE}
+                        />
+                      </div>
+                      <div>
+                        <div style={MONO_LABEL}>URL</div>
+                        <input
+                          id="manual-resource-url"
+                          ref={manualResourceUrlRef}
+                          value={resourceForm.url}
+                          onChange={e => setResourceForm({ ...resourceForm, url: e.target.value })}
+                          placeholder="https://..."
+                          style={INPUT_STYLE}
+                        />
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                        <div>
+                          <div style={MONO_LABEL}>Source Type</div>
+                          <select
+                            value={resourceForm.source_type}
+                            onChange={e => setResourceForm({ ...resourceForm, source_type: e.target.value })}
+                            style={{ ...INPUT_STYLE, cursor: 'pointer' }}
+                          >
+                            {SOURCE_TYPES.map(type => (
+                              <option key={type} value={type}>{type}</option>
+                            ))}
+                          </select>
                         </div>
-                      </details>
+                        <div>
+                          <div style={MONO_LABEL}>Notes (optional)</div>
+                          <input
+                            value={resourceForm.notes}
+                            onChange={e => setResourceForm({ ...resourceForm, notes: e.target.value })}
+                            placeholder="Brief note"
+                            style={INPUT_STYLE}
+                          />
+                        </div>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                        <div>
+                          <div style={MONO_LABEL}>Related Required Resource</div>
+                          <select
+                            value={resourceForm.related_resource_id}
+                            onChange={e => setResourceForm({ ...resourceForm, related_resource_id: e.target.value })}
+                            style={{ ...INPUT_STYLE, cursor: 'pointer' }}
+                          >
+                            <option value="">None</option>
+                            {requiredResources.map(resource => (
+                              <option key={resource.resource_id} value={resource.resource_id}>{resource.title}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <div style={MONO_LABEL}>Related Checklist Item</div>
+                          <select
+                            value={resourceForm.related_check_id}
+                            onChange={e => setResourceForm({ ...resourceForm, related_check_id: e.target.value })}
+                            style={{ ...INPUT_STYLE, cursor: 'pointer' }}
+                          >
+                            <option value="">None</option>
+                            {workspace.checklist.map(item => (
+                              <option key={item.check_id} value={item.check_id}>{item.title}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
                     </div>
+                    <div style={{ marginTop: 12, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <button
+                        className="btn btn--secondary btn--sm"
+                        onClick={handleAddResource}
+                        disabled={savingResource || !resourceForm.url}
+                      >
+                        {savingResource ? 'Adding...' : 'Add candidate'}
+                      </button>
+                      {resourceMessage && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{resourceMessage}</span>}
+                      {resourceError && <span style={{ fontSize: 12, color: '#8b2020' }}>{resourceError}</span>}
+                    </div>
+                        </SectionCard>
+                      ) : (
+                        <div className={styles.emptyState}>No workspace attached yet. Run backfill via CLI.</div>
+                      )}
+                    </div>
+                  </details>
+                </div>
+              </div>
+            </section>
+
+            <section className={styles.section} data-open="true">
+              <div className={styles.sectionHeader}>
+                <span className={styles.sectionTitle}>Analysis / Brief</span>
+              </div>
+              <div className={styles.sectionBody}>
+                <div style={{ display: 'grid', gap: 16 }}>
+                  <EducationStudyGuidePanel
+                    situation={situation}
+                    report={documentationAgentReport}
+                  />
+
+                  <CaseDocumentationGuidePanel
+                    guide={documentationGuide}
+                    error={documentationGuideError}
+                    onCopy={copyText}
+                    copiedKey={copiedKey}
+                  />
+
+                  <CaseCompletionWorkbench
+                    workbench={completionWorkbench}
+                    loading={completionWorkbenchLoading}
+                    error={completionWorkbenchError}
+                  />
+                </div>
+              </div>
+            </section>
+
+            <section className={styles.section} data-open="true">
+              <div className={styles.sectionHeader}>
+                <span className={styles.sectionTitle}>Decision</span>
+              </div>
+              <div className={styles.sectionBody}>
+                <div style={{ display: 'grid', gap: 14 }}>
+                  <PromotionReadinessPanel
+                    readiness={promotionReadiness}
+                    loading={promotionReadinessLoading}
+                    error={promotionReadinessError}
+                  />
+
+                  <SectionCard title="Next human action">
+                    <div style={{ display: 'grid', gap: 8 }}>
+                      {researchCaseId ? (
+                        <Link href={`/investment/research/${researchCaseId}`} className="btn btn--secondary btn--sm">
+                          Open ResearchCase
+                        </Link>
+                      ) : (
+                        <button
+                          className="btn btn--secondary btn--sm"
+                          disabled={promoting || !workspace}
+                          onClick={handlePromote}
+                        >
+                          {promoting ? 'Promoting...' : 'Promote to ResearchCase'}
+                        </button>
+                      )}
+                      {promotionMessage && (
+                        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{promotionMessage}</div>
+                      )}
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                        Human decision only. This action does not evaluate, publish, or verify documents automatically.
+                      </div>
+                    </div>
+                  </SectionCard>
+                </div>
+              </div>
+            </section>
+
+            <details
+              className={styles.section}
+              open={advancedToolsOpen}
+              onToggle={event => setAdvancedToolsOpen(event.currentTarget.open)}
+              style={{ marginTop: 4, marginBottom: 20 }}
+            >
+              <summary className={styles.sectionHeader}>
+                <span className={styles.sectionTitle}>Advanced tools · Traceability · Resources · Diagnostics</span>
+              </summary>
+              <div className={styles.sectionBody}>
+                <div className={styles.advancedWrapper}>
+                  <SECTransparencyPanel
+                    situation={situation}
+                    secDetection={secDetection as Record<string, unknown>}
+                    documentPackage={documentPackage}
+                    evidenceLinks={evidenceLinks}
+                  />
+
+                  <DocumentationAgentPanel
+                    report={documentationAgentReport}
+                    loading={documentationAgentReportLoading}
+                    error={documentationAgentReportError}
+                    showGuardrailNote={false}
+                  />
+
+                  {workspace ? (
+                    <>
+                      <div id="situation-methodology-checklist" style={{ scrollMarginTop: 80 }}>
+                        <SectionCard title="Methodology Checklist">
+                          <div style={{ display: 'grid', gap: 18 }}>
+                            {Object.entries(checklistGroups).map(([section, items]) => (
+                              <div key={section}>
+                                <div className="section-header" style={{ marginBottom: 8 }}>
+                                  <span className="section-title">{section}</span>
+                                  <div className="section-line" />
+                                </div>
+                                <div style={{ display: 'grid', gap: 8 }}>
+                                  {items.map(item => (
+                                    <div key={item.check_id} className="card" style={{ padding: '10px 14px' }}>
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                          <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-primary)', marginBottom: 2 }}>{item.title}</div>
+                                          <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>{item.description}</div>
+                                        </div>
+                                        <StatusBadge value={item.status} label={checklistStatusLabel(item.status)} />
+                                      </div>
+                                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 8 }}>
+                                        {item.required_evidence_types.map(et => (
+                                          <span key={et} className="status-badge status-badge--readonly">{et}</span>
+                                        ))}
+                                        {item.human_review_required && (
+                                          <span className="status-badge status-badge--preview">Human review</span>
+                                        )}
+                                      </div>
+                                      {item.notes && (
+                                        <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text-secondary)' }}>{item.notes}</div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </SectionCard>
+                      </div>
+
+                      <div id="situation-required-resources" style={{ scrollMarginTop: 80 }}>
+                        <SectionCard title="Required Resources">
+                          {requiredResources.length === 0 ? (
+                            <InfoBanner variant="info">No resources defined for this template.</InfoBanner>
+                          ) : (
+                            <div style={{ display: 'grid', gap: 14 }}>
+                              {requiredOnly.length > 0 && (
+                                <div>
+                                  <div style={{ ...MONO_LABEL, marginBottom: 8 }}>Required ({requiredOnly.length})</div>
+                                  <ResourceTable resources={requiredOnly} />
+                                </div>
+                              )}
+                              {optionalOnly.length > 0 && (
+                                <div>
+                                  <div style={{ ...MONO_LABEL, marginBottom: 8 }}>Optional ({optionalOnly.length})</div>
+                                  <ResourceTable resources={optionalOnly} />
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </SectionCard>
+                      </div>
+
+                      <div id="situation-resource-candidates" style={{ scrollMarginTop: 80 }}>
+                        <SectionCard title="Candidate Resources">
+                          {resourceCandidates.length === 0 ? (
+                            <InfoBanner variant="info">
+                              No resource candidates stored yet. Run Resource Scout via CLI, or add manually below.
+                            </InfoBanner>
+                          ) : (
+                            <div style={{ display: 'grid', gap: 10 }}>
+                              {secPackageCandidates.length > 0 && (
+                                <div className="card" style={{ padding: '12px 14px', display: 'grid', gap: 10 }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                                    <div>
+                                      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>SEC filing package</div>
+                                      <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                                        <span className="status-badge status-badge--partial">{secPackageCandidates.length} candidate files — not verified</span>
+                                        <span className="status-badge status-badge--readonly">metadata only</span>
+                                        <span className="status-badge status-badge--manual">Needs review</span>
+                                        <span className="status-badge status-badge--readonly">Not verified</span>
+                                      </div>
+                                    </div>
+                                    {secDirectoryUrl && (
+                                      <a href={secDirectoryUrl} target="_blank" rel="noreferrer" className="btn btn--secondary btn--sm">
+                                        Open SEC directory
+                                      </a>
+                                    )}
+                                  </div>
+
+                                  {visibleSecFiles.length > 0 && (
+                                    <div style={{ display: 'grid', gap: 6 }}>
+                                      <div style={MONO_LABEL}>Likely useful files</div>
+                                      {visibleSecFiles.map(candidate => (
+                                        <div key={candidate.resource_candidate_id} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', fontSize: 12 }}>
+                                          <div style={{ minWidth: 0 }}>
+                                            <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{secFileKind(candidate)}</span>
+                                            <span style={{ color: 'var(--text-muted)' }}> · {candidateFilename(candidate)}</span>
+                                          </div>
+                                          {candidate.url && (
+                                            <a href={candidate.url} target="_blank" rel="noreferrer" className="btn btn--ghost btn--sm">
+                                              Open
+                                            </a>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+
+                                  <details>
+                                    <summary style={{ cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-muted)' }}>
+                                      Show all SEC files
+                                    </summary>
+                                    <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
+                                      {secPackageCandidates.map(candidate => (
+                                        <CandidateCard
+                                          key={candidate.resource_candidate_id}
+                                          candidate={candidate}
+                                          requiredResources={requiredResources}
+                                          checklist={workspace.checklist}
+                                          savingCandidateId={savingCandidateId}
+                                          copiedKey={copiedKey}
+                                          onCopy={copyText}
+                                          onPatch={handleCandidatePatch}
+                                        />
+                                      ))}
+                                    </div>
+                                  </details>
+                                </div>
+                              )}
+
+                              {otherCandidates.map(candidate => (
+                                <CandidateCard
+                                  key={candidate.resource_candidate_id}
+                                  candidate={candidate}
+                                  requiredResources={requiredResources}
+                                  checklist={workspace.checklist}
+                                  savingCandidateId={savingCandidateId}
+                                  copiedKey={copiedKey}
+                                  onCopy={copyText}
+                                  onPatch={handleCandidatePatch}
+                                />
+                              ))}
+                            </div>
+                          )}
+                        </SectionCard>
+                      </div>
+                    </>
+                  ) : (
+                    <div className={styles.emptyState}>No workspace attached yet. Run backfill via CLI.</div>
                   )}
 
-                  {otherCandidates.map(candidate => (
-                    <CandidateCard
-                      key={candidate.resource_candidate_id}
-                      candidate={candidate}
-                      requiredResources={requiredResources}
-                      checklist={workspace.checklist}
-                      savingCandidateId={savingCandidateId}
-                      copiedKey={copiedKey}
-                      onCopy={copyText}
-                      onPatch={handleCandidatePatch}
-                    />
-                  ))}
-                </div>
-              )}
-            </SectionCard>
-            </div>
+                  <OfficialSourceFinderPanel
+                    finder={officialSourceFinder}
+                    loading={officialSourceFinderLoading}
+                    error={officialSourceFinderError}
+                    copiedKey={copiedKey}
+                    onCopy={copyText}
+                  />
 
-            <div id="add-resource-manually" style={{ scrollMarginTop: 80 }}>
-            <SectionCard title="Add Source Link Manually">
-              <div style={{ display: 'grid', gap: 10 }}>
-                {resourceForm.task_document_key && (
-                  <div style={{ padding: 10, border: '1px solid var(--border-default)', borderRadius: 8, background: 'var(--bg-subtle)' }}>
-                    <div style={{ fontSize: 12, fontWeight: 650, color: 'var(--text-primary)' }}>
-                      Mapping source link to: {resourceForm.title || resourceForm.task_document_key}
-                    </div>
-                    <div style={{ marginTop: 4, fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)', lineHeight: 1.5 }}>
-                      Document key: {resourceForm.task_document_key}
-                      {resourceForm.task_source_hint ? ` · Source hint: ${resourceForm.task_source_hint}` : ''}
-                      {resourceForm.task_checklist_id ? ` · Checklist: ${resourceForm.task_checklist_id}` : ''}
-                      {' · Candidate only; not read, extracted, or verified.'}
-                    </div>
-                  </div>
-                )}
-                <div>
-                  <div style={MONO_LABEL}>Title</div>
-                  <input
-                    value={resourceForm.title}
-                    onChange={e => setResourceForm({ ...resourceForm, title: e.target.value })}
-                    placeholder="Optional; generated from domain if blank"
-                    style={INPUT_STYLE}
+                  <SecDocumentAcquisitionPanel
+                    packageData={secDocumentAcquisition}
+                    loading={secDocumentAcquisitionLoading}
+                    acquiring={secDocumentAcquiring}
+                    error={secDocumentAcquisitionError}
+                    copiedKey={copiedKey}
+                    onCopy={copyText}
+                    onAcquire={handleSecDocumentAcquisition}
                   />
-                </div>
-                <div>
-                  <div style={MONO_LABEL}>URL</div>
-                  <input
-                    id="manual-resource-url"
-                    ref={manualResourceUrlRef}
-                    value={resourceForm.url}
-                    onChange={e => setResourceForm({ ...resourceForm, url: e.target.value })}
-                    placeholder="https://..."
-                    style={INPUT_STYLE}
+
+                  <HistoricalAnaloguesPanel
+                    analogues={historicalAnalogues}
+                    loading={historicalAnaloguesLoading}
+                    error={historicalAnaloguesError}
                   />
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+
                   <div>
-                    <div style={MONO_LABEL}>Source Type</div>
-                    <select
-                      value={resourceForm.source_type}
-                      onChange={e => setResourceForm({ ...resourceForm, source_type: e.target.value })}
-                      style={{ ...INPUT_STYLE, cursor: 'pointer' }}
-                    >
-                      {SOURCE_TYPES.map(type => (
-                        <option key={type} value={type}>{type}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <div style={MONO_LABEL}>Notes (optional)</div>
-                    <input
-                      value={resourceForm.notes}
-                      onChange={e => setResourceForm({ ...resourceForm, notes: e.target.value })}
-                      placeholder="Brief note"
-                      style={INPUT_STYLE}
+                    {activityTimelineLoading && (
+                      <InfoBanner variant="info">Loading derived timeline...</InfoBanner>
+                    )}
+                    <CaseActivityTimeline
+                      title="Case Activity Log"
+                      events={activityTimeline?.events ?? []}
+                      error={activityTimelineError}
                     />
                   </div>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                  <div>
-                    <div style={MONO_LABEL}>Related Required Resource</div>
-                    <select
-                      value={resourceForm.related_resource_id}
-                      onChange={e => setResourceForm({ ...resourceForm, related_resource_id: e.target.value })}
-                      style={{ ...INPUT_STYLE, cursor: 'pointer' }}
-                    >
-                      <option value="">None</option>
-                      {requiredResources.map(resource => (
-                        <option key={resource.resource_id} value={resource.resource_id}>{resource.title}</option>
-                      ))}
-                    </select>
+
+                  <div id="situation-sec-metadata" style={{ scrollMarginTop: 80 }}>
+                    <SectionCard title="Detection">
+                      <div style={{ display: 'grid', gap: 10 }}>
+                        {([
+                          ['CIK', secDetection.cik],
+                          ['Accession', secDetection.accession_number],
+                          ['Template', secDetection.selected_playbook ?? situation.selected_playbook],
+                        ] as [string, unknown][]).map(([label, value]) => (
+                          <div key={label}>
+                            <div style={MONO_LABEL}>{label}</div>
+                            <div style={{ fontSize: 12, color: 'var(--text-primary)', wordBreak: 'break-all' }}>{display(value)}</div>
+                          </div>
+                        ))}
+                        {workspace?.requires_course_review && (
+                          <div style={{ marginTop: 2, padding: '5px 8px', background: 'var(--bg-subtle)', borderRadius: 4 }}>
+                            <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-faint)', textTransform: 'uppercase' }}>
+                              Requires course review
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </SectionCard>
                   </div>
-                  <div>
-                    <div style={MONO_LABEL}>Related Checklist Item</div>
-                    <select
-                      value={resourceForm.related_check_id}
-                      onChange={e => setResourceForm({ ...resourceForm, related_check_id: e.target.value })}
-                      style={{ ...INPUT_STYLE, cursor: 'pointer' }}
-                    >
-                      <option value="">None</option>
-                      {workspace.checklist.map(item => (
-                        <option key={item.check_id} value={item.check_id}>{item.title}</option>
-                      ))}
-                    </select>
+
+                  <div id="situation-search-suggestions" style={{ scrollMarginTop: 80 }}>
+                    <SectionCard title="Search Suggestions">
+                      {searchSuggestions.length === 0 ? (
+                        <InfoBanner variant="info">
+                          No stored manual search suggestions yet. These suggestions are prompts for human research only; SwissEdge does not run them automatically.
+                        </InfoBanner>
+                      ) : (
+                        <>
+                          <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 8 }}>
+                            Stored manual search suggestions. They are not fetched automatically, not evidence, and not verified.
+                            Paste this into Google, SEC search, or company IR. SwissEdge has not run this search automatically.
+                            {copiedKey === 'copy-failed' && (
+                              <span style={{ display: 'block', marginTop: 4, color: '#b45309' }}>Copy failed - select the query text manually.</span>
+                            )}
+                          </div>
+                          <button
+                            className="btn btn--ghost btn--sm"
+                            onClick={() => setSuggestionsOpen(!suggestionsOpen)}
+                            style={{ marginBottom: 8, width: '100%', textAlign: 'left' }}
+                          >
+                            {suggestionsOpen ? 'Hide' : 'Show'} {searchSuggestions.length} quer{searchSuggestions.length === 1 ? 'y' : 'ies'}
+                          </button>
+                          {suggestionsOpen && (
+                            <div style={{ display: 'grid', gap: 6 }}>
+                              {searchSuggestions.map(suggestion => (
+                                <div
+                                  key={suggestion.suggestion_id}
+                                  className="card"
+                                  style={{ padding: '8px 10px', display: 'flex', alignItems: 'flex-start', gap: 8 }}
+                                >
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)', textTransform: 'uppercase', marginBottom: 2 }}>
+                                      Manual search suggestion / {suggestion.suggestion_type}
+                                    </div>
+                                    <div style={{ fontSize: 12, color: 'var(--text-primary)', wordBreak: 'break-word' }}>{suggestion.query}</div>
+                                  </div>
+                                  <button
+                                    className="btn btn--ghost btn--sm"
+                                    onClick={() => copyText(suggestion.query, suggestion.suggestion_id)}
+                                    style={{ flexShrink: 0 }}
+                                  >
+                                    {copiedKey === suggestion.suggestion_id ? 'Copied' : 'Copy query'}
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </SectionCard>
                   </div>
                 </div>
               </div>
-              <div style={{ marginTop: 12, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                <button
-                  className="btn btn--secondary btn--sm"
-                  onClick={handleAddResource}
-                  disabled={savingResource || !resourceForm.url}
-                >
-                  {savingResource ? 'Adding...' : 'Add candidate'}
-                </button>
-                {resourceMessage && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{resourceMessage}</span>}
-                {resourceError && <span style={{ fontSize: 12, color: '#8b2020' }}>{resourceError}</span>}
-              </div>
-            </SectionCard>
-            </div>
-
+            </details>
           </div>
 
-          {/* RIGHT — sidebar */}
-          <div style={{ flex: '0 0 300px', minWidth: 280, display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-            <div id="situation-sec-metadata" style={{ scrollMarginTop: 80 }}>
-            <SectionCard title="Detection">
-              <div style={{ display: 'grid', gap: 10 }}>
-                {([
-                  ['Detected', situation.detected_at ? new Date(situation.detected_at).toLocaleString() : null],
-                  ['CIK', secDetection.cik],
-                  ['Accession', secDetection.accession_number],
-                  ['Signal', secDetection.detected_form_type ?? situation.filing_type],
-                  ['Template', secDetection.selected_playbook ?? situation.selected_playbook],
-                ] as [string, unknown][]).map(([label, value]) => (
-                  <div key={label}>
-                    <div style={MONO_LABEL}>{label}</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-primary)', wordBreak: 'break-all' }}>{display(value)}</div>
-                  </div>
-                ))}
-                {workspace.requires_course_review && (
-                  <div style={{ marginTop: 2, padding: '5px 8px', background: 'var(--bg-subtle)', borderRadius: 4 }}>
-                    <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-faint)', textTransform: 'uppercase' }}>
-                      Requires course review
-                    </span>
-                  </div>
-                )}
-              </div>
-            </SectionCard>
-            </div>
-
-            <SectionCard title="Workflow">
-              <div style={MONO_LABEL}>Move to</div>
-              <select
-                value={workflowStatus}
-                disabled={savingWorkflow}
-                onChange={e => handleWorkflowChange(e.target.value)}
-                style={{ ...INPUT_STYLE, cursor: 'pointer' }}
-              >
-                {WORKFLOW_OPTIONS.map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
-                ))}
-              </select>
-              <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-muted)' }}>
-                Movement is manual and does not evaluate or publish the situation.
-              </div>
-            </SectionCard>
-
+          <aside className={styles.sidebar}>
             <SectionCard title="Progress">
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <div className={styles.progressGrid}>
                 {([
-                  ['Total Checks', progress?.total_checks ?? 0],
+                  ['Missing Required', progress?.missing_required_resources ?? 0],
                   ['Mapped for Review', progress?.evidence_found ?? 0],
                   ['Verified', progress?.verified_checks ?? 0],
-                  ['Missing Required', progress?.missing_required_resources ?? 0],
                   ['Candidates', progress?.candidate_resources ?? resourceCandidates.filter(item => item.status === 'candidate_found').length],
-                  ['Human Review', progress?.human_review_required_count ?? workspace.checklist.filter(item => item.human_review_required).length],
                 ] as [string, number][]).map(([label, value]) => (
-                  <div key={label} style={{ background: 'var(--bg-subtle)', borderRadius: 6, padding: '8px 10px' }}>
-                    <div style={MONO_LABEL}>{label}</div>
-                    <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)' }}>{value}</div>
+                  <div key={label} className={styles.progressCell}>
+                    <div className={styles.progressLabel}>{label}</div>
+                    <div className={styles.progressValue}>{value}</div>
                   </div>
                 ))}
-              </div>
-              <div style={{ marginTop: 10, fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)' }}>
-                {workspace.template_key} / v{workspace.template_version}
               </div>
             </SectionCard>
 
             <div id="situation-researchcase-promotion" style={{ scrollMarginTop: 80 }}>
-            <SectionCard title="Next Actions">
-              <div style={{ display: 'grid', gap: 6 }}>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>
-                  Automation is not running. All actions are manual / CLI-only.
-                </div>
-                <button className="btn btn--secondary btn--sm" disabled>Resource Scout — run via CLI</button>
-                {researchCaseId ? (
-                  <Link href={`/investment/research/${researchCaseId}`} className="btn btn--secondary btn--sm">
-                    Open ResearchCase
-                  </Link>
-                ) : (
-                  <button
-                    className="btn btn--secondary btn--sm"
-                    disabled={promoting || !workspace}
-                    onClick={handlePromote}
-                  >
-                    {promoting ? 'Promoting...' : 'Promote to ResearchCase'}
-                  </button>
-                )}
-                {promotionMessage && (
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{promotionMessage}</div>
-                )}
-              </div>
-            </SectionCard>
-            </div>
-
-            <div id="situation-search-suggestions" style={{ scrollMarginTop: 80 }}>
-            <SectionCard title="Search Suggestions">
-              {searchSuggestions.length === 0 ? (
-                <InfoBanner variant="info">
-                  No stored manual search suggestions yet. These suggestions are prompts for human research only; SwissEdge does not run them automatically.
-                </InfoBanner>
-              ) : (
-                <>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 8 }}>
-                    Stored manual search suggestions. They are not fetched automatically, not evidence, and not verified.
-                    Paste this into Google, SEC search, or company IR. SwissEdge has not run this search automatically.
-                    {copiedKey === 'copy-failed' && (
-                      <span style={{ display: 'block', marginTop: 4, color: '#b45309' }}>Copy failed - select the query text manually.</span>
-                    )}
-                  </div>
-                  <button
-                    className="btn btn--ghost btn--sm"
-                    onClick={() => setSuggestionsOpen(!suggestionsOpen)}
-                    style={{ marginBottom: 8, width: '100%', textAlign: 'left' }}
-                  >
-                    {suggestionsOpen ? '▲ Hide' : '▶ Show'} {searchSuggestions.length} quer{searchSuggestions.length === 1 ? 'y' : 'ies'}
-                  </button>
-                  {suggestionsOpen && (
-                    <div style={{ display: 'grid', gap: 6 }}>
-                      {searchSuggestions.map(suggestion => (
-                        <div
-                          key={suggestion.suggestion_id}
-                          className="card"
-                          style={{ padding: '8px 10px', display: 'flex', alignItems: 'flex-start', gap: 8 }}
-                        >
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)', textTransform: 'uppercase', marginBottom: 2 }}>
-                              Manual search suggestion / {suggestion.suggestion_type}
-                            </div>
-                            <div style={{ fontSize: 12, color: 'var(--text-primary)', wordBreak: 'break-word' }}>{suggestion.query}</div>
-                          </div>
-                          <button
-                            className="btn btn--ghost btn--sm"
-                            onClick={() => copyText(suggestion.query, suggestion.suggestion_id)}
-                            style={{ flexShrink: 0 }}
-                          >
-                            {copiedKey === suggestion.suggestion_id ? 'Copied' : 'Copy query'}
-                          </button>
-                        </div>
-                      ))}
-                    </div>
+              <SectionCard title="Decision summary">
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {researchCaseId ? (
+                    <Link href={`/investment/research/${researchCaseId}`} className="btn btn--secondary btn--sm">
+                      Open ResearchCase
+                    </Link>
+                  ) : (
+                    <button
+                      className="btn btn--secondary btn--sm"
+                      disabled={promoting || !workspace}
+                      onClick={handlePromote}
+                    >
+                      {promoting ? 'Promoting...' : 'Promote to ResearchCase'}
+                    </button>
                   )}
-                </>
-              )}
-            </SectionCard>
+                  {promotionMessage && (
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{promotionMessage}</div>
+                  )}
+                </div>
+              </SectionCard>
             </div>
 
-          </div>
+            <div className={styles.advancedNote}>
+              Resource Scout: run via CLI when ready.
+            </div>
+          </aside>
         </div>
-        </>
-      )}
+      </main>
     </div>
   );
 }
