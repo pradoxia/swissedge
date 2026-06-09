@@ -2,20 +2,28 @@ from __future__ import annotations
 
 import inspect
 import json
+import logging
 import uuid
 
 import pytest
 
 from backend.models.investment import SpecialSituation
-from backend.models.investment_research import ResearchCase
+from backend.models.investment_research import ResearchCase, ResearchDocument
 from backend.services.investment import sec_document_acquisition as module
 from backend.services.investment.methodology_workspace import WORKSPACE_KEY
 from backend.services.investment.sec_document_acquisition import (
+    BODY_STATUS_ACQUIRED,
+    BODY_STATUS_FAILED_FETCH,
+    BODY_STATUS_FAILED_PARSE,
+    BODY_STATUS_SKIPPED_INVALID_URL,
+    BODY_STATUS_SKIPPED_TOO_LARGE,
+    acquire_research_document_body_text,
     acquire_sec_documents_from_preview,
     apply_research_case_sec_acquisition_metadata,
     apply_situation_sec_acquisition_metadata,
     build_research_case_sec_document_acquisition_preview,
     build_situation_sec_document_acquisition_preview,
+    extract_sec_document_body_text,
 )
 
 SEC_URL = "https://www.sec.gov/Archives/edgar/data/1829280/000114036126019536/formsc-to.htm"
@@ -86,6 +94,18 @@ def _case(*, filing_url: str | None = SEC_URL) -> ResearchCase:
     return rc
 
 
+def _research_document(*, url: str = SEC_URL) -> ResearchDocument:
+    return ResearchDocument(
+        id=uuid.uuid4(),
+        research_case_id=uuid.uuid4(),
+        doc_type="official_sec_filing_document",
+        url=url,
+        title="SEC filing",
+        summary="Metadata only.",
+        added_by="manual_sec_document_acquisition",
+    )
+
+
 def _text(value) -> str:
     return json.dumps(value.model_dump() if hasattr(value, "model_dump") else value).lower()
 
@@ -144,7 +164,7 @@ async def test_post_creates_metadata_candidates_not_verified_evidence():
     assert package.acquired_documents
     assert all(doc.verified is False for doc in package.acquired_documents)
     assert all(doc.human_review_required is True for doc in package.acquired_documents)
-    assert "body" not in _text(package)
+    assert all(doc.body_text_excerpt is None for doc in package.acquired_documents)
 
 
 @pytest.mark.asyncio
@@ -205,3 +225,126 @@ def test_network_client_is_restricted_to_sec_acquisition_service():
     assert "httpx.AsyncClient" in source
     assert "SEC_HOSTS" in source
     assert "_is_sec_url" in source
+
+
+def test_sec_url_validation_accepts_only_sec_https_urls():
+    assert module._is_sec_url("https://www.sec.gov/Archives/edgar/data/example.htm") is True
+    assert module._is_sec_url("https://sec.gov/Archives/edgar/data/example.htm") is True
+    assert module._is_sec_url("http://www.sec.gov/Archives/edgar/data/example.htm") is False
+    assert module._is_sec_url("https://example.com/Archives/edgar/data/example.htm") is False
+
+
+def test_html_document_body_is_converted_to_plain_text():
+    html = """
+    <html><head><style>.x{}</style><script>alert('x')</script></head>
+    <body><nav>Navigation</nav><h1>Offer to Purchase</h1><p>Important terms&nbsp;here.</p></body></html>
+    """
+
+    text = extract_sec_document_body_text(html, "text/html")
+
+    assert "Offer to Purchase" in text
+    assert "Important terms" in text
+    assert "alert" not in text
+    assert "Navigation" not in text
+    assert "\n" not in text
+
+
+def test_plain_text_document_body_is_preserved_and_normalized():
+    raw = b"Offer\r\n\r\n    terms\t\tpreserved."
+
+    text = extract_sec_document_body_text(raw, "text/plain")
+
+    assert text == "Offer terms preserved."
+
+
+@pytest.mark.asyncio
+async def test_body_acquisition_rejects_non_sec_url():
+    doc = _research_document(url="https://example.com/not-sec.htm")
+    called = False
+
+    async def fetcher(url: str):
+        nonlocal called
+        called = True
+        return b"secret body", "text/plain"
+
+    result = await acquire_research_document_body_text(doc, fetcher=fetcher)
+
+    assert called is False
+    assert result.body_text_status == BODY_STATUS_SKIPPED_INVALID_URL
+    assert result.body_text is None
+    assert "sec.gov" in result.body_text_error
+
+
+@pytest.mark.asyncio
+async def test_body_acquisition_skips_oversized_response():
+    doc = _research_document()
+
+    async def fetcher(url: str):
+        return b"x" * 12, "text/plain"
+
+    result = await acquire_research_document_body_text(doc, fetcher=fetcher, max_body_bytes=10)
+
+    assert result.body_text_status == BODY_STATUS_SKIPPED_TOO_LARGE
+    assert result.body_text is None
+    assert result.body_text_size_bytes == 12
+    assert "exceeded" in result.body_text_error
+
+
+@pytest.mark.asyncio
+async def test_body_acquisition_records_failed_fetch_safely():
+    doc = _research_document()
+
+    async def fetcher(url: str):
+        raise RuntimeError("timeout while fetching document")
+
+    result = await acquire_research_document_body_text(doc, fetcher=fetcher)
+
+    assert result.body_text_status == BODY_STATUS_FAILED_FETCH
+    assert result.body_text is None
+    assert "timeout" in result.body_text_error
+
+
+@pytest.mark.asyncio
+async def test_body_acquisition_records_failed_parse_safely():
+    doc = _research_document()
+
+    async def fetcher(url: str):
+        return b"    \n\t ", "text/plain"
+
+    result = await acquire_research_document_body_text(doc, fetcher=fetcher)
+
+    assert result.body_text_status == BODY_STATUS_FAILED_PARSE
+    assert result.body_text is None
+    assert "extractable text" in result.body_text_error
+
+
+@pytest.mark.asyncio
+async def test_body_acquisition_updates_persistence_fields():
+    doc = _research_document()
+
+    async def fetcher(url: str):
+        return b"<html><body><p>Offer body text for downstream analysis.</p></body></html>", "text/html"
+
+    result = await acquire_research_document_body_text(doc, fetcher=fetcher)
+
+    assert result.body_text_status == BODY_STATUS_ACQUIRED
+    assert result.body_text == "Offer body text for downstream analysis."
+    assert result.body_text_excerpt == "Offer body text for downstream analysis."
+    assert result.body_text_sha256
+    assert result.body_text_acquired_at is not None
+    assert result.body_text_size_bytes is not None
+
+
+@pytest.mark.asyncio
+async def test_body_acquisition_does_not_log_full_body_text(caplog):
+    doc = _research_document()
+    sensitive_body = "Confidential-looking SEC text that should not appear in logs."
+
+    async def fetcher(url: str):
+        return sensitive_body.encode("utf-8"), "text/plain"
+
+    with caplog.at_level(logging.INFO):
+        result = await acquire_research_document_body_text(doc, fetcher=fetcher)
+
+    assert result.body_text_status == BODY_STATUS_ACQUIRED
+    assert sensitive_body not in caplog.text

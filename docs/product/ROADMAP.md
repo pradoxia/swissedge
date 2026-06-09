@@ -1,17 +1,17 @@
 ---
 document_id: ROADMAP
 title: Product Roadmap
-version: 0.5.0
+version: 0.5.1
 status: active
 owner: Dani
-last_updated: 2026-06-09
+last_updated: 2026-06-10
 source_of_truth: true
 review_cycle: manual
 ---
 
 # SwissEdge Roadmap
 
-Date: 2026-06-09
+Date: 2026-06-10
 
 ## Current Direction: MVP v3 Research Loop
 
@@ -100,10 +100,13 @@ These sprints supersede the previous governance-first candidate sprint list. The
 
 ### M1 - SEC Document Acquisition v2: Document Body Text
 
-- Add manually triggered acquisition of selected SEC document body text.
-- Keep acquisition bounded to SEC-hosted documents and approved throttle behavior.
-- Persist body text only after Dani approves the storage approach and any required migration.
-- Do not change cron, scanner behavior, promotion, discard, publishing, or live AI.
+Status: implemented locally in Sprint M1. Production migration still requires Dani approval.
+
+- Manually triggered SEC body text acquisition for selected `ResearchDocument` rows.
+- Acquisition remains bounded to SEC-hosted URLs accepted by the existing SEC URL validation logic.
+- Nullable DB fields persist body text, excerpt, hash, acquired timestamp, status, safe error, and size metadata.
+- Existing ResearchCase SEC acquisition can store body text for newly acquired SEC document candidates.
+- No cron, scanner behavior, promotion, discard, publishing, evaluator v2, brief generation, or live AI activation.
 
 ### M2 - Gated AI Analysis / Analyze Case
 
@@ -240,6 +243,7 @@ The earlier candidate list prioritized governance stabilization, observability r
 
 | Version | Date | Author | Change |
 | --- | --- | --- | --- |
+| 0.5.1 | 2026-06-10 | Codex | Marked M1 SEC Document Acquisition v2 as implemented locally and documented production migration approval boundary. |
 | 0.5.0 | 2026-06-09 | Codex | Adopted MVP v3 roadmap with M1-M6 research-loop sprints, North Star validation, and post-MVP governance/agent/source/publishing work. |
 | 0.4.0 | 2026-06-09 | Codex | Marked Scheduled SEC EDGAR Detection Activation as implemented and documented remaining scanner reliability guardrails. |
 | 0.3.0 | 2026-06-08 | Codex | Added LLM-Assisted Governance Agents as a future sprint candidate and clarified current agents are not live Claude/LLM agents. |

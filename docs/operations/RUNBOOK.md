@@ -1,0 +1,112 @@
+---
+document_id: RUNBOOK
+title: Operations Runbook
+version: 0.3.0
+status: active
+owner: Dani
+last_updated: 2026-06-10
+source_of_truth: true
+review_cycle: manual
+---
+
+# SwissEdge Operations Runbook
+
+Date: 2026-06-10
+
+## Daily Review
+
+- Open Mission Control: `/`
+- Open Agent Ops: `/agent-ops`
+- Open Radar Status: `/investment/radar-status`
+- Open Situations: `/investment/situations`
+- Review Intelligence KPIs: `/investment/intelligence`
+
+## Guarded Actions
+
+Do not run guarded actions unless explicitly approved:
+
+- Trigger `/api/investment/scan`.
+- Change or install cron.
+- Enable live AI globally.
+- Run migrations.
+- Publish externally.
+- Mutate governance data.
+- Acquire SEC document body text outside the manual SEC-only acquisition flow.
+
+## Runtime Validation
+
+Use the frontend and read-only APIs first:
+
+- `GET /api/health/full`
+- `GET /api/investment/detection-runs/status`
+- `GET /api/observability/agents`
+- `GET /api/observability/mission-control`
+- `GET /api/agent-ops/rooms`
+
+## Manual SEC Document Body Acquisition
+
+M1 adds manual SEC body acquisition for `ResearchDocument` rows created from SEC document candidates.
+
+Operational rules:
+
+- Body text acquisition is manual only.
+- Body text acquisition is SEC-only and uses the existing SEC URL validation boundary.
+- Body text acquisition must not crawl arbitrary external links.
+- Body text acquisition must not trigger scans, cron, live AI, evaluator v2, brief generation, promotion, rejection, publishing, or evidence verification.
+- Body text is stored on `ResearchDocument` only after URL validation passes.
+- Production migration for `research_documents.body_text*` fields requires Dani approval before deployment.
+- Full document body text must not be logged.
+
+Safe statuses:
+
+- `requested`
+- `acquired`
+- `skipped_invalid_url`
+- `skipped_too_large`
+- `failed_fetch`
+- `failed_parse`
+- `failed_persist`
+
+Manual endpoints:
+
+- `POST /api/investment/research-cases/{research_case_id}/sec-document-acquisition` acquires SEC metadata candidates and attempts body text for newly stored `ResearchDocument` rows.
+- `POST /api/investment/research-documents/{document_id}/body-text-acquisition` retries body acquisition for one existing `ResearchDocument`.
+
+## Scheduled SEC EDGAR Detection
+
+Scheduled detection is documented in `docs/operations/SCHEDULED_DETECTION.md`.
+
+Operational rules:
+
+- The manual endpoint `POST /api/investment/scan` and the scheduled wrapper both use the shared scan orchestrator.
+- Scheduled detection is disabled unless `SWISSEDGE_SCHEDULED_SCAN_ENABLED=true` or the wrapper is called with `--enable`.
+- The intended cron schedule is Monday-Friday at 08:00, 14:00, and 20:00 Europe/Zurich.
+- Every attempt must create or update a `DetectionRun` when the database is reachable.
+- Missing `SEC_USER_AGENT` must be reported as `failed_config_error` without printing the value.
+- Scheduled detection may create metadata-only `SpecialSituation` triage records after deduplication.
+- Scheduled detection must not create `ResearchCase` records, promote, discard, publish, run live AI, or emit investment recommendations.
+
+Safe checks:
+
+```bash
+python scripts/run_special_situation_scan.py --help
+python -m py_compile backend/services/investment/scan_orchestrator.py scripts/run_special_situation_scan.py
+```
+
+## Incident Notes
+
+For scanner, cron, live AI, or production incidents:
+
+- Record what happened.
+- Record what was checked.
+- Record affected routes/endpoints.
+- Record whether data was mutated.
+- Do not apply fixes without Dani approval.
+
+## Changelog
+
+| Version | Date | Author | Change |
+| --- | --- | --- | --- |
+| 0.3.0 | 2026-06-10 | Codex | Added M1 manual SEC document body acquisition operating rules, safe statuses, endpoints, and production migration approval note. |
+| 0.2.0 | 2026-06-09 | Codex | Added scheduled SEC EDGAR detection operating rules and safe validation commands. |
+| 0.1.0 | 2026-06-08 | Codex | Initial official version. |

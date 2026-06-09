@@ -107,6 +107,13 @@ class ResearchDocument(Base):
     retrieved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     summary: Mapped[str | None] = mapped_column(Text)
     added_by: Mapped[str | None] = mapped_column(String(50))
+    body_text: Mapped[str | None] = mapped_column(Text)
+    body_text_excerpt: Mapped[str | None] = mapped_column(Text)
+    body_text_sha256: Mapped[str | None] = mapped_column(String(64))
+    body_text_acquired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    body_text_status: Mapped[str | None] = mapped_column(String(40))
+    body_text_error: Mapped[str | None] = mapped_column(Text)
+    body_text_size_bytes: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     research_case: Mapped["ResearchCase | None"] = relationship(back_populates="documents")

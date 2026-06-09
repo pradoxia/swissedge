@@ -7,7 +7,7 @@ from sqlalchemy.orm import selectinload
 from backend.db.database import get_db
 from backend.models.agent_ops import AgentActivity
 from backend.models.investment import SpecialSituation
-from backend.models.investment_research import HistoricalCase, ResearchCase
+from backend.models.investment_research import HistoricalCase, ResearchCase, ResearchDocument
 from backend.services.investment.research_cases import (
     ResearchCaseRead,
     ResearchCaseUpdate,
@@ -90,6 +90,7 @@ from backend.services.investment.case_completion import (
 )
 from backend.services.investment.sec_document_acquisition import (
     SecDocumentAcquisitionPackage,
+    acquire_research_document_body_text,
     acquire_sec_documents_from_preview,
     apply_research_case_sec_acquisition_metadata,
     build_research_case_sec_document_acquisition_preview,
@@ -439,6 +440,23 @@ async def post_case_sec_document_acquisition(research_case_id: str, db: AsyncSes
     stored = apply_research_case_sec_acquisition_metadata(rc, package) if package.acquired_documents else []
     for item in stored:
         db.add(item)
+    for item in stored:
+        if isinstance(item, ResearchDocument):
+            await acquire_research_document_body_text(item)
+            for doc in package.acquired_documents:
+                if doc.url == item.url:
+                    doc.body_text_status = item.body_text_status
+                    doc.body_text_acquired_at = item.body_text_acquired_at.isoformat() if item.body_text_acquired_at else None
+                    doc.body_text_size_bytes = item.body_text_size_bytes
+                    doc.body_text_excerpt = item.body_text_excerpt
+                    doc.body_text_error = item.body_text_error
+            for record in package.stored_records:
+                if record.get("record_type") == "research_document" and record.get("url") == item.url:
+                    record["body_text_status"] = item.body_text_status
+                    record["body_text_acquired_at"] = item.body_text_acquired_at.isoformat() if item.body_text_acquired_at else None
+                    record["body_text_size_bytes"] = item.body_text_size_bytes
+                    record["body_text_excerpt"] = item.body_text_excerpt
+                    record["body_text_error"] = item.body_text_error
     if stored:
         await db.commit()
     return package
@@ -541,6 +559,20 @@ async def patch_task(
 async def get_documents(research_case_id: str, db: AsyncSession = Depends(get_db)):
     docs = await list_documents(db, uuid.UUID(research_case_id))
     return [ResearchDocumentRead.from_orm(d) for d in docs]
+
+
+@router.post("/research-documents/{document_id}/body-text-acquisition", response_model=ResearchDocumentRead)
+async def acquire_document_body_text(document_id: str, db: AsyncSession = Depends(get_db)):
+    doc_id = _parse_uuid(document_id, "document_id")
+    result = await db.execute(select(ResearchDocument).where(ResearchDocument.id == doc_id))
+    doc = result.scalars().first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Research document not found")
+
+    doc = await acquire_research_document_body_text(doc)
+    await db.commit()
+    await db.refresh(doc)
+    return ResearchDocumentRead.from_orm(doc)
 
 
 @router.post("/research-cases/{research_case_id}/documents", response_model=ResearchDocumentRead, status_code=201)

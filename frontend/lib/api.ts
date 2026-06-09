@@ -339,6 +339,11 @@ export interface SecDocumentAcquisitionPackage {
     acquisition_status: string;
     human_review_required: boolean;
     verified: boolean;
+    body_text_status: string | null;
+    body_text_acquired_at: string | null;
+    body_text_size_bytes: number | null;
+    body_text_excerpt: string | null;
+    body_text_error: string | null;
   }>;
   likely_document_targets: Array<{
     label: string;
@@ -366,6 +371,11 @@ export interface SecDocumentAcquisitionPackage {
     acquisition_status: string;
     human_review_required: boolean;
     verified: boolean;
+    body_text_status: string | null;
+    body_text_acquired_at: string | null;
+    body_text_size_bytes: number | null;
+    body_text_excerpt: string | null;
+    body_text_error: string | null;
   }>;
   stored_records: Array<Record<string, unknown>>;
   warnings: string[];
@@ -1659,6 +1669,12 @@ export interface ResearchDocument {
   retrieved_at: string | null;
   summary: string | null;
   added_by: string | null;
+  body_text_excerpt: string | null;
+  body_text_sha256: string | null;
+  body_text_acquired_at: string | null;
+  body_text_status: string | null;
+  body_text_error: string | null;
+  body_text_size_bytes: number | null;
   created_at: string;
 }
 

@@ -1,10 +1,10 @@
 ---
 document_id: DOCUMENT_VERSION_INDEX
 title: Document Version Index
-version: 0.5.0
+version: 0.5.1
 status: active
 owner: Dani
-last_updated: 2026-06-09
+last_updated: 2026-06-10
 source_of_truth: true
 review_cycle: manual
 ---
@@ -18,19 +18,19 @@ This index lists the official SwissEdge documents, versions, ownership, source-o
 | SwissEdge Documentation Index | `docs/README.md` | 0.1.4 | active | Dani | true | 2026-06-09 | Top-level documentation map and source-of-truth guide, including MVP v3 direction, scheduled detection operations, and proposal/reference hierarchy. |
 | Product Requirements Document | `docs/product/PRD.md` | 0.3.0 | active | Dani | true | 2026-06-09 | Official product requirements and MVP v3 direction: end-to-end research loop, North Star Metric, human approval rules, support surfaces, acceptance criteria, risks, and related docs. |
 | MVP Scope | `docs/product/MVP_SCOPE.md` | 0.4.0 | active | Dani | true | 2026-06-09 | MVP v3 in-scope, out-of-MVP, post-MVP, scheduled detection boundary, approval gates, and supporting governance boundaries. |
-| Product Roadmap | `docs/product/ROADMAP.md` | 0.5.0 | active | Dani | true | 2026-06-09 | MVP v3 M1-M6 sprint sequence, implemented scheduled detection status, superseded governance-first candidates, and post-MVP roadmap. |
+| Product Roadmap | `docs/product/ROADMAP.md` | 0.5.1 | active | Dani | true | 2026-06-10 | MVP v3 M1-M6 sprint sequence, implemented scheduled detection and M1 document body acquisition status, superseded governance-first candidates, and post-MVP roadmap. |
 | MVP v3 Proposal | `docs/product/MVP_V3_PROPOSAL.md` | 0.3.0 | superseded_reference | Dani | false | 2026-06-09 | Historical proposal/reference absorbed into official docs; not source of truth when conflicts exist. |
 | Operating Model | `docs/governance/OPERATING_MODEL.md` | 0.1.0 | active | Dani | true | 2026-06-08 | Collaboration model, roles, handoffs, decisions, and approvals. |
 | AI Collaboration Model | `docs/governance/AI_COLLABORATION_MODEL.md` | 0.1.1 | active | Dani | true | 2026-06-08 | AI roles, workflow, handoffs, context packs, screenshot protocol, and failure mode. |
 | Agent Model | `docs/governance/AGENT_MODEL.md` | 0.1.1 | active | Dani | true | 2026-06-08 | High-level room and agent index pointing to per-agent docs. |
 | Guardrails | `docs/governance/GUARDRAILS.md` | 0.3.0 | active | Dani | true | 2026-06-09 | Non-negotiable product, production, governance, security, UX, MVP v3 approval gates, and Agent Ops governance limits. |
 | System Architecture | `docs/architecture/SYSTEM_ARCHITECTURE.md` | 0.2.0 | active | Dani | true | 2026-06-09 | Current frontend, backend, endpoint, scheduled detection, and system-boundary architecture. |
-| Data Model | `docs/architecture/DATA_MODEL.md` | 0.1.0 | active | Dani | true | 2026-06-08 | Current and deferred domain/entity model. |
+| Data Model | `docs/architecture/DATA_MODEL.md` | 0.2.0 | active | Dani | true | 2026-06-10 | Current and deferred domain/entity model, including M1 `ResearchDocument` body text fields. |
 | Agent Implementation Model | `docs/architecture/AGENT_IMPLEMENTATION_MODEL.md` | 0.1.0 | active | Dani | true | 2026-06-08 | Current deterministic agent implementation model and future LLM-assisted agent path. |
 | Sprint Handoff Template | `docs/engineering/SPRINT_HANDOFF_TEMPLATE.md` | 0.1.0 | active | Dani | true | 2026-06-08 | Standard implementation and verification handoff format. |
 | Definition Of Done | `docs/engineering/DEFINITION_OF_DONE.md` | 0.1.0 | active | Dani | true | 2026-06-08 | Completion criteria for product, backend, frontend, docs, tests, and guardrails. |
 | API Specification | `docs/engineering/API_SPECIFICATION.md` | 0.1.0 | active | Dani | true | 2026-06-08 | High-level official API map. |
-| Operations Runbook | `docs/operations/RUNBOOK.md` | 0.2.0 | active | Dani | true | 2026-06-09 | Safe daily operations, scheduled detection checks, and guarded action rules. |
+| Operations Runbook | `docs/operations/RUNBOOK.md` | 0.3.0 | active | Dani | true | 2026-06-10 | Safe daily operations, scheduled detection checks, manual SEC body acquisition rules, and guarded action rules. |
 | Observability | `docs/operations/OBSERVABILITY.md` | 0.2.0 | active | Dani | true | 2026-06-08 | Logging, diagnostics, health, activity, execution-history, and Agent Ops governance requirements. |
 | Scheduled Detection | `docs/operations/SCHEDULED_DETECTION.md` | 0.1.0 | active | Dani | true | 2026-06-09 | Controlled SEC EDGAR scheduled detection flow, cron activation, statuses, deduplication, observability, and guardrails. |
 | Screenshot Map | `docs/ux/SCREENSHOT_MAP.md` | 0.2.1 | active | Dani | true | 2026-06-08 | Routes and screenshot protocol for Claude UX work, including Sprint 1 governance screenshots. |
@@ -49,6 +49,7 @@ This index lists the official SwissEdge documents, versions, ownership, source-o
 
 | Version | Date | Author | Change |
 | --- | --- | --- | --- |
+| 0.5.1 | 2026-06-10 | Codex | Updated versions and purposes for Sprint M1 SEC document body acquisition docs. |
 | 0.5.0 | 2026-06-09 | Codex | Updated source-of-truth docs for adopted MVP v3 direction and marked MVP_V3_PROPOSAL as superseded reference, not source of truth. |
 | 0.4.0 | 2026-06-09 | Codex | Added Scheduled Detection official document and updated Sprint 2 roadmap, architecture, runbook, MVP scope, and docs index versions. |
 | 0.3.1 | 2026-06-09 | Codex | Updated PRD version and purpose after full Product Requirements Document rewrite. |

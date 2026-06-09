@@ -202,6 +202,12 @@ class ResearchDocumentRead(BaseModel):
     retrieved_at: str | None
     summary: str | None
     added_by: str | None
+    body_text_excerpt: str | None
+    body_text_sha256: str | None
+    body_text_acquired_at: str | None
+    body_text_status: str | None
+    body_text_error: str | None
+    body_text_size_bytes: int | None
     created_at: str
 
     @classmethod
@@ -216,6 +222,12 @@ class ResearchDocumentRead(BaseModel):
             retrieved_at=d.retrieved_at.isoformat() if d.retrieved_at else None,
             summary=d.summary,
             added_by=d.added_by,
+            body_text_excerpt=d.body_text_excerpt,
+            body_text_sha256=d.body_text_sha256,
+            body_text_acquired_at=d.body_text_acquired_at.isoformat() if d.body_text_acquired_at else None,
+            body_text_status=d.body_text_status,
+            body_text_error=d.body_text_error,
+            body_text_size_bytes=d.body_text_size_bytes,
             created_at=d.created_at.isoformat(),
         )
 
@@ -1998,7 +2010,7 @@ def _analysis_defaults() -> dict:
 
 def _build_analysis_prompt(doc: ResearchDocument, rc: ResearchCase | None) -> str:
     lines: list[str] = []
-    lines.append("=== DOCUMENT SNIPPET ANALYSIS REQUEST ===")
+    lines.append("=== DOCUMENT TEXT ANALYSIS REQUEST ===")
     lines.append("")
     lines.append(f"Document ID: {doc.id}")
     if doc.title:
@@ -2017,15 +2029,19 @@ def _build_analysis_prompt(doc: ResearchDocument, rc: ResearchCase | None) -> st
             lines.append(f"Analyst Notes: {rc.notes}")
         lines.append("")
 
-    lines.append("--- DOCUMENT SNIPPET (analyst-pasted text) ---")
-    lines.append(doc.summary)
+    body_text = _nullable_str(getattr(doc, "body_text", None))
+    summary_text = _nullable_str(getattr(doc, "summary", None))
+    document_text = body_text or summary_text or ""
+    text_source = "SEC body text acquired under manual action" if body_text else "analyst-pasted text"
+    lines.append(f"--- DOCUMENT TEXT ({text_source}) ---")
+    lines.append(document_text)
     lines.append("")
     lines.append("=== INSTRUCTIONS ===")
     lines.append(
-        "Analyse the snippet above and return a JSON object with exactly these keys: "
+        "Analyse the document text above and return a JSON object with exactly these keys: "
         "summary, key_points (array), risks (array), timeline_items (array), "
         "missing_information, suggested_research_tasks (array), source_usefulness. "
-        "Base ALL content strictly on the snippet and context above. "
+        "Base ALL content strictly on the document text and context above. "
         "Do not fetch any URLs. Do not use buy/sell language. "
         "Respond with ONLY a valid JSON object. No markdown, no code fences."
     )

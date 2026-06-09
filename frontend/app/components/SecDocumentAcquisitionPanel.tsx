@@ -147,7 +147,20 @@ export function SecDocumentAcquisitionPanel({
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
                   <StatusBadge value={doc.doc_type} />
                   <StatusBadge value={doc.acquisition_status} />
+                  {doc.body_text_status && <StatusBadge value={`body ${doc.body_text_status}`} />}
                 </div>
+                {(doc.body_text_acquired_at || doc.body_text_size_bytes || doc.body_text_error || doc.body_text_excerpt) && (
+                  <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-muted)' }}>
+                    {doc.body_text_acquired_at && <div>Body acquired: {doc.body_text_acquired_at}</div>}
+                    {typeof doc.body_text_size_bytes === 'number' && <div>Body size: {doc.body_text_size_bytes} bytes</div>}
+                    {doc.body_text_error && <div style={{ color: '#b45309' }}>Body error: {doc.body_text_error}</div>}
+                    {doc.body_text_excerpt && (
+                      <div style={{ marginTop: 6, color: 'var(--text-secondary)', overflowWrap: 'anywhere' }}>
+                        {doc.body_text_excerpt}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>

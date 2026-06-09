@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import re
 from datetime import datetime, timezone
+from html.parser import HTMLParser
 from typing import Awaitable, Callable
 from urllib.parse import urljoin, urlparse
 
@@ -17,8 +19,18 @@ from backend.services.investment.methodology_workspace import WORKSPACE_KEY
 SEC_HOSTS = {"www.sec.gov", "sec.gov"}
 SEC_ARCHIVE_PREFIX = "https://www.sec.gov/Archives/"
 MAX_RESPONSE_CHARS = 250_000
+MAX_BODY_BYTES = 2 * 1024 * 1024
+BODY_TEXT_EXCERPT_CHARS = 1_000
 FETCH_TIMEOUT_SECONDS = 8.0
 THROTTLE_SECONDS = 0.75
+
+BODY_STATUS_REQUESTED = "requested"
+BODY_STATUS_ACQUIRED = "acquired"
+BODY_STATUS_SKIPPED_INVALID_URL = "skipped_invalid_url"
+BODY_STATUS_SKIPPED_TOO_LARGE = "skipped_too_large"
+BODY_STATUS_FAILED_FETCH = "failed_fetch"
+BODY_STATUS_FAILED_PARSE = "failed_parse"
+BODY_STATUS_FAILED_PERSIST = "failed_persist"
 
 
 class SecIdentifierPreview(BaseModel):
@@ -60,6 +72,11 @@ class SecAcquiredDocument(BaseModel):
     acquisition_status: str = "acquired_metadata"
     human_review_required: bool = True
     verified: bool = False
+    body_text_status: str | None = None
+    body_text_acquired_at: str | None = None
+    body_text_size_bytes: int | None = None
+    body_text_excerpt: str | None = None
+    body_text_error: str | None = None
 
 
 class SecDocumentAcquisitionPackage(BaseModel):
@@ -80,6 +97,33 @@ class SecDocumentAcquisitionPackage(BaseModel):
 
 
 FetchFn = Callable[[str], Awaitable[str]]
+BodyFetchFn = Callable[[str], Awaitable[tuple[bytes, str | None]]]
+
+
+class _PlainTextHTMLParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self._ignored_depth = 0
+        self._parts: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs) -> None:
+        if tag.lower() in {"script", "style", "noscript", "nav"}:
+            self._ignored_depth += 1
+        if tag.lower() in {"p", "div", "br", "tr", "li", "section", "article", "h1", "h2", "h3"}:
+            self._parts.append(" ")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.lower() in {"script", "style", "noscript", "nav"} and self._ignored_depth:
+            self._ignored_depth -= 1
+        if tag.lower() in {"p", "div", "tr", "li", "section", "article", "h1", "h2", "h3"}:
+            self._parts.append(" ")
+
+    def handle_data(self, data: str) -> None:
+        if not self._ignored_depth:
+            self._parts.append(data)
+
+    def text(self) -> str:
+        return " ".join(self._parts)
 
 
 def _text(value) -> str | None:
@@ -326,6 +370,127 @@ async def _default_fetch_sec_url(url: str) -> str:
         response = await client.get(url, headers=headers)
         response.raise_for_status()
         return response.text[:MAX_RESPONSE_CHARS]
+
+
+async def _default_fetch_sec_body(url: str) -> tuple[bytes, str | None]:
+    if not _is_sec_url(url):
+        raise ValueError("SEC document body acquisition only allows official sec.gov URLs.")
+    settings = get_settings()
+    headers = {
+        "User-Agent": settings.sec_user_agent or "SwissEdge/1.0 (manual-sec-document-body-acquisition)",
+        "Accept": "text/html,text/plain,application/xhtml+xml,*/*;q=0.5",
+    }
+    await asyncio.sleep(THROTTLE_SECONDS)
+    async with httpx.AsyncClient(timeout=FETCH_TIMEOUT_SECONDS, follow_redirects=True) as client:
+        async with client.stream("GET", url, headers=headers) as response:
+            response.raise_for_status()
+            chunks: list[bytes] = []
+            total = 0
+            async for chunk in response.aiter_bytes():
+                chunks.append(chunk)
+                total += len(chunk)
+                if total > MAX_BODY_BYTES:
+                    return b"".join(chunks)[: MAX_BODY_BYTES + 1], response.headers.get("content-type")
+            return b"".join(chunks), response.headers.get("content-type")
+
+
+def _decode_body(raw: bytes) -> str:
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return raw.decode("latin-1", errors="replace")
+
+
+def _normalize_body_text(text: str) -> str:
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def extract_sec_document_body_text(raw: bytes | str, content_type: str | None = None) -> str:
+    text = _decode_body(raw) if isinstance(raw, bytes) else raw
+    lower_type = (content_type or "").lower()
+    looks_html = "html" in lower_type or bool(re.search(r"<(html|body|div|p|table|document)\b", text, flags=re.IGNORECASE))
+    if looks_html:
+        parser = _PlainTextHTMLParser()
+        try:
+            parser.feed(text)
+            text = parser.text()
+        except Exception as exc:
+            raise ValueError("Could not parse SEC HTML document body.") from exc
+    normalized = _normalize_body_text(text)
+    if not normalized:
+        raise ValueError("SEC document body did not contain extractable text.")
+    return normalized
+
+
+def _safe_error(exc: Exception) -> str:
+    message = str(exc).strip() or exc.__class__.__name__
+    return message[:300]
+
+
+def _set_body_status(
+    document: ResearchDocument,
+    status: str,
+    *,
+    error: str | None = None,
+    body_text: str | None = None,
+    size_bytes: int | None = None,
+) -> ResearchDocument:
+    document.body_text_status = status
+    document.body_text_error = error
+    document.body_text_size_bytes = size_bytes
+    if body_text is not None:
+        document.body_text = body_text
+        document.body_text_excerpt = body_text[:BODY_TEXT_EXCERPT_CHARS]
+        document.body_text_sha256 = hashlib.sha256(body_text.encode("utf-8")).hexdigest()
+        document.body_text_acquired_at = datetime.now(timezone.utc)
+    elif status != BODY_STATUS_ACQUIRED:
+        document.body_text = None
+        document.body_text_excerpt = None
+        document.body_text_sha256 = None
+        document.body_text_acquired_at = None
+    return document
+
+
+async def acquire_research_document_body_text(
+    document: ResearchDocument,
+    *,
+    fetcher: BodyFetchFn | None = None,
+    max_body_bytes: int = MAX_BODY_BYTES,
+) -> ResearchDocument:
+    if not _is_sec_url(document.url):
+        return _set_body_status(
+            document,
+            BODY_STATUS_SKIPPED_INVALID_URL,
+            error="Document URL is not an official sec.gov HTTPS URL.",
+        )
+
+    document.body_text_status = BODY_STATUS_REQUESTED
+    fetch = fetcher or _default_fetch_sec_body
+    try:
+        raw, content_type = await fetch(document.url)
+    except Exception as exc:
+        return _set_body_status(document, BODY_STATUS_FAILED_FETCH, error=_safe_error(exc))
+
+    size_bytes = len(raw)
+    if size_bytes > max_body_bytes:
+        return _set_body_status(
+            document,
+            BODY_STATUS_SKIPPED_TOO_LARGE,
+            error=f"SEC document body exceeded {max_body_bytes} bytes.",
+            size_bytes=size_bytes,
+        )
+
+    try:
+        body_text = extract_sec_document_body_text(raw, content_type)
+    except Exception as exc:
+        return _set_body_status(
+            document,
+            BODY_STATUS_FAILED_PARSE,
+            error=_safe_error(exc),
+            size_bytes=size_bytes,
+        )
+
+    return _set_body_status(document, BODY_STATUS_ACQUIRED, body_text=body_text, size_bytes=size_bytes)
 
 
 def _extract_sec_documents(html: str, base_url: str, identifiers: SecIdentifierPreview) -> list[SecAcquiredDocument]:
