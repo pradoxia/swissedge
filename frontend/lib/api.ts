@@ -1858,6 +1858,19 @@ export interface ResearchInboxAction {
   reason_required: boolean;
 }
 
+export type DecisionOutcome = 'CANDIDATE' | 'WATCHLIST' | 'REJECT' | 'NEED_MORE_EVIDENCE';
+
+export interface DecisionRecord {
+  id: string;
+  target_type: 'special_situation' | 'research_case';
+  target_id: string;
+  outcome: DecisionOutcome;
+  reason: string;
+  author: string;
+  source_surface: string | null;
+  created_at: string | null;
+}
+
 export interface ResearchInboxItem {
   id: string;
   entity_type: 'special_situation' | 'research_case';
@@ -1873,6 +1886,7 @@ export interface ResearchInboxItem {
   next_action: string;
   detail_href: string;
   actions: ResearchInboxAction[];
+  latest_decision: DecisionRecord | null;
   price_context: {
     ticker: string | null;
     offer_price: string | null;
@@ -1910,6 +1924,25 @@ export async function fetchResearchCases(params?: {
 export async function fetchResearchInbox(): Promise<ResearchInboxQueue> {
   const response = await fetch(`${API_BASE_URL}/api/investment/research-inbox`);
   if (!response.ok) throw new Error(`Failed to fetch research inbox: ${response.statusText}`);
+  return response.json();
+}
+
+export async function recordResearchInboxDecision(payload: {
+  target_type: 'special_situation' | 'research_case';
+  target_id: string;
+  outcome: DecisionOutcome;
+  reason: string;
+  author: string;
+}): Promise<DecisionRecord> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/research-inbox/decision`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(typeof body?.detail === 'string' ? body.detail : `HTTP ${response.status}`);
+  }
   return response.json();
 }
 

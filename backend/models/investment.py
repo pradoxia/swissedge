@@ -1,7 +1,7 @@
 import uuid
 from decimal import Decimal
 from datetime import datetime, date, timezone
-from sqlalchemy import String, Text, Integer, Boolean, DateTime, Date, ForeignKey, Float, Numeric, Index
+from sqlalchemy import String, Text, Integer, Boolean, DateTime, Date, ForeignKey, Float, Numeric, Index, CheckConstraint
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.db.database import Base
@@ -49,6 +49,37 @@ class SituationHistory(Base):
     changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     situation: Mapped["SpecialSituation"] = relationship(back_populates="history")
+
+
+class DecisionRecord(Base):
+    __tablename__ = "decision_records"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    special_situation_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("special_situations.id", ondelete="CASCADE"), nullable=True
+    )
+    research_case_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("research_cases.id", ondelete="CASCADE"), nullable=True
+    )
+    outcome: Mapped[str] = mapped_column(String(40), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    author: Mapped[str] = mapped_column(Text, nullable=False)
+    source_surface: Mapped[str | None] = mapped_column(String(100))
+    safe_metadata: Mapped[dict | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            "(special_situation_id IS NOT NULL AND research_case_id IS NULL) OR "
+            "(special_situation_id IS NULL AND research_case_id IS NOT NULL)",
+            name="ck_decision_records_exactly_one_target",
+        ),
+        Index("idx_decision_records_special_situation_id", "special_situation_id"),
+        Index("idx_decision_records_research_case_id", "research_case_id"),
+        Index("idx_decision_records_outcome", "outcome"),
+        Index("idx_decision_records_created_at", "created_at"),
+    )
 
 
 class InvestmentSource(Base):

@@ -107,6 +107,13 @@ from backend.services.investment.research_inbox import (
     ResearchInboxQueue,
     get_research_inbox_queue,
 )
+from backend.services.investment.decision_records import (
+    DecisionRecordCreate,
+    DecisionRecordError,
+    DecisionRecordRead,
+    create_decision_record,
+    serialize_decision_record,
+)
 from backend.services.observability import run_logger
 
 router = APIRouter()
@@ -390,6 +397,18 @@ async def get_detection_run(run_id: str, db: AsyncSession = Depends(get_db)):
 @router.get("/research-inbox", response_model=ResearchInboxQueue)
 async def get_research_inbox(db: AsyncSession = Depends(get_db)):
     return await get_research_inbox_queue(db)
+
+
+@router.post("/research-inbox/decision", response_model=DecisionRecordRead)
+async def post_research_inbox_decision(body: DecisionRecordCreate, db: AsyncSession = Depends(get_db)):
+    try:
+        record = await create_decision_record(db, body)
+        await db.commit()
+        await db.refresh(record)
+        return serialize_decision_record(record)
+    except DecisionRecordError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
 
 
 @router.get("/intelligence/fontana-report")

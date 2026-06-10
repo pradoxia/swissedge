@@ -1,7 +1,7 @@
 ---
 document_id: API_SPECIFICATION
 title: API Specification
-version: 0.1.1
+version: 0.1.2
 status: active
 owner: Dani
 last_updated: 2026-06-08
@@ -24,6 +24,7 @@ This is the official high-level API map. Detailed route inventory is maintained 
 ## Investment Situations
 
 - `GET /api/investment/research-inbox`
+- `POST /api/investment/research-inbox/decision`
 - `GET /api/investment/situations`
 - `GET /api/investment/situations/{id}`
 - `PATCH /api/investment/situations/{id}`
@@ -38,6 +39,10 @@ This is the official high-level API map. Detailed route inventory is maintained 
 - `POST /api/investment/situations/{id}/promote-to-research-case`
 
 `GET /api/investment/research-inbox` may include optional `price_context` per item with neutral fields such as `ticker`, `offer_price`, `latest_close_price`, `latest_close_date`, `estimated_spread_pct`, `spread_status`, and `updated_at`. This is workflow prioritization context only and must not be used as advice or an automated decision.
+
+`GET /api/investment/research-inbox` may include optional `latest_decision` per item with `id`, `target_type`, `target_id`, `outcome`, `reason`, `author`, `source_surface`, and `created_at`.
+
+`POST /api/investment/research-inbox/decision` records one manual decision. Request fields: `target_type` (`special_situation` or `research_case`), `target_id`, `outcome` (`CANDIDATE`, `WATCHLIST`, `REJECT`, or `NEED_MORE_EVIDENCE`), `reason`, and `author`. Reason and author are required. The endpoint creates only a `DecisionRecord`; it must not promote, reject, discard, archive, publish, analyze, verify evidence, acquire documents, or hide queue items.
 
 ## Detection And Scanner
 
@@ -88,5 +93,6 @@ Guardrail: do not trigger `POST /api/investment/scan` unless explicitly approved
 
 | Version | Date | Author | Change |
 | --- | --- | --- | --- |
+| 0.1.2 | 2026-06-10 | Codex | Added M3B Research Inbox decision recording endpoint and latest_decision response note. |
 | 0.1.1 | 2026-06-10 | Codex | Added Research Inbox and optional price context response note for M4A. |
 | 0.1.0 | 2026-06-08 | Codex | Initial official version. |

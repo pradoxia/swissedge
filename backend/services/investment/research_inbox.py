@@ -8,8 +8,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from backend.models.investment import CasePriceContext, SpecialSituation
+from backend.models.investment import CasePriceContext, DecisionRecord, SpecialSituation
 from backend.models.investment_research import ResearchCase
+from backend.services.investment.decision_records import DecisionRecordRead, serialize_decision_record
 from backend.services.investment.methodology_workspace import WORKSPACE_KEY
 from backend.services.investment.price_context import PriceContextRead, serialize_price_context
 
@@ -42,6 +43,7 @@ class ResearchInboxItem(BaseModel):
     detail_href: str
     actions: list[ResearchInboxAction] = Field(default_factory=list)
     price_context: PriceContextRead | None = None
+    latest_decision: DecisionRecordRead | None = None
 
 
 class ResearchInboxQueue(BaseModel):
@@ -58,8 +60,8 @@ GUARDRAILS = [
 ]
 
 DEFERRED_DECISIONS = [
-    "Reject requires a persisted reason/audit model and remains deferred to M3B.",
-    "Need-more-evidence and watchlist decisions require reasoned decision logging before a new endpoint is added.",
+    "Decision records are manual audit context only and do not mutate queue item status.",
+    "Reasoned filtering, status mutation, and consolidated workbench decisions remain deferred.",
 ]
 
 
@@ -223,15 +225,23 @@ def build_research_inbox_queue(
     situations: list[SpecialSituation],
     research_cases: list[ResearchCase],
     price_contexts: list[CasePriceContext] | None = None,
+    decision_records: list[DecisionRecord] | None = None,
 ) -> ResearchInboxQueue:
     items: list[ResearchInboxItem] = []
     situation_price_contexts: dict[str, CasePriceContext] = {}
     research_case_price_contexts: dict[str, CasePriceContext] = {}
+    situation_decisions: dict[str, DecisionRecord] = {}
+    research_case_decisions: dict[str, DecisionRecord] = {}
     for context in price_contexts or []:
         if context.special_situation_id:
             situation_price_contexts.setdefault(str(context.special_situation_id), context)
         if context.research_case_id:
             research_case_price_contexts.setdefault(str(context.research_case_id), context)
+    for decision in decision_records or []:
+        if decision.special_situation_id:
+            situation_decisions.setdefault(str(decision.special_situation_id), decision)
+        if decision.research_case_id:
+            research_case_decisions.setdefault(str(decision.research_case_id), decision)
 
     for situation in situations:
         if situation.status == "archived":
@@ -255,6 +265,11 @@ def build_research_inbox_queue(
                 detail_href=f"/investment/situations/{situation.id}",
                 actions=actions,
                 price_context=serialize_price_context(situation_price_contexts.get(str(situation.id))),
+                latest_decision=(
+                    serialize_decision_record(situation_decisions[str(situation.id)])
+                    if str(situation.id) in situation_decisions
+                    else None
+                ),
             )
         )
 
@@ -283,6 +298,11 @@ def build_research_inbox_queue(
                 detail_href=f"/investment/research/{rc.id}",
                 actions=actions,
                 price_context=serialize_price_context(research_case_price_contexts.get(str(rc.id))),
+                latest_decision=(
+                    serialize_decision_record(research_case_decisions[str(rc.id)])
+                    if str(rc.id) in research_case_decisions
+                    else None
+                ),
             )
         )
 
@@ -307,8 +327,10 @@ async def get_research_inbox_queue(db: AsyncSession) -> ResearchInboxQueue:
         .order_by(ResearchCase.updated_at.desc())
     )
     context_result = await db.execute(select(CasePriceContext).order_by(CasePriceContext.updated_at.desc()))
+    decision_result = await db.execute(select(DecisionRecord).order_by(DecisionRecord.created_at.desc()))
     return build_research_inbox_queue(
         list(situation_result.scalars().all()),
         list(rc_result.scalars().all()),
         list(context_result.scalars().all()),
+        list(decision_result.scalars().all()),
     )

@@ -4,12 +4,19 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   fetchResearchInbox,
+  recordResearchInboxDecision,
+  type DecisionOutcome,
   type ResearchInboxItem,
   type ResearchInboxQueue,
 } from '@/lib/api';
 import { PageHeader, LoadingState, ErrorBanner, InfoBanner } from '@/app/components/ui';
 
 type FilterKey = 'all' | 'candidate_only' | 'needs_evidence' | 'open_watchlist';
+type DecisionForm = {
+  outcome: DecisionOutcome;
+  reason: string;
+  author: string;
+};
 
 const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'all', label: 'All' },
@@ -17,6 +24,15 @@ const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'needs_evidence', label: 'Needs evidence' },
   { key: 'open_watchlist', label: 'Watchlist / Open' },
 ];
+
+const DECISION_LABELS: Record<DecisionOutcome, string> = {
+  CANDIDATE: 'Candidate',
+  WATCHLIST: 'Watchlist',
+  REJECT: 'Reject',
+  NEED_MORE_EVIDENCE: 'Need more evidence',
+};
+
+const DECISION_OPTIONS: DecisionOutcome[] = ['CANDIDATE', 'WATCHLIST', 'REJECT', 'NEED_MORE_EVIDENCE'];
 
 function formatDate(value: string | null): string {
   if (!value) return 'unknown';
@@ -50,6 +66,10 @@ function spreadText(item: ResearchInboxItem): string {
   return context.estimated_spread_pct ? `${context.estimated_spread_pct}%` : 'available';
 }
 
+function itemKey(item: ResearchInboxItem): string {
+  return `${item.entity_type}-${item.id}`;
+}
+
 function matchesFilter(item: ResearchInboxItem, filter: FilterKey): boolean {
   if (filter === 'candidate_only') return item.candidate_only;
   if (filter === 'needs_evidence') return hasEvidenceNeed(item);
@@ -73,6 +93,9 @@ export default function ResearchInboxPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterKey>('all');
+  const [decisionForms, setDecisionForms] = useState<Record<string, DecisionForm>>({});
+  const [savingDecision, setSavingDecision] = useState<string | null>(null);
+  const [decisionMessage, setDecisionMessage] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -88,6 +111,45 @@ export default function ResearchInboxPage() {
     }
     load();
   }, []);
+
+  function formFor(item: ResearchInboxItem): DecisionForm {
+    return decisionForms[itemKey(item)] ?? { outcome: 'CANDIDATE', reason: '', author: 'Dani' };
+  }
+
+  function updateDecisionForm(item: ResearchInboxItem, patch: Partial<DecisionForm>) {
+    const key = itemKey(item);
+    setDecisionForms(current => ({
+      ...current,
+      [key]: { ...formFor(item), ...patch },
+    }));
+  }
+
+  async function submitDecision(item: ResearchInboxItem) {
+    const key = itemKey(item);
+    const form = formFor(item);
+    try {
+      setSavingDecision(key);
+      setDecisionMessage(null);
+      setError(null);
+      await recordResearchInboxDecision({
+        target_type: item.entity_type,
+        target_id: item.id,
+        outcome: form.outcome,
+        reason: form.reason,
+        author: form.author || 'Dani',
+      });
+      setDecisionForms(current => ({
+        ...current,
+        [key]: { outcome: 'CANDIDATE', reason: '', author: form.author || 'Dani' },
+      }));
+      setQueue(await fetchResearchInbox());
+      setDecisionMessage('Manual decision recorded.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to record decision');
+    } finally {
+      setSavingDecision(null);
+    }
+  }
 
   const items = queue?.items ?? [];
   const counts = useMemo(() => {
@@ -123,8 +185,9 @@ export default function ResearchInboxPage() {
       />
 
       <InfoBanner variant="warning">
-        Manual-only foundation: this page does not trigger scans, AI previews, promotion, rejection, discard, publication, or recommendations.
+        Manual-only foundation: this page does not trigger scans, AI previews, promotion, rejection, discard, publication, or automated conclusions.
       </InfoBanner>
+      {decisionMessage && <InfoBanner>{decisionMessage}</InfoBanner>}
 
       <div className="card" style={{ marginBottom: '20px' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
@@ -163,13 +226,18 @@ export default function ResearchInboxPage() {
                   <th>Status / Phase</th>
                   <th>Evidence / Blocker</th>
                   <th>Estimated spread %</th>
+                  <th>Latest decision</th>
                   <th>Created / Detected</th>
                   <th>Next Action</th>
+                  <th>Record decision</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredItems.map(item => (
-                  <tr key={`${item.entity_type}-${item.id}`}>
+                {filteredItems.map(item => {
+                  const form = formFor(item);
+                  const key = itemKey(item);
+                  return (
+                  <tr key={key}>
                     <td>
                       <Link href={item.detail_href} style={{ color: 'var(--text-primary)', fontWeight: 600, textDecoration: 'none' }}>
                         {item.title}
@@ -199,6 +267,23 @@ export default function ResearchInboxPage() {
                         {item.price_context?.latest_close_date ? `close ${item.price_context.latest_close_date}` : 'price context unknown'}
                       </div>
                     </td>
+                    <td style={{ maxWidth: 260 }}>
+                      {item.latest_decision ? (
+                        <>
+                          <InlineBadge className="border-emerald-200 bg-emerald-50 text-emerald-700">
+                            {DECISION_LABELS[item.latest_decision.outcome]}
+                          </InlineBadge>
+                          <div style={{ color: 'var(--text-muted)', fontSize: '12px', marginTop: 6 }}>
+                            {item.latest_decision.reason}
+                          </div>
+                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--text-faint)', marginTop: 4 }}>
+                            {item.latest_decision.author} · {formatDate(item.latest_decision.created_at)}
+                          </div>
+                        </>
+                      ) : (
+                        <span style={{ color: 'var(--text-faint)' }}>No decision recorded</span>
+                      )}
+                    </td>
                     <td style={{ color: 'var(--text-faint)' }}>
                       <div>{formatDate(item.detected_at)}</div>
                       <div style={{ fontFamily: 'var(--font-mono)', fontSize: '10px' }}>created {formatDate(item.created_at)}</div>
@@ -207,13 +292,47 @@ export default function ResearchInboxPage() {
                       <div style={{ marginBottom: 6, color: 'var(--text-muted)' }}>{item.next_action}</div>
                       <Link href={item.detail_href} className="btn btn--secondary btn--sm">Open</Link>
                     </td>
+                    <td style={{ minWidth: 260 }}>
+                      <div style={{ display: 'grid', gap: 6 }}>
+                        <select
+                          value={form.outcome}
+                          onChange={event => updateDecisionForm(item, { outcome: event.target.value as DecisionOutcome })}
+                          style={{ width: '100%' }}
+                        >
+                          {DECISION_OPTIONS.map(outcome => (
+                            <option key={outcome} value={outcome}>{DECISION_LABELS[outcome]}</option>
+                          ))}
+                        </select>
+                        <textarea
+                          value={form.reason}
+                          onChange={event => updateDecisionForm(item, { reason: event.target.value })}
+                          placeholder="Reason"
+                          rows={2}
+                          style={{ width: '100%', resize: 'vertical' }}
+                        />
+                        <input
+                          value={form.author}
+                          onChange={event => updateDecisionForm(item, { author: event.target.value })}
+                          placeholder="Author"
+                          style={{ width: '100%' }}
+                        />
+                        <button
+                          className="btn btn--secondary btn--sm"
+                          onClick={() => submitDecision(item)}
+                          disabled={savingDecision === key || !form.reason.trim() || !form.author.trim()}
+                        >
+                          {savingDecision === key ? 'Recording...' : 'Record decision'}
+                        </button>
+                      </div>
+                    </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
           <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border-subtle)', fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-faint)' }}>
-            Showing {filteredItems.length} of {items.length} queue items. Reject and reasoned deferral decisions remain deferred until M3B audit logging.
+            Showing {filteredItems.length} of {items.length} queue items. Decision records are manual audit context and do not change item status.
           </div>
         </div>
       )}

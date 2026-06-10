@@ -47,6 +47,7 @@ $backendFiles = @(
     "backend/services/investment/executive_review.py",
     "backend/services/investment/operational_view.py",
     "backend/services/investment/research_inbox.py",
+    "backend/services/investment/decision_records.py",
     "backend/services/investment/sources/sec_edgar.py",
     "backend/cli/__init__.py",
     "backend/cli/sec_edgar_detect.py",
@@ -90,6 +91,7 @@ $backendFiles = @(
     "backend/db/migrations/versions/g7b8c9d0e1f2_add_documentation_extraction_fields.py",
     "backend/db/migrations/versions/h8c9d0e1f2g3_add_research_document_body_text.py",
     "backend/db/migrations/versions/i9d0e1f2g3h4_add_price_context_tables.py",
+    "backend/db/migrations/versions/j0e1f2g3h4i5_add_decision_records.py",
     "requirements.txt"
 )
 

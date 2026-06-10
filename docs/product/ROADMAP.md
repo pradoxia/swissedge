@@ -1,7 +1,7 @@
 ---
 document_id: ROADMAP
 title: Product Roadmap
-version: 0.5.3
+version: 0.5.4
 status: active
 owner: Dani
 last_updated: 2026-06-10
@@ -118,14 +118,11 @@ Status: implemented locally in Sprint M1. Production migration still requires Da
 ### M3 - Research Inbox + One-Click Human Decision
 
 - Add a single triage queue for new `SpecialSituation` records and open `ResearchCase` work.
-- Status: M3A implements the minimal unified Research Inbox queue and manual next-action links. Full persisted decision audit, reject, and reasoned deferral workflows remain deferred to M3B.
+- Status: M3A implements the minimal unified Research Inbox queue and manual next-action links. M3B adds manual `DecisionRecord` persistence for `CANDIDATE`, `WATCHLIST`, `REJECT`, and `NEED_MORE_EVIDENCE`; every decision requires reason and author, remains human-recorded workflow context, and does not auto-promote, reject, discard, archive, publish, analyze, or decide.
 
 ### M4 - Price Connector + Estimated Spread Context
 
 Status: M4A implements the local model/service foundation for cached price context and neutral `estimated_spread_pct` display in Research Inbox. Price/spread context is workflow prioritization context only, not advice or a decision signal. Provider selection, production migration, and production price refresh cron remain pending Dani approval.
-- Add human decision actions: CANDIDATE, WATCHLIST, and REJECT.
-- Require reason and author for every decision.
-- Add decision persistence only after Dani approves any model or migration changes.
 
 ### M4 - Consolidated Workbench
 
@@ -248,6 +245,7 @@ The earlier candidate list prioritized governance stabilization, observability r
 
 | Version | Date | Author | Change |
 | --- | --- | --- | --- |
+| 0.5.4 | 2026-06-10 | Codex | Documented M3B manual DecisionRecord foundation and no-autonomous-decision boundary. |
 | 0.5.1 | 2026-06-10 | Codex | Marked M1 SEC Document Acquisition v2 as implemented locally and documented production migration approval boundary. |
 | 0.5.0 | 2026-06-09 | Codex | Adopted MVP v3 roadmap with M1-M6 research-loop sprints, North Star validation, and post-MVP governance/agent/source/publishing work. |
 | 0.4.0 | 2026-06-09 | Codex | Marked Scheduled SEC EDGAR Detection Activation as implemented and documented remaining scanner reliability guardrails. |

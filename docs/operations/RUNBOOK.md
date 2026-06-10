@@ -1,7 +1,7 @@
 ---
 document_id: RUNBOOK
 title: Operations Runbook
-version: 0.4.4
+version: 0.4.5
 status: active
 owner: Dani
 last_updated: 2026-06-10
@@ -134,9 +134,13 @@ Operational rules:
 
 - `GET /api/investment/research-inbox` is read-only and combines detected `SpecialSituation` rows with open `ResearchCase` rows.
 - Candidate-only items must remain labeled as candidate-only and unverified.
-- The inbox may link to existing manual promotion and detail routes, but must not auto-promote, reject, discard, publish, run AI, or create decisions.
-- Reject and reasoned deferral decisions require a persisted audit model and remain deferred to M3B.
-- No reject, watchlist, or need-more-evidence reasoned decision endpoint exists yet.
+- The inbox may link to existing manual promotion and detail routes, but must not auto-promote, reject, discard, archive, publish, run AI, or make decisions.
+- M3B adds manual `DecisionRecord` creation from Research Inbox for `CANDIDATE`, `WATCHLIST`, `REJECT`, and `NEED_MORE_EVIDENCE`.
+- Every decision requires reason and author.
+- Decisions are human-recorded workflow/audit context only; `NEED_MORE_EVIDENCE` is workflow context, not a recommendation.
+- Decision recording does not auto-promote, reject, discard, archive, publish, analyze, decide, verify evidence, acquire documents, or hide queue items.
+- Migration file created but not applied; production migration requires Dani approval.
+- No cron, scanner, deploy, live AI, evaluator v2, or provider LLM behavior changes are included.
 
 ## Price Context
 
@@ -166,6 +170,7 @@ For scanner, cron, live AI, or production incidents:
 
 | Version | Date | Author | Change |
 | --- | --- | --- | --- |
+| 0.4.5 | 2026-06-10 | Codex | Added M3B manual DecisionRecord operating rules and production migration approval boundary. |
 | 0.4.0 | 2026-06-10 | Codex | Added M2-pre AI client hardening note: live AI remains disabled by default, structured output failures are explicit, retries are bounded, and budget caps are conservative. |
 | 0.3.0 | 2026-06-10 | Codex | Added M1 manual SEC document body acquisition operating rules, safe statuses, endpoints, and production migration approval note. |
 | 0.2.0 | 2026-06-09 | Codex | Added scheduled SEC EDGAR detection operating rules and safe validation commands. |

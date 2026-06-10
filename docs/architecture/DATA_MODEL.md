@@ -1,7 +1,7 @@
 ---
 document_id: DATA_MODEL
 title: Data Model
-version: 0.2.1
+version: 0.2.2
 status: active
 owner: Dani
 last_updated: 2026-06-10
@@ -72,6 +72,18 @@ Key fields: `id`, `special_situation_id`, `research_case_id`, `ticker`, `offer_p
 Safe statuses: `available`, `missing_offer_price`, `missing_market_price`, `stale_price`, `not_applicable`.
 
 Boundary: price context is not investment advice, does not verify candidate-only situations, and must not auto-promote, reject, discard, publish, analyze, or decide cases. Migration file exists for review but production migration requires Dani approval.
+
+### DecisionRecord
+
+Implemented in `backend/models/investment.py`.
+
+Purpose: auditable manual human decision record for a `SpecialSituation` or `ResearchCase`.
+
+Key fields: `id`, `special_situation_id`, `research_case_id`, `outcome`, `reason`, `author`, `source_surface`, `safe_metadata`, `created_at`, `updated_at`.
+
+Allowed outcomes: `CANDIDATE`, `WATCHLIST`, `REJECT`, `NEED_MORE_EVIDENCE`.
+
+Boundary: exactly one target is required. Every record requires reason and author. Decision records are workflow/audit context only and must not auto-promote, reject, discard, archive, publish, analyze, decide, verify evidence, acquire documents, or hide queue items. Migration file created but not applied; production migration requires Dani approval.
 
 ### AgentRoom
 
@@ -162,5 +174,6 @@ Future safe schema candidates:
 
 | Version | Date | Author | Change |
 | --- | --- | --- | --- |
+| 0.2.2 | 2026-06-10 | Codex | Documented M3B `DecisionRecord` model and no-side-effect decision boundary. |
 | 0.2.0 | 2026-06-10 | Codex | Documented M1 nullable `ResearchDocument` body text fields, status vocabulary, and SEC-only manual acquisition boundary. |
 | 0.1.0 | 2026-06-08 | Codex | Initial official version with agent-doc reference alignment. |

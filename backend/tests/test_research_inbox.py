@@ -1,12 +1,13 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock
 
 from fastapi.testclient import TestClient
 
 from backend.db.database import get_db as _real_get_db
 from backend.main import app
-from backend.models.investment import SpecialSituation
+from backend.models.investment import CasePriceContext, DecisionRecord, SpecialSituation
 from backend.models.investment_research import ResearchCase, ResearchTask
 from backend.services.investment.methodology_workspace import WORKSPACE_KEY
 from backend.services.investment.research_inbox import build_research_inbox_queue
@@ -139,12 +140,75 @@ def test_archived_research_cases_are_excluded():
     assert queue.items == []
 
 
-def test_reject_and_reasoned_deferral_are_deferred():
+def test_decision_actions_are_manual_audit_context():
     queue = build_research_inbox_queue([_situation()], [])
 
     actions = [action.action for item in queue.items for action in item.actions]
     assert "reject" not in actions
-    assert any("Reject requires" in item for item in queue.deferred_decisions)
+    assert any("manual audit context" in item for item in queue.deferred_decisions)
+
+
+def test_research_inbox_includes_latest_decision_when_present():
+    situation = _situation()
+    older = DecisionRecord(
+        id=uuid.uuid4(),
+        special_situation_id=situation.id,
+        outcome="CANDIDATE",
+        reason="Initial manual queue note.",
+        author="Dani",
+        source_surface="research_inbox",
+        created_at=datetime(2026, 6, 9, tzinfo=timezone.utc),
+    )
+    latest = DecisionRecord(
+        id=uuid.uuid4(),
+        special_situation_id=situation.id,
+        outcome="NEED_MORE_EVIDENCE",
+        reason="Need full filing body before review.",
+        author="Dani",
+        source_surface="research_inbox",
+        created_at=datetime(2026, 6, 10, tzinfo=timezone.utc),
+    )
+
+    queue = build_research_inbox_queue([situation], [], decision_records=[latest, older])
+
+    assert queue.items[0].latest_decision is not None
+    assert queue.items[0].latest_decision.outcome == "NEED_MORE_EVIDENCE"
+    assert queue.items[0].latest_decision.reason == "Need full filing body before review."
+
+
+def test_research_inbox_absence_of_decision_is_safe():
+    queue = build_research_inbox_queue([_situation()], [])
+
+    assert queue.items[0].latest_decision is None
+
+
+def test_research_inbox_preserves_price_context_when_decision_present():
+    situation = _situation()
+    context = CasePriceContext(
+        special_situation_id=situation.id,
+        ticker="EXM",
+        offer_price=Decimal("10.00"),
+        latest_close_price=Decimal("8.75"),
+        latest_close_date=date(2026, 6, 9),
+        estimated_spread_pct=Decimal("14.2857"),
+        spread_status="available",
+        updated_at=datetime(2026, 6, 10, tzinfo=timezone.utc),
+    )
+    decision = DecisionRecord(
+        id=uuid.uuid4(),
+        special_situation_id=situation.id,
+        outcome="WATCHLIST",
+        reason="Track manually until more evidence arrives.",
+        author="Dani",
+        created_at=datetime(2026, 6, 10, tzinfo=timezone.utc),
+    )
+
+    queue = build_research_inbox_queue([situation], [], [context], [decision])
+
+    assert queue.items[0].price_context is not None
+    assert queue.items[0].price_context.estimated_spread_pct == "14.2857"
+    assert queue.items[0].latest_decision is not None
+    assert queue.items[0].latest_decision.outcome == "WATCHLIST"
 
 
 def test_research_inbox_endpoint_returns_unified_queue():
@@ -157,7 +221,9 @@ def test_research_inbox_endpoint_returns_unified_queue():
     rc_result.scalars.return_value.all.return_value = [rc]
     context_result = MagicMock()
     context_result.scalars.return_value.all.return_value = []
-    db.execute = AsyncMock(side_effect=[situation_result, rc_result, context_result])
+    decision_result = MagicMock()
+    decision_result.scalars.return_value.all.return_value = []
+    db.execute = AsyncMock(side_effect=[situation_result, rc_result, context_result, decision_result])
 
     async def get_db_override():
         yield db
