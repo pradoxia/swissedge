@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.models.investment import SpecialSituation
 from backend.services.investment.methodology_workspace import attach_methodology_workspace_to_evidence
 from backend.services.investment.routing_engine import build_routing_decision
+from backend.services.investment.sec_company_facts import build_competition_lens, fetch_public_float
 from backend.services.investment.sources.base import Filing
 from backend.services.investment.sources.sec_edgar import SECEdgarAdapter
 
@@ -30,6 +31,21 @@ CLASSIFICATION_REPORT_FORMS = {
     "S-4/A",
 }
 CORE_CLASSIFICATION_FORMS = {*STRICT_CREATION_ALLOWLIST, "8-K"}
+
+# Forms added by the detection quick-wins sprint: classified filings on these
+# forms (plus the existing report forms) are persisted as candidate-only
+# SpecialSituations instead of report-only summary rows.
+CLASSIFICATION_REPORT_FORMS.update({"13E-3", "Form 25"})
+
+# Ignored reasons that still allow candidate-only persistence (human review queue).
+_CANDIDATE_PERSIST_REASONS = {
+    "outside_strict_creation_allowlist",
+    "classification_confidence_not_high",
+}
+_CANDIDATE_PERSIST_CONFIDENCES = {"high", "medium"}
+
+# Best-effort SEC public-float enrichment budget per detection run.
+_MAX_FLOAT_LOOKUPS_PER_RUN = 10
 
 
 @dataclass
@@ -57,7 +73,9 @@ class SecDetectionRunSummary:
     ignored_reasons: dict[str, int] = field(default_factory=dict)
     special_situations_created: int = 0
     special_situations_updated: int = 0
+    candidate_only_created: int = 0
     created_situations: list[dict[str, Any]] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     rate_limit_backoff_events: list[dict[str, Any]] = field(default_factory=list)
     dry_run: bool = False
@@ -100,7 +118,9 @@ class SecDetectionRunSummary:
             "ignored_reasons_summary": self.ignored_reasons,
             "special_situations_created": self.special_situations_created,
             "special_situations_updated": self.special_situations_updated,
+            "candidate_only_created": self.candidate_only_created,
             "created_situations": self.created_situations,
+            "warnings": self.warnings,
             "errors": self.errors,
             "rate_limit_backoff_events": self.rate_limit_backoff_events,
             "dry_run": self.dry_run,
@@ -225,6 +245,15 @@ async def run_sec_edgar_detection(
     summary.form_counts = diagnostics.get("form_counts", {})
     summary.per_form_summary = _initial_per_form_summary(diagnostics, filings)
     seen_dedupe_keys: set[str] = set()
+    float_budget = {"remaining": _MAX_FLOAT_LOOKUPS_PER_RUN}
+
+    # Silent-breakage warning: a fully empty scan across all forms usually means
+    # a query/auth/parser problem rather than a quiet market.
+    if int(diagnostics.get("raw_hits_total", 0)) == 0 and not summary.rate_limit_backoff_events:
+        summary.warnings.append(
+            "SEC EDGAR returned 0 raw hits across all forms and sweeps in this run; "
+            "verify query parameters, User-Agent, and EFTS availability."
+        )
 
     for filing in filings:
         summary.filings_inspected += 1
@@ -252,6 +281,52 @@ async def run_sec_edgar_detection(
             summary.candidate_only_count += 1
             form_metrics["candidate_only"] += 1
             summary.classification_reports.append(initial_report)
+            # Quick-wins sprint: classified medium/high-confidence filings on
+            # supported forms become candidate-only SpecialSituations so they
+            # surface in the triage queue instead of dying in run summaries.
+            persistable = (
+                initial_report["ignored_reason"] in _CANDIDATE_PERSIST_REASONS
+                and initial_report["detected_situation_type"] != "unknown"
+                and not initial_report["required_identifiers_missing"]
+                and str(initial_report["classification_confidence"]).lower() in _CANDIDATE_PERSIST_CONFIDENCES
+            )
+            if persistable and not dry_run:
+                batch_duplicate = _is_batch_duplicate(filing, seen_dedupe_keys)
+                existing = await _find_existing_situation(db, filing)
+                if not existing and not batch_duplicate:
+                    evidence = _build_minimal_evidence(
+                        filing, decision, initial_report, trigger_type=trigger_type, candidate_only=True
+                    )
+                    evidence = await _maybe_enrich_market_context(evidence, filing, float_budget)
+                    candidate_sit = SpecialSituation(
+                        situation_type=decision["situation_type"],
+                        company_name=filing.company,
+                        ticker=filing.ticker,
+                        filing_type=decision["detected_form_type"],
+                        filing_url=filing.url,
+                        status="detected",
+                        evaluation=evidence,
+                        source_urls=[filing.url] if filing.url else [],
+                    )
+                    db.add(candidate_sit)
+                    await db.flush()
+                    summary.candidate_only_created += 1
+                    form_metrics["created"] += 1
+                    summary.created_situations.append({
+                        "id": str(candidate_sit.id),
+                        "company_name": candidate_sit.company_name,
+                        "ticker": candidate_sit.ticker,
+                        "situation_type": candidate_sit.situation_type,
+                        "filing_type": candidate_sit.filing_type,
+                        "filing_url": candidate_sit.filing_url,
+                        "status": candidate_sit.status,
+                        "source": "sec_edgar",
+                        "trigger_type": trigger_type or "manual",
+                        "accession_number": filing.accession_number,
+                        "cik": filing.cik,
+                        "candidate_only": True,
+                        "creation_reason": initial_report["ignored_reason"],
+                    })
             continue
 
         summary.candidates_detected += 1
@@ -276,6 +351,8 @@ async def run_sec_edgar_detection(
         if dry_run or not report["creation_eligible"]:
             continue
 
+        strict_evidence = _build_minimal_evidence(filing, decision, report, trigger_type=trigger_type)
+        strict_evidence = await _maybe_enrich_market_context(strict_evidence, filing, float_budget)
         sit = SpecialSituation(
             situation_type=decision["situation_type"],
             company_name=filing.company,
@@ -283,7 +360,7 @@ async def run_sec_edgar_detection(
             filing_type=decision["detected_form_type"],
             filing_url=filing.url,
             status="detected",
-            evaluation=_build_minimal_evidence(filing, decision, report, trigger_type=trigger_type),
+            evaluation=strict_evidence,
             source_urls=[filing.url] if filing.url else [],
         )
         db.add(sit)
@@ -322,16 +399,54 @@ def _extract_backoff_events(diagnostics: dict[str, Any]) -> list[dict[str, Any]]
     return events
 
 
+def _normalize_form(form: str | None) -> str:
+    """Normalize amendment suffixes so SC TO-T/A dedupes against SC TO-T."""
+    if not form:
+        return ""
+    return form.strip().upper().removesuffix("/A").strip()
+
+
 def _is_batch_duplicate(filing: Filing, seen: set[str]) -> bool:
     keys = [
         f"url:{filing.url}" if filing.url else "",
         f"accession:{filing.accession_number}" if filing.accession_number else "",
-        f"company-form:{filing.company}:{filing.filing_type}" if filing.company and filing.filing_type else "",
+        f"company-form:{filing.company}:{_normalize_form(filing.filing_type)}"
+        if filing.company and filing.filing_type
+        else "",
     ]
     keys = [key for key in keys if key]
     duplicate = any(key in seen for key in keys)
     seen.update(keys)
     return duplicate
+
+
+async def _maybe_enrich_market_context(
+    evidence: dict[str, Any],
+    filing: Filing,
+    float_budget: dict[str, int],
+) -> dict[str, Any]:
+    """Best-effort SEC public-float enrichment, bounded per run.
+
+    Never raises; unknown stays unknown. Adds `market_context` with public float
+    and an explainable competition-lens flag (prioritization only, not advice).
+    """
+    if float_budget.get("remaining", 0) <= 0:
+        evidence["market_context"] = {
+            "status": "skipped",
+            "reason": "per-run SEC company-facts lookup budget exhausted",
+        }
+        return evidence
+    float_budget["remaining"] -= 1
+    try:
+        public_float = await fetch_public_float(filing.cik)
+    except Exception:  # defensive: enrichment must never break detection
+        public_float = None
+    evidence["market_context"] = {
+        "public_float": public_float,
+        "competition_lens": build_competition_lens(public_float),
+        "status": "derived" if public_float else "unavailable",
+    }
+    return evidence
 
 
 def _increment_ignored_reason(summary: SecDetectionRunSummary, reason: str | None) -> None:
@@ -355,10 +470,12 @@ async def _find_existing_situation(db: AsyncSession, filing: Filing) -> SpecialS
             if sec_detection.get("accession_number") == filing.accession_number:
                 return item
 
+    normalized_form = _normalize_form(filing.filing_type)
+    form_variants = {filing.filing_type, normalized_form, f"{normalized_form}/A"}
     result = await db.execute(
         select(SpecialSituation).where(
             SpecialSituation.company_name == filing.company,
-            SpecialSituation.filing_type == filing.filing_type,
+            SpecialSituation.filing_type.in_(sorted(v for v in form_variants if v)),
         )
     )
     existing = result.scalars().first()
@@ -383,6 +500,7 @@ def _build_minimal_evidence(
     classification_report: dict[str, Any] | None = None,
     *,
     trigger_type: str | None = None,
+    candidate_only: bool = False,
 ) -> dict[str, Any]:
     evidence = {
         "detected_only": True,
@@ -408,6 +526,10 @@ def _build_minimal_evidence(
             "trigger_type": trigger_type or "manual",
             "evidence_status": "metadata-only",
             "requires_human_review": True,
+            "candidate_only": candidate_only,
+            "creation_reason": (
+                (classification_report or {}).get("ignored_reason") if candidate_only else "strict_allowlist"
+            ),
         },
         "summary": filing.summary,
         "disclaimer": "Detected from official SEC metadata for human review. This is not investment advice.",

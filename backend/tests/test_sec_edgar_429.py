@@ -224,7 +224,8 @@ async def test_query_with_diagnostics_includes_hit_inside_lookback():
     assert diagnostics["query_start_date"] == "2026-05-09"
     assert diagnostics["query_end_date"] == "2026-05-11"
     params = mock_client.get.call_args.kwargs["params"]
-    assert params["keys"] == "SC TO-T"
+    assert "keys" not in params  # quick-wins fix: form name is no longer sent as a full-text term
+    assert params["forms"] == "SC TO-T"
     assert params["forms"] == "SC TO-T"
     assert params["dateRange"] == "custom"
     assert params["startdt"] == "2026-05-09"

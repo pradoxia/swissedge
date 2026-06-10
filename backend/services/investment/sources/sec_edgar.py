@@ -130,6 +130,25 @@ def _parse_filing_datetime(value: str | None) -> datetime | None:
             return None
 
 
+def _items_from_src(src: dict) -> list[str]:
+    """Extract 8-K item codes (e.g. '1.03', '3.01') from an EFTS hit when present.
+
+    EFTS exposes item codes for 8-K filings in the `items` field. Defensive:
+    returns [] when the field is missing or has an unexpected shape.
+    """
+    raw = src.get("items")
+    if isinstance(raw, str):
+        raw = [raw]
+    if not isinstance(raw, list):
+        return []
+    codes: list[str] = []
+    for value in raw:
+        match = re.search(r"(\d{1,2}\.\d{2})", str(value))
+        if match:
+            codes.append(match.group(1))
+    return codes
+
+
 def _parse_hit(hit: dict) -> Filing | None:
     try:
         src = hit.get("_source", {})
@@ -151,7 +170,9 @@ def _parse_hit(hit: dict) -> Filing | None:
             url = f"{_SEARCH_URL}?q={accession}" if accession else _SEARCH_URL
 
         headline = src.get("file_description") or src.get("file_name") or src.get("summary") or ""
-        summary = f"{filing_type} filed by {entity_name or company} on {date_filed}. {headline}".strip()
+        item_codes = _items_from_src(src)
+        items_suffix = f" Items: {', '.join(item_codes)}." if item_codes else ""
+        summary = f"{filing_type} filed by {entity_name or company} on {date_filed}. {headline}{items_suffix}".strip()
 
         situation_type = _FILING_TYPE_MAP.get(filing_type)
         if situation_type is None and filing_type.upper().startswith("8-K"):
@@ -220,6 +241,16 @@ class SECEdgarAdapter(InvestmentSource):
         "PREM14A",
         "DFAN14A",
         "S-4",
+        "SC 13E3",
+        "25-NSE",
+    ]
+
+    # Targeted full-text sweeps: high-value phrases that form filters miss.
+    # Each tuple is (quoted phrase, optional forms filter or None for all forms).
+    FULL_TEXT_SWEEPS: list[tuple[str, str | None]] = [
+        ("odd lot", None),
+        ("plan of liquidation", "8-K"),
+        ("dutch auction", None),
     ]
 
     async def search_recent(self, hours_back: int = 6) -> list[Filing]:
@@ -245,6 +276,32 @@ class SECEdgarAdapter(InvestmentSource):
             )
             all_filings.extend(filings)
             by_form[filing_type] = diagnostics
+
+        # Full-text sweeps: catch high-value phrases the form filters miss.
+        # Results join the same parse/lookback/dedupe pipeline downstream.
+        seen_accessions = {f.accession_number for f in all_filings if f.accession_number}
+        for phrase, forms_filter in self.FULL_TEXT_SWEEPS:
+            await _rate_limit()
+            sweep_filings, sweep_diagnostics = await self._query_with_diagnostics(
+                filing_type=forms_filter or "",
+                date_from=start_date_str,
+                date_to=end_date_str,
+                start_datetime=start_datetime,
+                end_datetime=end_datetime,
+                full_text_query=phrase,
+            )
+            sweep_diagnostics["full_text_query"] = phrase
+            new_filings = []
+            for filing in sweep_filings:
+                if filing.accession_number and filing.accession_number in seen_accessions:
+                    continue
+                if filing.accession_number:
+                    seen_accessions.add(filing.accession_number)
+                filing.summary = f"{filing.summary} [full-text sweep: {phrase}]"
+                new_filings.append(filing)
+            all_filings.extend(new_filings)
+            sweep_diagnostics["sweep_new_filings"] = len(new_filings)
+            by_form[f'sweep:"{phrase}"'] = sweep_diagnostics
 
         total_raw_hits = sum(int(d.get("raw_hits", 0)) for d in by_form.values())
         total_limited_hits = sum(int(d.get("limited_hits", 0)) for d in by_form.values())
@@ -306,13 +363,19 @@ class SECEdgarAdapter(InvestmentSource):
         limit: int = _DEFAULT_QUERY_LIMIT,
         start_datetime: datetime | None = None,
         end_datetime: datetime | None = None,
+        full_text_query: str | None = None,
     ) -> tuple[list[Filing], dict]:
+        # Note: the legacy `keys` param sent the form name as a full-text term,
+        # which is redundant with `forms` and can distort ranking. `q` is now
+        # only used for explicit full-text sweeps (quoted phrase).
         params: dict = {
-            "keys": filing_type,
-            "forms": filing_type,
             "from": 0,
             "size": limit,
         }
+        if filing_type:
+            params["forms"] = filing_type
+        if full_text_query:
+            params["q"] = f'"{full_text_query}"'
         if date_from:
             params["dateRange"] = "custom"
             params["startdt"] = date_from

@@ -46,12 +46,27 @@ def detect_form_type(filing: Filing) -> str:
         return "F-3"
     elif "DEF 14A" in form or "DEFINITIVE PROXY" in form:
         return "DEF 14A"
-    elif "13E-3" in form:
+    elif "13E-3" in form or "13E3" in form:
         return "13E-3"
     elif form.startswith("S-4"):
         return "S-4/A" if "/A" in form else "S-4"
+    elif form == "25" or form.startswith("25-NSE") or form.startswith("FORM 25"):
+        return "Form 25"
 
     return form
+
+
+_ITEM_CODE_PATTERN = re.compile(r"items?:\s*([0-9., ]+)", re.IGNORECASE)
+
+
+def extract_8k_item_codes(summary: str | None) -> list[str]:
+    """Extract 8-K item codes (e.g. '1.03') from a filing summary string."""
+    if not summary:
+        return []
+    match = _ITEM_CODE_PATTERN.search(summary)
+    if not match:
+        return []
+    return re.findall(r"\d{1,2}\.\d{2}", match.group(1))
 
 
 def detect_situation_type(filing: Filing) -> dict:
@@ -133,6 +148,43 @@ def detect_situation_type(filing: Filing) -> dict:
 
     # Medium-confidence: 8-K or DEF 14A with keyword detection
     if form_type in ("8-K", "DEF 14A"):
+        # Deterministic 8-K item-code detection (more precise than keywords).
+        item_codes = extract_8k_item_codes(filing.summary)
+        if "1.03" in item_codes:
+            return {
+                "situation_type": "bankruptcy",
+                "subtype": "bankruptcy_or_receivership",
+                "detection_confidence": "HIGH",
+                "detected_signal": f"Form type: {form_type} + Item 1.03 (bankruptcy or receivership)",
+                "reason_code": "item_1_03_bankruptcy",
+            }
+        if "3.01" in item_codes:
+            return {
+                "situation_type": "delisting",
+                "subtype": "listing_deficiency_or_delisting",
+                "detection_confidence": "MEDIUM",
+                "detected_signal": f"Form type: {form_type} + Item 3.01 (notice of delisting / listing deficiency)",
+                "reason_code": "item_3_01_delisting",
+            }
+        if "5.01" in item_codes:
+            return {
+                "situation_type": "merger",
+                "subtype": "change_of_control",
+                "detection_confidence": "MEDIUM",
+                "detected_signal": f"Form type: {form_type} + Item 5.01 (change in control of registrant)",
+                "reason_code": "item_5_01_change_of_control",
+            }
+
+        # Odd-lot provisions: structurally low institutional competition.
+        if "odd lot" in summary_lower or "odd-lot" in summary_lower:
+            return {
+                "situation_type": "tender_offer",
+                "subtype": "odd_lot_provision",
+                "detection_confidence": "MEDIUM",
+                "detected_signal": f"Form type: {form_type} + odd lot language",
+                "reason_code": "odd_lot_keyword",
+            }
+
         # Plan of dissolution/liquidation
         liquidation_patterns = [
             "plan of liquidation",
@@ -259,6 +311,16 @@ def detect_situation_type(filing: Filing) -> dict:
             "reason_code": "going_private_form",
         }
 
+    # Form 25 (exchange delisting notification)
+    if form_type == "Form 25":
+        return {
+            "situation_type": "delisting",
+            "subtype": "exchange_delisting",
+            "detection_confidence": "MEDIUM",
+            "detected_signal": f"Form type: {form_type} (notification of delisting from exchange)",
+            "reason_code": "form_25_delisting",
+        }
+
     # Unknown
     return {
         "situation_type": "unknown",
@@ -325,6 +387,14 @@ def route_playbook(situation_type: str, subtype: str | None, form_type: str | No
             "routed_from": None,
             "routed_to": None,
             "routing_reason": "S-3 / F-3 rights offering routes to rights_offering (detection-only)",
+        }
+
+    if situation_type == "delisting":
+        return {
+            "selected_playbook": None,
+            "routed_from": None,
+            "routed_to": None,
+            "routing_reason": "Form 25 / Item 3.01 delisting: detection-only, no playbook available",
         }
 
     # Gateway routing for merger
@@ -414,7 +484,7 @@ def check_scope(situation_type: str, subtype: str | None) -> dict:
             "out_of_scope_reason": None,
         }
 
-    if situation_type in ("proxy_fight", "rights_offering"):
+    if situation_type in ("proxy_fight", "rights_offering", "delisting"):
         return {
             "playbook_status": "detection_only",
             "out_of_scope_reason": "Course provides no evaluation methodology for this situation type",
