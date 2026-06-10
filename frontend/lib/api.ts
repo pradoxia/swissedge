@@ -2293,6 +2293,69 @@ export async function generateQualityPreview(researchCaseId: string): Promise<Qu
   return response.json();
 }
 
+export interface AnalyzeCasePreviewResult {
+  saved_to_db: false;
+  research_case_id: string;
+  status: string;
+  blocked_reason: string | null;
+  missing_documents: {
+    document_id: string | null;
+    title: string | null;
+    url: string | null;
+    reason: string;
+  }[];
+  classification_preview: {
+    classification: string;
+    rationale: string;
+    confidence: string;
+  } | null;
+  evidence_coverage_summary: {
+    documents_reviewed: number;
+    documents_with_body_text: number;
+    coverage_summary: string;
+    missing_information: string[];
+  } | null;
+  brief_draft_preview: {
+    sections: {
+      section_name: string;
+      draft_text: string;
+      source_document_ids: string[];
+    }[];
+  } | null;
+  quality_checklist_preview: {
+    items: {
+      item: string;
+      status: string;
+      notes: string;
+    }[];
+    overall_status: string;
+  } | null;
+  guardrail_findings: {
+    guardrail: string;
+    status: string;
+    notes: string;
+  }[];
+  usage: {
+    provider?: string;
+    model?: string;
+    input_tokens?: number;
+    output_tokens?: number;
+  };
+  disclaimer: string;
+}
+
+export async function generateAnalyzeCasePreview(researchCaseId: string): Promise<AnalyzeCasePreviewResult> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/investment/research-cases/${researchCaseId}/analyze-preview`,
+    { method: 'POST' },
+  );
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(typeof body?.detail === 'string' ? body.detail : `HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
 export async function updateResearchDocument(
   researchCaseId: string,
   documentId: string,

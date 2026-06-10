@@ -1,7 +1,7 @@
 ---
 document_id: ROADMAP
 title: Product Roadmap
-version: 0.5.6
+version: 0.5.7
 status: active
 owner: Dani
 last_updated: 2026-06-10
@@ -124,19 +124,21 @@ Status: implemented locally in Sprint M1. Production migration still requires Da
 
 Status: M4A implements the local model/service foundation for cached price context and neutral `estimated_spread_pct` display in Research Inbox. M4B adds manual Research Inbox price-context editing for `SpecialSituation` and `ResearchCase` items, with source/reason capture and Decimal recalculation. M4C adds manual curated source intake that creates candidate-only unverified `SpecialSituation` triage rows in the same Research Inbox. Price/spread context and curated source intake are workflow context only, not advice or decision signals. Provider selection, automated offer-price extraction, per-source yield metrics, production deployment, production migration, and production price refresh cron remain pending Dani approval.
 
-### M4 - Consolidated Workbench
+### M5 - Consolidated ResearchCase Workbench
 
-- Consolidate active case work into Documentos / Analisis-Brief / Decision sections.
+- Status: implemented locally as the `/investment/research/{id}` daily workbench.
+- Consolidate active case work into Documents / Analysis-Brief / Decision sections.
 - Reuse existing read-only endpoints where possible.
+- Reuse existing manual decision, price context, document, and preview-only analysis controls without adding backend persistence.
 - Reduce panel sprawl without changing backend behavior outside the approved sprint scope.
 
-### M5 - North Star Metrics + MVP Validation
+### M6 - North Star Metrics + MVP Validation
 
 - Show decided cases per week, Dani time per case, and funnel movement from detection to decision.
 - Validate at least 3 cases decided per week with no more than 2 hours of Dani time per case for 2 consecutive weeks.
 - Keep metrics descriptive; no trading alerts or investment recommendations.
 
-### M6 - Hardening Buffer
+### M7 - Hardening Buffer
 
 - Reserve time for parsing failures, retry behavior, UI polish, documentation cleanup, and real-case edge cases found in M1-M5.
 - Keep scope bounded to hardening the MVP v3 loop.
@@ -245,6 +247,7 @@ The earlier candidate list prioritized governance stabilization, observability r
 
 | Version | Date | Author | Change |
 | --- | --- | --- | --- |
+| 0.5.7 | 2026-06-11 | Codex | Documented M5 local ResearchCase workbench consolidation and no-new-persistence boundary. |
 | 0.5.6 | 2026-06-10 | Codex | Documented M4C manual curated source intake and no-scraping/no-automation boundary. |
 | 0.5.5 | 2026-06-10 | Codex | Documented M4B manual price context activation and no-provider/no-cron boundary. |
 | 0.5.4 | 2026-06-10 | Codex | Documented M3B manual DecisionRecord foundation and no-autonomous-decision boundary. |

@@ -27,13 +27,17 @@ import {
   fetchResearchCaseOfficialSourceFinder,
   fetchResearchCaseOperationalView,
   fetchResearchCaseSecDocumentAcquisitionPreview,
+  fetchResearchInbox,
   updateResearchCase,
+  recordResearchInboxDecision,
+  updateResearchInboxPriceContext,
   addResearchTask,
   updateResearchTask,
   addResearchDocument,
   addResearchSource,
   updateResearchDocument,
   updateResearchSource,
+  generateAnalyzeCasePreview,
   generateBriefPreview,
   generateQualityPreview,
   generateDocumentAnalysisPreview,
@@ -44,8 +48,10 @@ import {
   createPublicDraftFromResearchCase,
   fetchPublicDrafts,
   type ResearchCase,
+  type AnalyzeCasePreviewResult,
   type CaseActivityTimelinePackage,
   type CaseCompletionPackage,
+  type DecisionOutcome,
   type ResearchCaseEvidenceLinksPackage,
   type CaseDocumentationGuidePackage,
   type DocumentPackage,
@@ -69,6 +75,8 @@ import {
   type SourceIntelligenceSuggestion,
   type SourceIntelligenceSuggestionRecord,
   type PublicArticleDraft,
+  type PriceContextStatus,
+  type ResearchInboxItem,
 } from '@/lib/api';
 
 const BRIEF_SECTIONS: { key: string; label: string }[] = [
@@ -1392,6 +1400,305 @@ function V2MetadataPanel({ rc }: { rc: ResearchCase }) {
   );
 }
 
+const DECISION_OPTIONS: { value: DecisionOutcome; label: string }[] = [
+  { value: 'CANDIDATE', label: 'Candidate' },
+  { value: 'WATCHLIST', label: 'Watchlist' },
+  { value: 'NEED_MORE_EVIDENCE', label: 'Need more evidence' },
+  { value: 'REJECT', label: 'Reject' },
+];
+
+const PRICE_STATUS_OPTIONS: { value: PriceContextStatus | ''; label: string }[] = [
+  { value: '', label: 'Unknown' },
+  { value: 'available', label: 'Available' },
+  { value: 'missing_offer_price', label: 'Missing offer price' },
+  { value: 'missing_market_price', label: 'Missing market price' },
+  { value: 'stale_price', label: 'Stale price' },
+  { value: 'not_applicable', label: 'Not applicable' },
+];
+
+type WorkbenchPriceForm = {
+  ticker: string;
+  offer_price: string;
+  offer_price_source: string;
+  latest_close_price: string;
+  latest_close_date: string;
+  spread_status: PriceContextStatus | '';
+  status_reason: string;
+};
+
+function formatWorkbenchDate(value: string | null | undefined) {
+  if (!value) return 'not set';
+  return new Date(value).toLocaleString('en-CH');
+}
+
+function formatContextValue(value: string | null | undefined) {
+  return value && value.trim() ? value : 'not recorded';
+}
+
+function bodyTextReady(documents: ResearchDocument[]) {
+  return documents.filter(doc => doc.body_text_status === 'acquired' || Boolean(doc.body_text_acquired_at)).length;
+}
+
+function briefProgress(brief: Record<string, unknown> | null) {
+  if (!brief) return 0;
+  return BRIEF_SECTIONS.filter(section => {
+    const value = brief[section.key];
+    return typeof value === 'string' && value.trim().length > 0;
+  }).length;
+}
+
+function buildManualNextActions(
+  rc: ResearchCase,
+  inboxItem: ResearchInboxItem | null,
+  documentPackage: DocumentPackage | null,
+  analyzePreview: AnalyzeCasePreviewResult | null,
+) {
+  const actions: string[] = [];
+  const openTasks = rc.tasks.filter(task => task.status !== 'done' && task.status !== 'cancelled').length;
+  const readyBodies = bodyTextReady(rc.documents);
+  const missingRequired = documentPackage?.summary.required_missing ?? 0;
+
+  if (rc.documents.length === 0 || missingRequired > 0) actions.push('Add or acquire missing documents');
+  if (rc.documents.length > 0 && readyBodies === 0) actions.push('Acquire SEC body text where available');
+  if (!inboxItem?.price_context) actions.push('Add or update price context');
+  if (!analyzePreview) actions.push('Run Analyze Preview only when explicitly approved and available');
+  if (briefProgress(rc.brief) < BRIEF_SECTIONS.length) actions.push('Continue the brief draft');
+  if (!inboxItem?.latest_decision) actions.push('Record a human decision with reason and author');
+  if (openTasks > 0) actions.push('Resolve open verification tasks');
+
+  return actions.length ? actions : ['Review detailed tools below and update the case manually'];
+}
+
+function WorkbenchStat({ label, value, hint }: { label: string; value: string; hint: string }) {
+  return (
+    <div className="rounded border border-gray-800 bg-gray-950/30 px-3 py-2">
+      <p className="text-[10px] font-mono uppercase tracking-wide text-gray-600">{label}</p>
+      <p className="mt-1 text-lg font-mono text-gray-200">{value}</p>
+      <p className="mt-1 text-xs text-gray-600">{hint}</p>
+    </div>
+  );
+}
+
+function M5ResearchWorkbench({
+  rc,
+  documentPackage,
+  inboxItem,
+  inboxError,
+  analyzePreview,
+  analyzePreviewError,
+  analyzePreviewLoading,
+  decisionOutcome,
+  decisionReason,
+  decisionAuthor,
+  decisionSaving,
+  decisionMsg,
+  priceForm,
+  priceSaving,
+  priceMsg,
+  onAnalyzePreview,
+  onDecisionOutcomeChange,
+  onDecisionReasonChange,
+  onDecisionAuthorChange,
+  onRecordDecision,
+  onPriceFormChange,
+  onSavePriceContext,
+}: {
+  rc: ResearchCase;
+  documentPackage: DocumentPackage | null;
+  inboxItem: ResearchInboxItem | null;
+  inboxError: string | null;
+  analyzePreview: AnalyzeCasePreviewResult | null;
+  analyzePreviewError: string | null;
+  analyzePreviewLoading: boolean;
+  decisionOutcome: DecisionOutcome;
+  decisionReason: string;
+  decisionAuthor: string;
+  decisionSaving: boolean;
+  decisionMsg: { text: string; ok: boolean } | null;
+  priceForm: WorkbenchPriceForm;
+  priceSaving: boolean;
+  priceMsg: { text: string; ok: boolean } | null;
+  onAnalyzePreview: () => Promise<void>;
+  onDecisionOutcomeChange: (value: DecisionOutcome) => void;
+  onDecisionReasonChange: (value: string) => void;
+  onDecisionAuthorChange: (value: string) => void;
+  onRecordDecision: () => Promise<void>;
+  onPriceFormChange: (field: keyof WorkbenchPriceForm, value: string) => void;
+  onSavePriceContext: () => Promise<void>;
+}) {
+  const readyBodies = bodyTextReady(rc.documents);
+  const filledBriefSections = briefProgress(rc.brief);
+  const latestDecision = inboxItem?.latest_decision;
+  const priceContext = inboxItem?.price_context;
+  const sourceContext = inboxItem?.source_context || rc.source_origin_name || rc.intake_method || 'not recorded';
+  const missingDocuments = documentPackage?.documents.filter(doc => doc.status === 'missing' || doc.status === 'needs_manual_check') ?? [];
+  const nextActions = buildManualNextActions(rc, inboxItem, documentPackage, analyzePreview);
+
+  return (
+    <Section
+      id="research-workbench"
+      title="ResearchCase Workbench"
+      hint="Daily loop: Documents -> Analysis / Brief -> Decision. Existing detailed tools remain below."
+    >
+      {inboxError && <p className="mb-3 text-xs font-mono text-amber-300">{inboxError}</p>}
+
+      <div className="grid gap-3 md:grid-cols-4">
+        <WorkbenchStat label="Documents" value={`${rc.documents.length}`} hint={`${readyBodies} with body text`} />
+        <WorkbenchStat label="Missing docs" value={`${missingDocuments.length}`} hint={documentPackage?.readiness_level ?? 'unknown'} />
+        <WorkbenchStat label="Brief" value={`${filledBriefSections}/${BRIEF_SECTIONS.length}`} hint="stored section progress" />
+        <WorkbenchStat label="Decision" value={latestDecision?.outcome ?? 'none'} hint={latestDecision ? formatWorkbenchDate(latestDecision.created_at) : 'reason required'} />
+      </div>
+
+      <div className="mt-4 grid gap-4 xl:grid-cols-3">
+        <div className="rounded border border-gray-800 p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-xs font-mono uppercase tracking-widest text-cyan-400">Documents</h3>
+              <p className="mt-1 text-xs text-gray-600">Evidence readiness and blockers for the case.</p>
+            </div>
+            <a href="#research-documents" className="text-xs font-mono text-cyan-700 hover:text-cyan-400">OPEN</a>
+          </div>
+          <div className="mt-4 space-y-2 text-xs text-gray-400">
+            <p>{rc.documents.length || 'No'} attached document metadata row(s)</p>
+            <p>{readyBodies} document body text record(s) ready</p>
+            <p>{documentPackage?.summary.required_missing ?? 0} required document blocker(s)</p>
+            {missingDocuments.slice(0, 3).map(doc => (
+              <p key={doc.document_key} className="rounded border border-gray-800 px-2 py-1 text-gray-500">
+                {doc.label}: {doc.status.replace(/_/g, ' ')}
+              </p>
+            ))}
+          </div>
+          <a href="#research-sec-documents" className="mt-4 inline-block text-xs font-mono text-cyan-700 hover:text-cyan-400">
+            SEC acquisition panel
+          </a>
+        </div>
+
+        <div className="rounded border border-gray-800 p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-xs font-mono uppercase tracking-widest text-cyan-400">Analysis / Brief</h3>
+              <p className="mt-1 text-xs text-gray-600">Preview-only analysis and stored brief progress.</p>
+            </div>
+            <a href="#research-brief" className="text-xs font-mono text-cyan-700 hover:text-cyan-400">OPEN</a>
+          </div>
+          <button
+            onClick={onAnalyzePreview}
+            disabled={analyzePreviewLoading}
+            className="mt-4 rounded border border-cyan-800 px-3 py-1.5 text-xs font-mono text-cyan-300 hover:bg-cyan-950/30 disabled:opacity-40"
+          >
+            {analyzePreviewLoading ? 'PREVIEWING...' : 'RUN MANUAL ANALYZE PREVIEW'}
+          </button>
+          {analyzePreviewError && <p className="mt-2 text-xs font-mono text-amber-300">{analyzePreviewError}</p>}
+          {analyzePreview ? (
+            <div className="mt-3 rounded border border-gray-800 bg-gray-950/30 px-3 py-2 text-xs text-gray-400">
+              <p className="font-mono text-gray-300">Status: {analyzePreview.status}</p>
+              {analyzePreview.blocked_reason && <p className="mt-1">{analyzePreview.blocked_reason}</p>}
+              <p className="mt-1">Saved to DB: {analyzePreview.saved_to_db ? 'yes' : 'no'}</p>
+              {analyzePreview.evidence_coverage_summary && (
+                <p className="mt-1">{analyzePreview.evidence_coverage_summary.coverage_summary}</p>
+              )}
+            </div>
+          ) : (
+            <p className="mt-3 text-xs text-gray-600">No Analyze Preview has been run in this browser session.</p>
+          )}
+        </div>
+
+        <div className="rounded border border-gray-800 p-4">
+          <h3 className="text-xs font-mono uppercase tracking-widest text-cyan-400">Decision</h3>
+          <p className="mt-1 text-xs text-gray-600">Human-recorded workflow context. Reason and author are required.</p>
+          {latestDecision && (
+            <div className="mt-3 rounded border border-gray-800 bg-gray-950/30 px-3 py-2">
+              <p className="text-xs font-mono text-gray-300">{latestDecision.outcome}</p>
+              <p className="mt-1 text-xs text-gray-500">{latestDecision.reason}</p>
+              <p className="mt-1 text-xs font-mono text-gray-700">{latestDecision.author} / {formatWorkbenchDate(latestDecision.created_at)}</p>
+            </div>
+          )}
+          <div className="mt-3 space-y-2">
+            <select
+              value={decisionOutcome}
+              onChange={e => onDecisionOutcomeChange(e.target.value as DecisionOutcome)}
+              className="w-full rounded border border-gray-700 bg-gray-900 px-2 py-1 text-xs font-mono text-gray-300"
+            >
+              {DECISION_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+            <input
+              value={decisionAuthor}
+              onChange={e => onDecisionAuthorChange(e.target.value)}
+              placeholder="Author"
+              className="w-full rounded border border-gray-700 bg-gray-900 px-2 py-1 text-xs font-mono text-gray-300"
+            />
+            <textarea
+              value={decisionReason}
+              onChange={e => onDecisionReasonChange(e.target.value)}
+              rows={3}
+              placeholder="Decision reason..."
+              className="w-full rounded border border-gray-700 bg-gray-900 px-2 py-1 text-xs font-mono text-gray-300"
+            />
+            {decisionMsg && <p className={`text-xs font-mono ${decisionMsg.ok ? 'text-green-400' : 'text-red-400'}`}>{decisionMsg.text}</p>}
+            <button
+              onClick={onRecordDecision}
+              disabled={decisionSaving || !decisionReason.trim() || !decisionAuthor.trim()}
+              className="rounded bg-cyan-900 px-3 py-1.5 text-xs font-mono text-cyan-100 hover:bg-cyan-800 disabled:opacity-40"
+            >
+              {decisionSaving ? 'RECORDING...' : 'RECORD HUMAN DECISION'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <div className="rounded border border-gray-800 p-4">
+          <h3 className="text-xs font-mono uppercase tracking-widest text-gray-500">Price / Source Context</h3>
+          <div className="mt-3 grid gap-2 text-xs text-gray-400 sm:grid-cols-2">
+            <p>Source: {sourceContext}</p>
+            <p>Candidate-only: {inboxItem?.candidate_only ? 'yes' : 'no'}</p>
+            <p>Ticker: {formatContextValue(priceContext?.ticker)}</p>
+            <p>Status: {priceContext?.spread_status ?? 'unknown'}</p>
+            <p>Offer price: {formatContextValue(priceContext?.offer_price)}</p>
+            <p>Latest close: {formatContextValue(priceContext?.latest_close_price)}</p>
+            <p>Estimated spread %: {formatContextValue(priceContext?.estimated_spread_pct)}</p>
+            <p>Updated: {formatWorkbenchDate(priceContext?.updated_at)}</p>
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <input value={priceForm.ticker} onChange={e => onPriceFormChange('ticker', e.target.value)} placeholder="Ticker" className="rounded border border-gray-700 bg-gray-900 px-2 py-1 text-xs font-mono text-gray-300" />
+            <input value={priceForm.offer_price} onChange={e => onPriceFormChange('offer_price', e.target.value)} placeholder="Offer price" className="rounded border border-gray-700 bg-gray-900 px-2 py-1 text-xs font-mono text-gray-300" />
+            <input value={priceForm.offer_price_source} onChange={e => onPriceFormChange('offer_price_source', e.target.value)} placeholder="Offer price source" className="rounded border border-gray-700 bg-gray-900 px-2 py-1 text-xs font-mono text-gray-300" />
+            <input value={priceForm.latest_close_price} onChange={e => onPriceFormChange('latest_close_price', e.target.value)} placeholder="Latest close" className="rounded border border-gray-700 bg-gray-900 px-2 py-1 text-xs font-mono text-gray-300" />
+            <input value={priceForm.latest_close_date} onChange={e => onPriceFormChange('latest_close_date', e.target.value)} placeholder="YYYY-MM-DD" className="rounded border border-gray-700 bg-gray-900 px-2 py-1 text-xs font-mono text-gray-300" />
+            <select value={priceForm.spread_status} onChange={e => onPriceFormChange('spread_status', e.target.value)} className="rounded border border-gray-700 bg-gray-900 px-2 py-1 text-xs font-mono text-gray-300">
+              {PRICE_STATUS_OPTIONS.map(option => <option key={option.value || 'unknown'} value={option.value}>{option.label}</option>)}
+            </select>
+            <input value={priceForm.status_reason} onChange={e => onPriceFormChange('status_reason', e.target.value)} placeholder="Status reason" className="sm:col-span-2 rounded border border-gray-700 bg-gray-900 px-2 py-1 text-xs font-mono text-gray-300" />
+          </div>
+          {priceMsg && <p className={`mt-2 text-xs font-mono ${priceMsg.ok ? 'text-green-400' : 'text-red-400'}`}>{priceMsg.text}</p>}
+          <button
+            onClick={onSavePriceContext}
+            disabled={priceSaving}
+            className="mt-3 rounded border border-gray-700 px-3 py-1.5 text-xs font-mono text-gray-300 hover:border-cyan-800 hover:text-cyan-300 disabled:opacity-40"
+          >
+            {priceSaving ? 'SAVING...' : 'SAVE MANUAL PRICE CONTEXT'}
+          </button>
+          <p className="mt-2 text-xs text-gray-700">Price context is workflow prioritization context only.</p>
+        </div>
+
+        <div className="rounded border border-gray-800 p-4">
+          <h3 className="text-xs font-mono uppercase tracking-widest text-gray-500">Manual Next Actions</h3>
+          <div className="mt-3 space-y-2">
+            {nextActions.map(action => (
+              <p key={action} className="rounded border border-gray-800 bg-gray-950/30 px-3 py-2 text-xs text-gray-400">
+                {action}
+              </p>
+            ))}
+          </div>
+          <p className="mt-3 text-xs font-mono text-gray-700">
+            This workbench does not trigger external collection, publishing, or workflow status changes.
+          </p>
+        </div>
+      </div>
+    </Section>
+  );
+}
+
 function prepItemTitle(item: unknown): string {
   if (!item || typeof item !== 'object') return 'Untitled item';
   const record = item as Record<string, unknown>;
@@ -2069,6 +2376,27 @@ export default function ResearchDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [officialSourceCopiedKey, setOfficialSourceCopiedKey] = useState<string | null>(null);
+  const [inboxItem, setInboxItem] = useState<ResearchInboxItem | null>(null);
+  const [inboxError, setInboxError] = useState<string | null>(null);
+  const [analyzePreview, setAnalyzePreview] = useState<AnalyzeCasePreviewResult | null>(null);
+  const [analyzePreviewError, setAnalyzePreviewError] = useState<string | null>(null);
+  const [analyzePreviewLoading, setAnalyzePreviewLoading] = useState(false);
+  const [decisionOutcome, setDecisionOutcome] = useState<DecisionOutcome>('CANDIDATE');
+  const [decisionReason, setDecisionReason] = useState('');
+  const [decisionAuthor, setDecisionAuthor] = useState('Dani');
+  const [decisionSaving, setDecisionSaving] = useState(false);
+  const [decisionMsg, setDecisionMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [priceForm, setPriceForm] = useState<WorkbenchPriceForm>({
+    ticker: '',
+    offer_price: '',
+    offer_price_source: '',
+    latest_close_price: '',
+    latest_close_date: '',
+    spread_status: '',
+    status_reason: '',
+  });
+  const [priceSaving, setPriceSaving] = useState(false);
+  const [priceMsg, setPriceMsg] = useState<{ text: string; ok: boolean } | null>(null);
 
   // Edit state
   const [editingStatus, setEditingStatus] = useState(false);
@@ -2271,6 +2599,31 @@ export default function ResearchDetailPage() {
     }
   }
 
+  function syncPriceForm(item: ResearchInboxItem | null) {
+    const price = item?.price_context;
+    setPriceForm({
+      ticker: price?.ticker ?? '',
+      offer_price: price?.offer_price ?? '',
+      offer_price_source: price?.offer_price_source ?? '',
+      latest_close_price: price?.latest_close_price ?? '',
+      latest_close_date: price?.latest_close_date ?? '',
+      spread_status: (price?.spread_status as PriceContextStatus | undefined) ?? '',
+      status_reason: price?.status_reason ?? '',
+    });
+  }
+
+  async function loadInboxItem() {
+    try {
+      setInboxError(null);
+      const queue = await fetchResearchInbox();
+      const item = queue.items.find(candidate => candidate.entity_type === 'research_case' && candidate.id === id) ?? null;
+      setInboxItem(item);
+      syncPriceForm(item);
+    } catch (err) {
+      setInboxError(err instanceof Error ? err.message : 'Failed to load Research Inbox context');
+    }
+  }
+
   async function copyOfficialSourceQuery(text: string, key: string) {
     try {
       if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
@@ -2300,6 +2653,70 @@ export default function ResearchDetailPage() {
     }
   }
 
+  async function handleAnalyzePreview() {
+    setAnalyzePreviewLoading(true);
+    setAnalyzePreviewError(null);
+    try {
+      const result = await generateAnalyzeCasePreview(id);
+      setAnalyzePreview(result);
+    } catch (err) {
+      setAnalyzePreview(null);
+      setAnalyzePreviewError(err instanceof Error ? err.message : 'Analyze Preview is unavailable');
+    } finally {
+      setAnalyzePreviewLoading(false);
+    }
+  }
+
+  async function handleRecordDecision() {
+    if (!decisionReason.trim() || !decisionAuthor.trim()) return;
+    setDecisionSaving(true);
+    setDecisionMsg(null);
+    try {
+      await recordResearchInboxDecision({
+        target_type: 'research_case',
+        target_id: id,
+        outcome: decisionOutcome,
+        reason: decisionReason.trim(),
+        author: decisionAuthor.trim(),
+      });
+      setDecisionReason('');
+      setDecisionMsg({ text: 'Human decision recorded.', ok: true });
+      await loadInboxItem();
+    } catch (err) {
+      setDecisionMsg({ text: err instanceof Error ? err.message : 'Failed to record decision', ok: false });
+    } finally {
+      setDecisionSaving(false);
+    }
+  }
+
+  function handlePriceFormChange(field: keyof WorkbenchPriceForm, value: string) {
+    setPriceForm(prev => ({ ...prev, [field]: value } as WorkbenchPriceForm));
+  }
+
+  async function handleSavePriceContext() {
+    setPriceSaving(true);
+    setPriceMsg(null);
+    try {
+      await updateResearchInboxPriceContext({
+        target_type: 'research_case',
+        target_id: id,
+        ticker: priceForm.ticker.trim() || undefined,
+        offer_price: priceForm.offer_price.trim() || undefined,
+        offer_price_source: priceForm.offer_price_source.trim() || undefined,
+        latest_close_price: priceForm.latest_close_price.trim() || undefined,
+        latest_close_date: priceForm.latest_close_date.trim() || undefined,
+        spread_status: priceForm.spread_status,
+        status_reason: priceForm.status_reason.trim() || undefined,
+      });
+      setPriceMsg({ text: 'Manual price context saved.', ok: true });
+      await loadInboxItem();
+    } catch (err) {
+      setPriceMsg({ text: err instanceof Error ? err.message : 'Failed to save price context', ok: false });
+    } finally {
+      setPriceSaving(false);
+    }
+  }
+
   useEffect(() => {
     load();
     loadEvaluationPrep();
@@ -2314,6 +2731,7 @@ export default function ResearchDetailPage() {
     loadDocumentationAgentReport();
     loadHistoricalAnalogues();
     loadActivityTimeline();
+    loadInboxItem();
   }, [id]);
 
   async function saveField(payload: Parameters<typeof updateResearchCase>[1], successMsg: string) {
@@ -2559,6 +2977,31 @@ export default function ResearchDetailPage() {
           </div>
         </div>
 
+        <M5ResearchWorkbench
+          rc={rc}
+          documentPackage={documentPackage}
+          inboxItem={inboxItem}
+          inboxError={inboxError}
+          analyzePreview={analyzePreview}
+          analyzePreviewError={analyzePreviewError}
+          analyzePreviewLoading={analyzePreviewLoading}
+          decisionOutcome={decisionOutcome}
+          decisionReason={decisionReason}
+          decisionAuthor={decisionAuthor}
+          decisionSaving={decisionSaving}
+          decisionMsg={decisionMsg}
+          priceForm={priceForm}
+          priceSaving={priceSaving}
+          priceMsg={priceMsg}
+          onAnalyzePreview={handleAnalyzePreview}
+          onDecisionOutcomeChange={setDecisionOutcome}
+          onDecisionReasonChange={setDecisionReason}
+          onDecisionAuthorChange={setDecisionAuthor}
+          onRecordDecision={handleRecordDecision}
+          onPriceFormChange={handlePriceFormChange}
+          onSavePriceContext={handleSavePriceContext}
+        />
+
         <DocumentationGuidePanel guide={documentationGuide} error={documentationGuideError} />
 
         <CaseCompletionWorkbench
@@ -2582,15 +3025,17 @@ export default function ResearchDetailPage() {
           onCopy={copyOfficialSourceQuery}
         />
 
-        <SecDocumentAcquisitionPanel
-          packageData={secDocumentAcquisition}
-          loading={secDocumentAcquisitionLoading}
-          acquiring={secDocumentAcquiring}
-          error={secDocumentAcquisitionError}
-          copiedKey={officialSourceCopiedKey}
-          onCopy={copyOfficialSourceQuery}
-          onAcquire={handleSecDocumentAcquisition}
-        />
+        <div id="research-sec-documents" className="scroll-mt-20">
+          <SecDocumentAcquisitionPanel
+            packageData={secDocumentAcquisition}
+            loading={secDocumentAcquisitionLoading}
+            acquiring={secDocumentAcquiring}
+            error={secDocumentAcquisitionError}
+            copiedKey={officialSourceCopiedKey}
+            onCopy={copyOfficialSourceQuery}
+            onAcquire={handleSecDocumentAcquisition}
+          />
+        </div>
 
         <DocumentPackagePanel
           packageData={documentPackage}
@@ -2655,7 +3100,7 @@ export default function ResearchDetailPage() {
         </div>
 
         {/* ── Research Brief ── */}
-        <Section title="Research Brief" hint="Structured 14-section research note. Manual editor below; AI preview via button.">
+        <Section id="research-brief" title="Research Brief" hint="Structured 14-section research note. Manual editor below; AI preview via button.">
           <BriefEditor
             brief={rc.brief}
             onSave={draft => saveField({ brief: draft }, 'Brief saved')}

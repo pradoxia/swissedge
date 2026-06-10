@@ -1,7 +1,7 @@
 ---
 document_id: RUNBOOK
 title: Operations Runbook
-version: 0.4.7
+version: 0.4.8
 status: active
 owner: Dani
 last_updated: 2026-06-10
@@ -153,6 +153,18 @@ Operational rules:
 - M4C uses existing `SpecialSituation` fields and `evaluation` metadata; no migration is required.
 - No production deployment, VPS change, production migration, source scraping cron, price cron, SEC cron, scanner change, live AI, or provider integration is approved in M4C.
 
+## ResearchCase Workbench
+
+M5 consolidates `/investment/research/{id}` into a daily case workbench.
+
+Operational rules:
+
+- The workbench is organized as Documents, Analysis / Brief, and Decision.
+- It reuses existing manual controls for document metadata, SEC-only body text acquisition, preview-only analysis, brief editing, decision recording, and manual price context.
+- Analyze Preview remains gated, preview-only, observable, and not persisted by the workbench.
+- Decision and price context actions remain human-triggered and reason/source based.
+- The workbench must not change scanner behavior, cron, migrations, production state, live AI settings, provider settings, publishing state, or case workflow automatically.
+
 ## Price Context
 
 M4A adds local price/spread context foundations for triage prioritization only. M4B adds manual Research Inbox price-context editing.
@@ -185,6 +197,7 @@ For scanner, cron, live AI, or production incidents:
 
 | Version | Date | Author | Change |
 | --- | --- | --- | --- |
+| 0.4.8 | 2026-06-11 | Codex | Added M5 ResearchCase workbench operating rules and no-automation boundary. |
 | 0.4.7 | 2026-06-10 | Codex | Added M4C manual curated source intake rules and no-scraping/no-automation boundary. |
 | 0.4.6 | 2026-06-10 | Codex | Added M4B manual price context activation rules and no-provider/no-cron boundary. |
 | 0.4.5 | 2026-06-10 | Codex | Added M3B manual DecisionRecord operating rules and production migration approval boundary. |
