@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.models.observability import AgentRun, AiUsage
@@ -162,3 +163,20 @@ async def log_ai_usage(
         await db.flush()
     except Exception:
         pass
+
+
+async def estimate_daily_ai_spend_usd(db: AsyncSession, *, day: datetime | None = None) -> float:
+    """
+    Return today's logged AI spend estimate from AiUsage rows.
+    This is a budget guard input, not billing-grade accounting.
+    """
+    try:
+        current = day or datetime.now(timezone.utc)
+        start = current.replace(hour=0, minute=0, second=0, microsecond=0)
+        result = await db.execute(
+            select(func.coalesce(func.sum(AiUsage.estimated_cost), 0)).where(AiUsage.created_at >= start)
+        )
+        value = result.scalar()
+        return float(value or 0.0)
+    except Exception:
+        return 0.0

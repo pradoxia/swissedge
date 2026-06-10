@@ -1,7 +1,7 @@
 ---
 document_id: RUNBOOK
 title: Operations Runbook
-version: 0.4.1
+version: 0.4.2
 status: active
 owner: Dani
 last_updated: 2026-06-10
@@ -94,6 +94,15 @@ Operational rules:
 - If required document body text is missing, the endpoint returns `blocked_missing_documents` and does not call an AI provider.
 - Preview output is not persisted and must not mutate ResearchCase status, readiness, decisions, documents, sources, tasks, or publication state.
 - Analyze Case preview does not activate evaluator v2, scanner changes, cron, auto-promotion, auto-discard, auto-publish, or investment directive language.
+
+M2B adds observability for every manual Analyze Case preview attempt.
+
+Operational rules:
+
+- Disabled, blocked, budget-exceeded, parse-error, validation-error, and successful preview attempts must create a safe run record.
+- Run summaries must include metadata and outcome status only, never prompt text or full document body text.
+- AI usage is logged only when a provider call actually occurs and usage metadata exists.
+- Daily budget checks use logged `AiUsage.estimated_cost` as an operational estimate, not billing-grade cost accounting.
 
 ## Scheduled SEC EDGAR Detection
 

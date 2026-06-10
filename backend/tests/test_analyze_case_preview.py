@@ -41,6 +41,15 @@ def _make_doc(*, body_text: str | None = "Acquired SEC body text. " * 20):
     return doc
 
 
+def _mock_run_logger():
+    return (
+        patch("backend.api.investment.research_cases.run_logger.start_run", new=AsyncMock(return_value=uuid.uuid4())),
+        patch("backend.api.investment.research_cases.run_logger.finish_run", new=AsyncMock()),
+        patch("backend.api.investment.research_cases.run_logger.fail_run", new=AsyncMock()),
+        patch("backend.api.investment.research_cases.run_logger.log_ai_usage", new=AsyncMock()),
+    )
+
+
 def _make_case(*, documents=None):
     rc = MagicMock(spec=ResearchCase)
     rc.id = uuid.uuid4()
@@ -153,12 +162,45 @@ def test_disabled_live_ai_returns_controlled_503_and_provider_not_called(monkeyp
     monkeypatch.setattr(ai_client, "_openai_with_usage", provider)
     _override_db(db)
 
-    response = client.post(f"/api/investment/research-cases/{rc.id}/analyze-preview")
+    start_patch, finish_patch, fail_patch, usage_patch = _mock_run_logger()
+    with start_patch as start_run:
+        with finish_patch as finish_run:
+            with fail_patch as fail_run:
+                with usage_patch as log_ai_usage:
+                    response = client.post(f"/api/investment/research-cases/{rc.id}/analyze-preview")
 
     assert response.status_code == 503
     assert response.json()["detail"] == "Live AI is disabled. Dani approval is required before running AI previews."
     provider.assert_not_called()
-    db.commit.assert_not_called()
+    start_run.assert_awaited_once()
+    finish_run.assert_awaited_once()
+    assert finish_run.await_args.kwargs["final_outcome"] == "ai_disabled"
+    fail_run.assert_not_called()
+    log_ai_usage.assert_not_called()
+    assert db.commit.await_count == 1
+
+
+def test_missing_body_text_endpoint_logs_blocked_and_skips_ai():
+    rc = _make_case(documents=[_make_doc(body_text=None)])
+    db = _make_db_for_case(rc)
+    _override_db(db)
+    ai = AsyncMock()
+
+    start_patch, finish_patch, fail_patch, usage_patch = _mock_run_logger()
+    with patch("backend.services.investment.research_cases.complete_structured_with_usage", new=ai):
+        with start_patch:
+            with finish_patch as finish_run:
+                with fail_patch as fail_run:
+                    with usage_patch as log_ai_usage:
+                        response = client.post(f"/api/investment/research-cases/{rc.id}/analyze-preview")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "blocked_missing_documents"
+    ai.assert_not_called()
+    finish_run.assert_awaited_once()
+    assert finish_run.await_args.kwargs["final_outcome"] == "blocked_missing_documents"
+    fail_run.assert_not_called()
+    log_ai_usage.assert_not_called()
 
 
 def test_budget_cap_error_maps_to_429():
@@ -166,14 +208,21 @@ def test_budget_cap_error_maps_to_429():
     db = _make_db_for_case(rc)
     _override_db(db)
 
+    start_patch, finish_patch, fail_patch, usage_patch = _mock_run_logger()
     with patch(
         "backend.services.investment.research_cases.complete_structured_with_usage",
         new=AsyncMock(side_effect=ai_client.AIBudgetExceededError("cap")),
     ):
-        response = client.post(f"/api/investment/research-cases/{rc.id}/analyze-preview")
+        with start_patch:
+            with finish_patch as finish_run:
+                with fail_patch as fail_run:
+                    with usage_patch:
+                        response = client.post(f"/api/investment/research-cases/{rc.id}/analyze-preview")
 
     assert response.status_code == 429
     assert response.json()["detail"] == "AI daily budget cap would be exceeded."
+    assert finish_run.await_args.kwargs["final_outcome"] == "budget_exceeded"
+    fail_run.assert_not_called()
 
 
 def test_parse_error_maps_to_explicit_502():
@@ -181,14 +230,21 @@ def test_parse_error_maps_to_explicit_502():
     db = _make_db_for_case(rc)
     _override_db(db)
 
+    start_patch, finish_patch, fail_patch, usage_patch = _mock_run_logger()
     with patch(
         "backend.services.investment.research_cases.complete_structured_with_usage",
         new=AsyncMock(side_effect=ai_client.AIResponseParseError("bad json")),
     ):
-        response = client.post(f"/api/investment/research-cases/{rc.id}/analyze-preview")
+        with start_patch:
+            with finish_patch as finish_run:
+                with fail_patch as fail_run:
+                    with usage_patch:
+                        response = client.post(f"/api/investment/research-cases/{rc.id}/analyze-preview")
 
     assert response.status_code == 502
     assert response.json()["detail"] == "AI response was not valid JSON."
+    assert finish_run.await_args.kwargs["final_outcome"] == "parse_error"
+    fail_run.assert_not_called()
 
 
 def test_schema_validation_error_maps_to_explicit_502():
@@ -196,14 +252,51 @@ def test_schema_validation_error_maps_to_explicit_502():
     db = _make_db_for_case(rc)
     _override_db(db)
 
+    start_patch, finish_patch, fail_patch, usage_patch = _mock_run_logger()
     with patch(
         "backend.services.investment.research_cases.complete_structured_with_usage",
         new=AsyncMock(side_effect=ai_client.AIResponseValidationError("bad schema")),
     ):
-        response = client.post(f"/api/investment/research-cases/{rc.id}/analyze-preview")
+        with start_patch:
+            with finish_patch as finish_run:
+                with fail_patch as fail_run:
+                    with usage_patch:
+                        response = client.post(f"/api/investment/research-cases/{rc.id}/analyze-preview")
 
     assert response.status_code == 502
     assert response.json()["detail"] == "AI response did not match the required preview schema."
+    assert finish_run.await_args.kwargs["final_outcome"] == "validation_error"
+    fail_run.assert_not_called()
+
+
+def test_successful_endpoint_logs_finish_and_usage_without_body_text():
+    secret_body = "CONFIDENTIAL_BODY_TEXT_SHOULD_NOT_BE_LOGGED"
+    rc = _make_case(documents=[_make_doc(body_text=secret_body)])
+    db = _make_db_for_case(rc)
+    _override_db(db)
+    usage = {"provider": "test", "model": "model", "input_tokens": 10, "output_tokens": 20}
+    ai = AsyncMock(return_value=(_preview(rc.id), usage))
+
+    start_patch, finish_patch, fail_patch, usage_patch = _mock_run_logger()
+    with patch("backend.services.investment.research_cases.complete_structured_with_usage", new=ai):
+        with start_patch as start_run:
+            with finish_patch as finish_run:
+                with fail_patch as fail_run:
+                    with usage_patch as log_ai_usage:
+                        response = client.post(f"/api/investment/research-cases/{rc.id}/analyze-preview")
+
+    assert response.status_code == 200
+    assert response.json()["saved_to_db"] is False
+    assert finish_run.await_args.kwargs["final_outcome"] == "success_preview_generated"
+    log_ai_usage.assert_awaited_once()
+    fail_run.assert_not_called()
+    logged_text = json.dumps(
+        {
+            "start": start_run.await_args.kwargs,
+            "finish": finish_run.await_args.kwargs,
+        }
+    )
+    assert secret_body not in logged_text
 
 
 @pytest.mark.asyncio

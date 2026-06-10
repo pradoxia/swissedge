@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from backend.services.observability.run_logger import (
+    estimate_daily_ai_spend_usd,
     estimate_cost,
     estimate_tokens,
     start_run,
@@ -117,6 +118,19 @@ async def test_ai_usage_logged_when_ai_client_called():
     assert added.total_tokens == 1600
     assert added.estimated_cost is not None
     assert float(added.estimated_cost) > 0
+
+
+@pytest.mark.anyio
+async def test_daily_ai_spend_estimate_uses_logged_usage():
+    db = _mock_db()
+    result = MagicMock()
+    result.scalar.return_value = 1.25
+    db.execute = AsyncMock(return_value=result)
+
+    spend = await estimate_daily_ai_spend_usd(db)
+
+    assert spend == 1.25
+    db.execute.assert_awaited_once()
 
 
 # ── Test 4: failed run logs error_message ────────────────────────────────────

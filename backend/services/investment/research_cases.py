@@ -18,10 +18,11 @@ from backend.models.publishing import PublicArticleDraft
 from backend.models.investment import SpecialSituation
 from backend.models.agent_ops import AgentProfile, AgentRoom
 from backend.services.agent_ops.activity_logger import log_agent_activity
-from backend.services.ai_client import complete_structured_with_usage, complete_with_usage
+from backend.services.ai_client import AIRequestOptions, complete_structured_with_usage, complete_with_usage
 from backend.services.investment.evidence_links import summarize_evidence_links, build_research_case_evidence_links
 from backend.services.investment.methodology_workspace import WORKSPACE_KEY
 from backend.services.investment.routing_engine import check_scope, route_playbook
+from backend.services.observability.run_logger import estimate_daily_ai_spend_usd
 
 logger = logging.getLogger(__name__)
 SPECIAL_SITUATION_PROMOTION_BRIEF_VERSION = "ss_promo_v1"
@@ -1709,12 +1710,17 @@ async def generate_analyze_case_preview(
         )
 
     prompt = _build_analyze_case_prompt(rc, documents_with_body_text)
+    daily_spend_estimate = await estimate_daily_ai_spend_usd(db)
     preview, usage = await complete_structured_with_usage(
         prompt,
         AnalyzeCasePreview,
         system=_ANALYZE_CASE_SYSTEM,
         max_tokens=5000,
         task_name="analyze_case_preview",
+        options=AIRequestOptions(
+            task_name="analyze_case_preview",
+            estimated_daily_spend_usd=daily_spend_estimate,
+        ),
     )
     preview.saved_to_db = False
     preview.research_case_id = str(research_case_id)

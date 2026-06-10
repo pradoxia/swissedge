@@ -656,9 +656,75 @@ async def preview_analyze_case(
     research_case_id: str,
     db: AsyncSession = Depends(get_db),
 ):
+    run_id = await run_logger.start_run(
+        db,
+        agent_name="analyze_case_previewer",
+        agent_type="analyzer",
+        module="backend.services.investment.research_cases",
+        runtime="fastapi",
+        trigger_source="manual_analyze_preview_endpoint",
+        task_name=f"Analyze Case preview for case {research_case_id[:8]}",
+        input_summary=f"research_case_id={research_case_id}",
+        human_approval_required=True,
+    )
     try:
-        return await generate_analyze_case_preview(db, _parse_uuid(research_case_id, "research_case_id"))
+        result = await generate_analyze_case_preview(db, _parse_uuid(research_case_id, "research_case_id"))
+        usage = result.usage or {}
+        final_outcome = (
+            "blocked_missing_documents"
+            if result.status == "blocked_missing_documents"
+            else "success_preview_generated"
+        )
+        await run_logger.finish_run(
+            db,
+            run_id,
+            output_summary=(
+                f"Analyze Case preview outcome={final_outcome}; "
+                f"missing_documents={len(result.missing_documents)}"
+            ),
+            final_outcome=final_outcome,
+            outcome_score=0 if final_outcome == "blocked_missing_documents" else 1,
+            model_used=usage.get("model"),
+            input_tokens=usage.get("input_tokens"),
+            output_tokens=usage.get("output_tokens"),
+        )
+        if usage:
+            await run_logger.log_ai_usage(
+                db,
+                run_id=run_id,
+                agent_name="analyze_case_previewer",
+                provider=usage.get("provider", "unknown"),
+                model=usage.get("model", "unknown"),
+                prompt_name="analyze_case_preview",
+                input_tokens=usage.get("input_tokens", 0),
+                output_tokens=usage.get("output_tokens", 0),
+            )
+        await db.commit()
+        return result
     except Exception as e:
+        final_outcome = "failed"
+        if isinstance(e, AILiveDisabledError):
+            final_outcome = "ai_disabled"
+        elif isinstance(e, AIBudgetExceededError):
+            final_outcome = "budget_exceeded"
+        elif isinstance(e, AIResponseParseError):
+            final_outcome = "parse_error"
+        elif isinstance(e, AIResponseValidationError):
+            final_outcome = "validation_error"
+        try:
+            if final_outcome == "failed":
+                await run_logger.fail_run(db, run_id, str(e))
+            else:
+                await run_logger.finish_run(
+                    db,
+                    run_id,
+                    output_summary=f"Analyze Case preview outcome={final_outcome}",
+                    final_outcome=final_outcome,
+                    outcome_score=0,
+                )
+            await db.commit()
+        except Exception:
+            pass
         _raise_ai_preview_http_error(e)
         raise
 
