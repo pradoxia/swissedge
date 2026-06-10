@@ -4,11 +4,46 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { fetchSituation, archiveSituation, updateSituationStatus, saveNotes, runV2Preview, fetchResearchCases, createResearchCaseFromSituation, type Situation, type V2PreviewResult, type ResearchCase } from '@/lib/api';
+import { PageHeader, SectionCard, StatusBadge, LoadingState, ErrorBanner, InfoBanner } from '@/app/components/ui';
 
 function inferSource(s: Situation): string {
   if (s.filing_url?.includes('sec.gov')) return 'SEC EDGAR';
   if (s.filing_type) return 'SEC Filing';
   return 'Unknown';
+}
+
+const LABEL_STYLE: React.CSSProperties = {
+  fontFamily: 'var(--font-mono)',
+  fontSize: 11,
+  color: 'var(--text-muted)',
+  textTransform: 'uppercase',
+  letterSpacing: '0.04em',
+  marginBottom: 4,
+};
+
+const VALUE_STYLE: React.CSSProperties = {
+  fontFamily: 'var(--font-mono)',
+  fontSize: 13,
+  color: 'var(--text-primary)',
+};
+
+function Field({ label, children, span2 }: { label: string; children: React.ReactNode; span2?: boolean }) {
+  return (
+    <div style={span2 ? { gridColumn: '1 / -1' } : undefined}>
+      <div style={LABEL_STYLE}>{label}</div>
+      <div style={VALUE_STYLE}>{children}</div>
+    </div>
+  );
+}
+
+function recommendationBadgeClass(rec: string | null | undefined): string {
+  switch (rec) {
+    case 'INVESTIGATE': return 'status-badge--manual';
+    case 'MONITOR':     return 'status-badge--partial';
+    case 'AVOID':
+    case 'SELL':        return 'status-badge--danger';
+    default:            return 'status-badge--readonly';
+  }
 }
 
 export default function EvaluationDetailPage() {
@@ -201,79 +236,20 @@ export default function EvaluationDetailPage() {
     return value;
   };
 
-  const getStatusBadge = (status: string | null | undefined) => {
-    switch (status) {
-      case 'evaluator_ready':
-        return 'bg-green-500/20 text-green-400 border-green-400 glow-green';
-      case 'partial':
-        return 'bg-amber-500/20 text-amber-400 border-amber-400 glow-amber';
-      case 'detection_only':
-        return 'bg-violet-500/20 text-violet-400 border-violet-600';
-      default:
-        return 'bg-gray-700/50 text-gray-400 border-gray-600';
-    }
-  };
-
-  const getVersionBadge = (version: string | undefined) => {
-    if (version === 'v2') return 'bg-cyan-500/20 text-cyan-400 border-cyan-400 glow-cyan';
-    return 'bg-gray-700/50 text-gray-400 border-gray-600';
-  };
-
-  const getWorkflowStatusBadge = (status: string) => {
-    switch (status) {
-      case 'detected': return 'bg-cyan-500/20 text-cyan-400 border-cyan-400 glow-cyan';
-      case 'reviewing': return 'bg-blue-500/20 text-blue-400 border-blue-400';
-      case 'watchlist': return 'bg-green-500/20 text-green-400 border-green-400 glow-green';
-      case 'ignored': return 'bg-gray-700/50 text-gray-500 border-gray-600';
-      case 'archived': return 'bg-violet-500/20 text-violet-400 border-violet-600';
-      default: return 'bg-gray-700/50 text-gray-400 border-gray-600';
-    }
-  };
-
-  const getRecommendationBadge = (rec: string | null | undefined) => {
-    switch (rec) {
-      case 'INVESTIGATE': return 'bg-cyan-500/20 text-cyan-400 border-cyan-400 glow-cyan';
-      case 'MONITOR': return 'bg-amber-500/20 text-amber-400 border-amber-400 glow-amber';
-      case 'PASS': return 'bg-gray-700/50 text-gray-500 border-gray-600';
-      case 'STRONG_BUY':
-      case 'BUY': return 'bg-green-500/20 text-green-400 border-green-400 glow-green';
-      case 'AVOID':
-      case 'SELL': return 'bg-red-500/20 text-red-400 border-red-400 glow-red';
-      default: return 'bg-gray-700/50 text-gray-400 border-gray-600';
-    }
-  };
-
   if (loading) {
     return (
-      <>
-        <div className="scan-line"></div>
-        <div className="min-h-screen p-8">
-          <div className="max-w-5xl mx-auto">
-            <div className="glass-panel rounded-lg p-8 text-center border-cyan-500/30">
-              <div className="inline-block w-8 h-8 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin mb-4"></div>
-              <p className="text-gray-400 font-mono text-sm">LOADING EVALUATION DATA...</p>
-            </div>
-          </div>
-        </div>
-      </>
+      <div className="page-container--wide">
+        <LoadingState label="Loading evaluation data…" />
+      </div>
     );
   }
 
   if (error || !situation) {
     return (
-      <>
-        <div className="scan-line"></div>
-        <div className="min-h-screen p-8">
-          <div className="max-w-5xl mx-auto">
-            <div className="glass-panel rounded-lg p-4 mb-6 border-red-500/50 glow-red">
-              <p className="text-red-400 font-mono text-sm">⚠ ERROR: {error || 'EVALUATION NOT FOUND'}</p>
-            </div>
-            <Link href="/investment/evaluations" className="text-cyan-400 hover:text-cyan-300 text-sm font-mono">
-              ← RETURN TO QUEUE
-            </Link>
-          </div>
-        </div>
-      </>
+      <div className="page-container--wide">
+        <ErrorBanner message={error || 'Evaluation not found'} />
+        <Link href="/investment/evaluations" className="nav-back">← Return to queue</Link>
+      </div>
     );
   }
 
@@ -288,602 +264,373 @@ export default function EvaluationDetailPage() {
   const discoverySource = inferSource(situation);
 
   return (
-    <>
-      <div className="scan-line"></div>
-      <div className="min-h-screen p-8">
-        <div className="max-w-5xl mx-auto">
-          <div className="mb-6">
-            <div className="flex items-center justify-between">
-              <Link href="/investment/evaluations" className="text-cyan-400 hover:text-cyan-300 text-sm font-mono">
-                ← RETURN TO QUEUE
-              </Link>
-              <div className="flex items-center gap-3">
-                {actionMessage && (
-                  <span className={`text-xs font-mono ${actionMessage.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>
-                    {actionMessage.type === 'success' ? '✓' : '⚠'} {actionMessage.text}
-                  </span>
-                )}
-                <div className="flex gap-2">
-                  {situation.status !== 'reviewing' && situation.status !== 'archived' && (
-                    <button
-                      onClick={() => handleStatusChange('reviewing')}
-                      className="px-3 py-1 rounded text-sm font-mono bg-blue-500/20 text-blue-400 border border-blue-400 hover:bg-blue-500/30 transition-colors"
-                    >
-                      Mark Reviewing
-                    </button>
-                  )}
-                  {situation.status !== 'watchlist' && situation.status !== 'archived' && (
-                    <button
-                      onClick={() => handleStatusChange('watchlist')}
-                      className="px-3 py-1 rounded text-sm font-mono bg-green-500/20 text-green-400 border border-green-400 hover:bg-green-500/30 transition-colors"
-                    >
-                      Add to Watchlist
-                    </button>
-                  )}
-                  {situation.status !== 'ignored' && situation.status !== 'archived' && (
-                    <button
-                      onClick={() => handleStatusChange('ignored')}
-                      className="px-3 py-1 rounded text-sm font-mono bg-gray-700/50 text-gray-500 border border-gray-600 hover:bg-gray-600/50 transition-colors"
-                    >
-                      Ignore
-                    </button>
-                  )}
-                  {situation.status !== 'archived' && (
-                    <button
-                      onClick={handleArchive}
-                      className="px-3 py-1 rounded text-sm font-mono bg-violet-500/20 text-violet-400 border border-violet-600 hover:bg-violet-500/30 transition-colors"
-                    >
-                      Archive
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
+    <div className="page-container--wide">
 
-          <h1 className="text-3xl font-bold mb-2 text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-green-400">
-            {situation.company_name}
-          </h1>
-          <p className="text-gray-500 text-xs font-mono mb-8">EVALUATION DETAIL // ID: {situation.id.substring(0, 8)}</p>
-
-          {/* Decision Card */}
-          <div className="glass-panel rounded-lg p-6 mb-6 border-cyan-500/50 glow-cyan">
-            <h2 className="text-xs font-mono text-cyan-400 uppercase tracking-widest mb-4">Decision Summary</h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-4">
-              <div>
-                <div className="text-xs font-mono text-gray-500 uppercase mb-1">Company</div>
-                <div className="text-sm font-mono text-gray-200 font-bold">{situation.company_name}</div>
-              </div>
-              {situation.ticker && (
-                <div>
-                  <div className="text-xs font-mono text-gray-500 uppercase mb-1">Ticker</div>
-                  <div className="text-sm font-mono text-gray-200">{situation.ticker}</div>
-                </div>
-              )}
-              {situation.filing_type && (
-                <div>
-                  <div className="text-xs font-mono text-gray-500 uppercase mb-1">Filing Type</div>
-                  <div className="text-sm font-mono text-gray-200">{situation.filing_type}</div>
-                </div>
-              )}
-              <div>
-                <div className="text-xs font-mono text-gray-500 uppercase mb-1">Workflow Status</div>
-                <span className={`px-2 py-1 rounded text-xs font-mono font-bold border ${getWorkflowStatusBadge(situation.status ?? '')}`}>
-                  {(situation.status ?? 'unknown').toUpperCase()}
-                </span>
-              </div>
-              <div>
-                <div className="text-xs font-mono text-gray-500 uppercase mb-1">Evaluator Version</div>
-                <span className={`px-2 py-1 rounded text-xs font-mono font-bold border ${getVersionBadge(situation.evaluator_version)}`}>
-                  {situation.evaluator_version ?? '-'}
-                </span>
-              </div>
-              <div>
-                <div className="text-xs font-mono text-gray-500 uppercase mb-1">Discovery Source</div>
-                <div className="text-sm font-mono text-gray-200">{discoverySource}</div>
-              </div>
-              {situation.filing_type && (
-                <div>
-                  <div className="text-xs font-mono text-gray-500 uppercase mb-1">Source Detail</div>
-                  <div className="text-sm font-mono text-gray-300">{situation.filing_type}</div>
-                </div>
-              )}
-              {situation.selected_playbook && (
-                <div>
-                  <div className="text-xs font-mono text-gray-500 uppercase mb-1">Playbook</div>
-                  <div className="text-sm font-mono text-gray-200">{situation.selected_playbook}</div>
-                </div>
-              )}
-              {situation.playbook_status && (
-                <div>
-                  <div className="text-xs font-mono text-gray-500 uppercase mb-1">Playbook Status</div>
-                  <span className={`px-2 py-1 rounded text-xs font-mono font-bold border ${getStatusBadge(situation.playbook_status)}`}>
-                    {situation.playbook_status.replace(/_/g, ' ').toUpperCase()}
-                  </span>
-                </div>
-              )}
-              {situation.recommendation && (
-                <div>
-                  <div className="text-xs font-mono text-gray-500 uppercase mb-1">Recommendation</div>
-                  <span className={`px-2 py-1 rounded text-xs font-mono font-bold border ${getRecommendationBadge(situation.recommendation)}`}>
-                    {situation.recommendation}
-                  </span>
-                </div>
-              )}
-              {situation.evaluator_confidence && (
-                <div>
-                  <div className="text-xs font-mono text-gray-500 uppercase mb-1">Confidence</div>
-                  <div className="text-sm font-mono text-gray-200">{situation.evaluator_confidence}</div>
-                </div>
-              )}
-              {(situation.human_review_required_count ?? 0) > 0 && (
-                <div>
-                  <div className="text-xs font-mono text-gray-500 uppercase mb-1">Human Review Items</div>
-                  <span className="px-2 py-1 rounded text-xs font-mono font-bold border bg-amber-500/20 text-amber-400 border-amber-400 glow-amber">
-                    {situation.human_review_required_count}
-                  </span>
-                </div>
-              )}
-              {(situation.risk_flags_count ?? 0) > 0 && (
-                <div>
-                  <div className="text-xs font-mono text-gray-500 uppercase mb-1">Risk Flags</div>
-                  <span className="px-2 py-1 rounded text-xs font-mono font-bold border bg-red-500/20 text-red-400 border-red-400 glow-red">
-                    {situation.risk_flags_count}
-                  </span>
-                </div>
-              )}
-              {situation.filing_url && (
-                <div className="col-span-2 md:col-span-3">
-                  <div className="text-xs font-mono text-gray-500 uppercase mb-1">Filing URL</div>
-                  <a
-                    href={situation.filing_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs font-mono text-cyan-400 hover:text-cyan-300 break-all"
-                  >
-                    {situation.filing_url}
-                  </a>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Research Case */}
-          <div className="glass-panel rounded-lg p-6 mb-6 border-cyan-500/30">
-            <h2 className="text-xs font-mono text-cyan-400 uppercase tracking-widest mb-1">Research Case</h2>
-            <p className="text-xs font-mono text-amber-400/70 mb-4">
-              Este análisis es educativo. No es asesoramiento financiero.
-            </p>
-            {rcLoading && (
-              <p className="text-xs font-mono text-gray-500">Loading research case…</p>
+      <PageHeader
+        title={situation.company_name}
+        subtitle={`Evaluation detail (legacy surface) · ID ${situation.id.substring(0, 8)} · day-to-day triage lives in the Workbench`}
+        backHref="/investment/evaluations"
+        backLabel="Evaluations Queue"
+        badge={<StatusBadge value={situation.status ?? 'unknown'} />}
+        actions={
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            {actionMessage && (
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: actionMessage.type === 'success' ? '#2e7d32' : '#c62828' }}>
+                {actionMessage.type === 'success' ? '✓' : '⚠'} {actionMessage.text}
+              </span>
             )}
-            {!rcLoading && rcError && (
-              <div>
-                <p className="text-xs font-mono text-red-400">{rcError}</p>
-                <button
-                  onClick={() => {
-                    setRcError(null);
-                    setRcLoading(true);
-                    fetchResearchCases({ situation_id: id })
-                      .then(d => setResearchCase(d.research_cases.length > 0 ? d.research_cases[0] : null))
-                      .catch(() => setRcError('Could not load research case. Try again.'))
-                      .finally(() => setRcLoading(false));
-                  }}
-                  className="mt-2 text-xs font-mono text-cyan-700 hover:text-cyan-400 transition-colors"
-                >
-                  Retry
-                </button>
-              </div>
+            <Link href={`/investment/situations/${situation.id}`} className="btn btn--primary btn--sm">
+              Open in Workbench →
+            </Link>
+            {situation.status !== 'reviewing' && situation.status !== 'archived' && (
+              <button onClick={() => handleStatusChange('reviewing')} className="btn btn--secondary btn--sm">Mark Reviewing</button>
             )}
-            {!rcLoading && !rcError && researchCase && (
-              <div className="flex items-center gap-3 flex-wrap">
-                <span className={`px-2 py-0.5 rounded border text-xs font-mono ${
-                  researchCase.status === 'detected' ? 'text-gray-400 border-gray-700' :
-                  researchCase.status === 'brief_generated' ? 'text-cyan-400 border-cyan-800' :
-                  researchCase.status === 'under_investigation' ? 'text-violet-400 border-violet-800' :
-                  researchCase.status === 'documented' ? 'text-green-400 border-green-800' :
-                  researchCase.status === 'archived' ? 'text-gray-600 border-gray-800' :
-                  researchCase.status === 'published' ? 'text-emerald-400 border-emerald-800' :
-                  'text-gray-400 border-gray-700'
-                }`}>
-                  {researchCase.status.replace(/_/g, ' ').toUpperCase()}
-                </span>
-                {researchCase.investment_readiness && (
-                  <span className={`px-2 py-0.5 rounded border text-xs font-mono ${
-                    researchCase.investment_readiness === 'monitor' ? 'text-amber-400 border-amber-800' :
-                    researchCase.investment_readiness === 'not_actionable' ? 'text-gray-500 border-gray-700' :
-                    researchCase.investment_readiness === 'needs_more_work' ? 'text-violet-400 border-violet-800' :
-                    researchCase.investment_readiness === 'candidate' ? 'text-cyan-400 border-cyan-800' :
-                    'text-gray-400 border-gray-700'
-                  }`}>
-                    {researchCase.investment_readiness.replace(/_/g, ' ')}
-                  </span>
-                )}
-                <span className="text-xs font-mono text-gray-600">
-                  UPDATED: {new Date(researchCase.updated_at).toLocaleString('en-CH')}
-                </span>
-                <Link
-                  href={`/investment/research/${researchCase.id}`}
-                  className="px-3 py-1 rounded border border-cyan-700 text-cyan-400 text-xs font-mono hover:bg-cyan-900/30 transition-colors"
-                >
-                  Open Research Case →
-                </Link>
-              </div>
+            {situation.status !== 'watchlist' && situation.status !== 'archived' && (
+              <button onClick={() => handleStatusChange('watchlist')} className="btn btn--secondary btn--sm">Add to Watchlist</button>
             )}
-            {!rcLoading && !rcError && !researchCase && (
-              <div className="flex items-center gap-4 flex-wrap">
-                <p className="text-xs font-mono text-gray-500">No research case yet.</p>
-                {rcMessage ? (
-                  <p className="text-xs font-mono text-gray-400">
-                    {rcMessage.text}
-                    <Link href="/investment/research" className="text-cyan-700 hover:text-cyan-400 underline">view research cases</Link>
-                  </p>
-                ) : (
-                  <button
-                    onClick={handleCreateResearchCase}
-                    disabled={rcCreating}
-                    className="px-4 py-1.5 rounded text-xs font-mono bg-cyan-500/20 text-cyan-400 border border-cyan-500 hover:bg-cyan-500/30 transition-colors disabled:opacity-50"
-                  >
-                    {rcCreating ? 'Creating…' : 'Create Research Case'}
-                  </button>
-                )}
-              </div>
+            {situation.status !== 'ignored' && situation.status !== 'archived' && (
+              <button onClick={() => handleStatusChange('ignored')} className="btn btn--ghost btn--sm">Ignore</button>
+            )}
+            {situation.status !== 'archived' && (
+              <button onClick={handleArchive} className="btn btn--ghost btn--sm">Archive</button>
             )}
           </div>
+        }
+      />
 
-          {/* v2 Preview */}
-          <div className="glass-panel rounded-lg p-6 mb-6 border-violet-500/30">
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <h2 className="text-xs font-mono text-violet-400 uppercase tracking-widest">Evaluator v2 Preview</h2>
-                <span className="text-xs font-mono text-amber-400/70">PREVIEW ONLY — NOT SAVED TO DB</span>
-              </div>
-              {v2Result && (
-                <button
-                  onClick={() => setShowV2Result(!showV2Result)}
-                  className="text-xs font-mono text-gray-400 hover:text-violet-400 transition-colors"
-                >
-                  {showV2Result ? '▼ Hide result' : '▶ Show result'}
-                </button>
-              )}
-            </div>
-            <p className="text-xs font-mono text-gray-500 mb-4">
-              Manual preview only. Does not save to DB. Does not change v1/default evaluator. Requires explicit confirmation.
-            </p>
-            <div className="flex items-center gap-3">
-              {v2CanRun ? (
-                <button
-                  onClick={handleRunV2Preview}
-                  disabled={v2Running}
-                  className="px-4 py-1.5 rounded text-sm font-mono bg-violet-500/20 text-violet-400 border border-violet-500 hover:bg-violet-500/30 transition-colors disabled:opacity-50"
-                >
-                  {v2Running ? 'Running v2...' : 'Run v2 preview (preview only)'}
-                </button>
-              ) : (
-                <>
-                  <button
-                    disabled
-                    className="px-4 py-1.5 rounded text-sm font-mono bg-gray-700/30 text-gray-600 border border-gray-700 cursor-not-allowed"
-                  >
-                    Run v2 preview (preview only)
-                  </button>
-                  <span className="text-xs font-mono text-gray-600">Missing required fields (company, filing_type, date, or url)</span>
-                </>
-              )}
-            </div>
-            {v2Error && (
-              <div className="mt-4 p-3 rounded border border-red-500/40 bg-red-500/10">
-                <p className="text-xs font-mono text-red-400">⚠ {v2Error}</p>
-              </div>
-            )}
-            {v2Result && showV2Result && (
-              <div className="mt-4">
-                <div className="flex flex-wrap gap-4 mb-3 text-xs font-mono text-gray-400">
-                  <span>Version: <span className="text-violet-400">{v2Result.evaluator_version}</span></span>
-                  {v2Result.fallback_occurred && <span className="text-amber-400">⚠ Fallback to v1</span>}
-                  {v2Result.usage?.model && <span>Model: {v2Result.usage.model}</span>}
-                  {v2Result.usage?.input_tokens != null && (
-                    <span>Tokens: {v2Result.usage.input_tokens}in / {v2Result.usage.output_tokens}out</span>
-                  )}
-                  <span className={v2Result.daily_limit.remaining === 0 ? 'text-red-400' : 'text-gray-400'}>
-                    Daily: {v2Result.daily_limit.used}/{v2Result.daily_limit.limit} used ({v2Result.daily_limit.remaining} remaining)
-                  </span>
-                </div>
-                <pre className="p-4 bg-black/50 rounded overflow-x-auto text-xs font-mono text-violet-300 border border-violet-500/20">
-                  {JSON.stringify(v2Result.result, null, 2)}
-                </pre>
-              </div>
-            )}
-          </div>
+      {isTestData(situation) && (
+        <InfoBanner variant="warning">
+          ⚠ TEST/DEMO EVALUATION — Not a real investment candidate
+        </InfoBanner>
+      )}
 
-          {/* Test Data Banner */}
-          {isTestData(situation) && (
-            <div className="glass-panel rounded-lg p-4 mb-6 border-amber-500/30 glow-amber">
-              <p className="text-amber-400 font-mono text-sm">
-                ⚠ TEST/DEMO EVALUATION — Not a real investment candidate
-              </p>
-            </div>
+      {/* Decision Summary */}
+      <SectionCard title="Decision Summary" accent className="mb-6">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '16px 24px' }}>
+          <Field label="Company"><strong>{situation.company_name}</strong></Field>
+          {situation.ticker && <Field label="Ticker">{situation.ticker}</Field>}
+          {situation.filing_type && <Field label="Filing Type">{situation.filing_type}</Field>}
+          <Field label="Workflow Status"><StatusBadge value={situation.status ?? 'unknown'} /></Field>
+          <Field label="Evaluator Version">
+            <span className="status-badge status-badge--readonly">{situation.evaluator_version ?? 'v1 (default)'}</span>
+          </Field>
+          <Field label="Discovery Source">{discoverySource}</Field>
+          {situation.selected_playbook && <Field label="Playbook">{situation.selected_playbook}</Field>}
+          {situation.playbook_status && (
+            <Field label="Playbook Status"><StatusBadge value={situation.playbook_status} /></Field>
           )}
-
-          {/* Filing Metadata */}
-          <div className="glass-panel rounded-lg p-6 mb-6 border-cyan-500/30">
-            <h2 className="text-sm font-mono text-cyan-400 mb-4 uppercase tracking-wider">Filing Information</h2>
-            <dl className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <dt className="text-xs font-mono text-gray-500 uppercase">Company</dt>
-                <dd className="mt-1 text-sm font-mono text-gray-300">{situation.company_name}</dd>
-              </div>
-              <div>
-                <dt className="text-xs font-mono text-gray-500 uppercase">Ticker</dt>
-                <dd className="mt-1 text-sm font-mono text-gray-300">{formatValue(situation.ticker)}</dd>
-              </div>
-              <div>
-                <dt className="text-xs font-mono text-gray-500 uppercase">Filing Type</dt>
-                <dd className="mt-1 text-sm font-mono text-gray-300">{formatValue(situation.filing_type)}</dd>
-              </div>
-              <div>
-                <dt className="text-xs font-mono text-gray-500 uppercase">Detected At</dt>
-                <dd className="mt-1 text-sm font-mono text-gray-300">
-                  {situation.detected_at ? new Date(situation.detected_at).toLocaleString() : '-'}
-                </dd>
-              </div>
-              {situation.filing_url && (
-                <div className="md:col-span-2">
-                  <dt className="text-xs font-mono text-gray-500 uppercase">Source URL</dt>
-                  <dd className="mt-1 text-sm">
-                    <a
-                      href={situation.filing_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-cyan-400 hover:text-cyan-300 font-mono break-all"
-                    >
-                      {situation.filing_url}
-                    </a>
-                  </dd>
-                </div>
-              )}
-            </dl>
-          </div>
-
-          {/* Evaluation Summary */}
-          <div className="glass-panel rounded-lg p-6 mb-6 border-cyan-500/30">
-            <h2 className="text-sm font-mono text-cyan-400 mb-4 uppercase tracking-wider">Evaluation Summary</h2>
-            <dl className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <dt className="text-xs font-mono text-gray-500 uppercase">Evaluator Version</dt>
-                <dd className="mt-1">
-                  <span className={`px-2 py-1 rounded text-xs font-mono font-bold border ${getVersionBadge(situation.evaluator_version)}`}>
-                    {formatValue(situation.evaluator_version)}
-                  </span>
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs font-mono text-gray-500 uppercase">Playbook Status</dt>
-                <dd className="mt-1">
-                  <span className={`px-2 py-1 rounded text-xs font-mono font-bold border ${getStatusBadge(situation.playbook_status)}`}>
-                    {formatValue(situation.playbook_status)}
-                  </span>
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs font-mono text-gray-500 uppercase">Selected Playbook</dt>
-                <dd className="mt-1 text-sm font-mono text-gray-300">{formatValue(situation.selected_playbook)}</dd>
-              </div>
-              <div>
-                <dt className="text-xs font-mono text-gray-500 uppercase">Situation Type</dt>
-                <dd className="mt-1 text-sm font-mono text-gray-300">{formatValue(situation.v2_situation_type)}</dd>
-              </div>
-              <div>
-                <dt className="text-xs font-mono text-gray-500 uppercase">Subtype</dt>
-                <dd className="mt-1 text-sm font-mono text-gray-300">{formatValue(situation.v2_subtype)}</dd>
-              </div>
-              <div>
-                <dt className="text-xs font-mono text-gray-500 uppercase">Recommendation</dt>
-                <dd className="mt-1 text-sm font-mono text-gray-300">{formatValue(situation.recommendation)}</dd>
-              </div>
-              <div>
-                <dt className="text-xs font-mono text-gray-500 uppercase">Evaluator Confidence</dt>
-                <dd className="mt-1 text-sm font-mono text-gray-300">{formatValue(situation.evaluator_confidence)}</dd>
-              </div>
-              {situation.fallback_occurred && (
-                <div className="md:col-span-2">
-                  <dt className="text-xs font-mono text-gray-500 uppercase">Fallback Occurred</dt>
-                  <dd className="mt-1">
-                    <span className="px-2 py-1 rounded text-xs font-mono font-bold bg-amber-500/20 text-amber-400 border border-amber-400 glow-amber">
-                      YES - FELL BACK TO V1
-                    </span>
-                  </dd>
-                </div>
-              )}
-            </dl>
-          </div>
-
-          {/* Human Review Required */}
-          {humanReviewItems.length > 0 && (
-            <div className="glass-panel rounded-lg p-6 mb-6 border-amber-500/30 glow-amber">
-              <h2 className="text-sm font-mono text-amber-400 mb-4 uppercase tracking-wider">
-                Human Review Required ({humanReviewItems.length})
-              </h2>
-              <div className="grid grid-cols-1 gap-3">
-                {humanReviewItems.map((item: any, index: number) => (
-                  <div key={index} className="glass-panel rounded border-l-4 border-amber-400 p-4 bg-amber-500/5">
-                    <div className="text-sm font-mono text-amber-300 font-bold mb-2">
-                      {item.item || 'Review item'}
-                    </div>
-                    {item.reason && (
-                      <div className="text-xs font-mono text-gray-400 mb-1">
-                        <span className="text-gray-500">REASON:</span> {item.reason}
-                      </div>
-                    )}
-                    {item.required_human_input && (
-                      <div className="text-xs font-mono text-gray-400 mb-1">
-                        <span className="text-gray-500">REQUIRED:</span> {item.required_human_input}
-                      </div>
-                    )}
-                    {item.related_playbook && (
-                      <div className="text-xs font-mono text-gray-500 mt-2">
-                        📋 {item.related_playbook}
-                      </div>
-                    )}
-                    {item.blocking_for_recommendation && (
-                      <div className="text-xs font-mono text-amber-400 mt-2">
-                        ⚠ BLOCKING
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
+          {situation.recommendation && (
+            <Field label="Recommendation">
+              <span className={`status-badge ${recommendationBadgeClass(situation.recommendation)}`}>{situation.recommendation}</span>
+            </Field>
           )}
-
-          {/* Risk Flags */}
-          {riskFlags.length > 0 && (
-            <div className="glass-panel rounded-lg p-6 mb-6 border-red-500/30">
-              <h2 className="text-sm font-mono text-red-400 mb-4 uppercase tracking-wider">
-                Risk Flags ({riskFlags.length})
-              </h2>
-              <div className="grid grid-cols-1 gap-3">
-                {riskFlags.map((flag: any, index: number) => (
-                  <div key={index} className="glass-panel rounded border-l-4 border-red-400 p-4 bg-red-500/5">
-                    <div className="flex items-start">
-                      <span className="text-red-400 mr-3 text-lg">⚠</span>
-                      <div className="flex-1">
-                        <div className="text-sm font-mono text-gray-300">
-                          {typeof flag === 'string' ? flag : flag.flag || flag.risk_type || 'Risk detected'}
-                        </div>
-                        {typeof flag === 'object' && flag.description && (
-                          <div className="text-xs font-mono text-gray-500 mt-1">{flag.description}</div>
-                        )}
-                        {typeof flag === 'object' && flag.severity && (
-                          <div className="text-xs font-mono text-red-400 mt-2">SEVERITY: {flag.severity}</div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+          {situation.evaluator_confidence && <Field label="Confidence">{situation.evaluator_confidence}</Field>}
+          {(situation.human_review_required_count ?? 0) > 0 && (
+            <Field label="Human Review Items">
+              <span className="status-badge status-badge--partial">{situation.human_review_required_count}</span>
+            </Field>
           )}
-
-          {/* Prohibited Inferences */}
-          {prohibitedInferences.length > 0 && (
-            <div className="glass-panel rounded-lg p-6 mb-6 border-red-500/50 glow-red">
-              <h2 className="text-sm font-mono text-red-400 mb-4 uppercase tracking-wider">
-                ⚠ PROHIBITED INFERENCES DETECTED ({prohibitedInferences.length})
-              </h2>
-              <div className="grid grid-cols-1 gap-3">
-                {prohibitedInferences.map((inference: any, index: number) => (
-                  <div key={index} className="glass-panel rounded border-l-4 border-red-500 p-4 bg-red-500/10 glow-red">
-                    <div className="flex items-start">
-                      <span className="text-red-400 mr-3 text-lg font-bold">⛔</span>
-                      <div className="text-sm font-mono text-red-300 font-bold">
-                        {typeof inference === 'string' ? inference.replace(/_/g, ' ').toUpperCase() : JSON.stringify(inference)}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+          {(situation.risk_flags_count ?? 0) > 0 && (
+            <Field label="Risk Flags">
+              <span className="status-badge status-badge--danger">{situation.risk_flags_count}</span>
+            </Field>
           )}
-
-          {/* Missing Documents */}
-          {missingDocuments.length > 0 && (
-            <div className="glass-panel rounded-lg p-6 mb-6 border-violet-500/30">
-              <h2 className="text-sm font-mono text-violet-400 mb-4 uppercase tracking-wider">
-                Missing Documents ({missingDocuments.length})
-              </h2>
-              <div className="grid grid-cols-1 gap-3">
-                {missingDocuments.map((doc: any, index: number) => (
-                  <div key={index} className="glass-panel rounded border-l-4 border-violet-400 p-4 bg-violet-500/5">
-                    <div className="flex items-start">
-                      <span className="text-violet-400 mr-3 text-lg">📄</span>
-                      <div className="flex-1">
-                        <div className="text-sm font-mono text-gray-300">
-                          {typeof doc === 'string' ? doc : doc.document || doc.document_type || 'Document missing'}
-                        </div>
-                        {typeof doc === 'object' && doc.reason && (
-                          <div className="text-xs font-mono text-gray-500 mt-1">REASON: {doc.reason}</div>
-                        )}
-                        {typeof doc === 'object' && doc.impact && (
-                          <div className="text-xs font-mono text-violet-400 mt-1">IMPACT: {doc.impact}</div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+          {situation.filing_url && (
+            <Field label="Filing URL" span2>
+              <a href={situation.filing_url} target="_blank" rel="noopener noreferrer" style={{ wordBreak: 'break-all' }}>
+                {situation.filing_url}
+              </a>
+            </Field>
           )}
-
-          {/* Latest Amendment Check */}
-          {latestAmendment.checked && (
-            <div className="glass-panel rounded-lg p-6 mb-6 border-cyan-500/30">
-              <h2 className="text-sm font-mono text-cyan-400 mb-4 uppercase tracking-wider">Latest Amendment Check</h2>
-              <dl className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <dt className="text-xs font-mono text-gray-500 uppercase">Latest Document Date</dt>
-                  <dd className="mt-1 text-sm font-mono text-gray-300">{formatValue(latestAmendment.latest_document_date)}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs font-mono text-gray-500 uppercase">Latest Document Type</dt>
-                  <dd className="mt-1 text-sm font-mono text-gray-300">{formatValue(latestAmendment.latest_document_type)}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs font-mono text-gray-500 uppercase">Amendment Found</dt>
-                  <dd className="mt-1 text-sm font-mono text-gray-300">{formatValue(latestAmendment.amendment_found)}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs font-mono text-gray-500 uppercase">Stale Data Risk</dt>
-                  <dd className="mt-1 text-sm font-mono text-gray-300">{formatValue(latestAmendment.stale_data_risk)}</dd>
-                </div>
-              </dl>
-            </div>
-          )}
-
-          {/* Human Notes */}
-          <div className="glass-panel rounded-lg p-6 mb-6 border-cyan-500/30">
-            <h2 className="text-sm font-mono text-cyan-400 mb-4 uppercase tracking-wider">Human Notes</h2>
-            <textarea
-              value={notesText}
-              onChange={(e) => setNotesText(e.target.value)}
-              rows={4}
-              placeholder="Add your notes here..."
-              className="w-full bg-black/40 border border-cyan-500/30 rounded px-3 py-2 text-gray-300 text-sm font-mono focus:border-cyan-400 focus:outline-none resize-y"
-            />
-            <div className="flex items-center gap-3 mt-3">
-              <button
-                onClick={handleSaveNotes}
-                disabled={notesSaving}
-                className="px-4 py-1.5 rounded text-sm font-mono bg-cyan-500/20 text-cyan-400 border border-cyan-400 hover:bg-cyan-500/30 transition-colors disabled:opacity-50"
-              >
-                {notesSaving ? 'Saving...' : 'Save Notes'}
-              </button>
-              {notesSaved && (
-                <span className="text-xs font-mono text-green-400">✓ Notes saved</span>
-              )}
-              {notesError && (
-                <span className="text-xs font-mono text-red-400">⚠ {notesError}</span>
-              )}
-            </div>
-          </div>
-
-          {/* Raw Evaluation JSON */}
-          <div className="glass-panel rounded-lg p-6 border-gray-700">
-            <button
-              onClick={() => setShowRawJson(!showRawJson)}
-              className="w-full flex items-center justify-between text-left hover:text-cyan-400 transition-colors"
-            >
-              <h2 className="text-sm font-mono text-gray-400 uppercase tracking-wider">Raw Evaluation JSON</h2>
-              <span className="text-cyan-400 font-mono">{showRawJson ? '▼' : '▶'}</span>
-            </button>
-            {showRawJson && (
-              <pre className="mt-4 p-4 bg-black/50 rounded overflow-x-auto text-xs font-mono text-green-400 border border-green-500/20">
-                {JSON.stringify(situation.evaluation, null, 2)}
-              </pre>
-            )}
-          </div>
         </div>
-      </div>
-    </>
+      </SectionCard>
+
+      {/* Research Case */}
+      <SectionCard title="Research Case" className="mb-6">
+        <InfoBanner variant="guardrail">Este análisis es educativo. No es asesoramiento financiero.</InfoBanner>
+        {rcLoading && <div style={{ ...VALUE_STYLE, color: 'var(--text-muted)' }}>Loading research case…</div>}
+        {!rcLoading && rcError && (
+          <div>
+            <div style={{ ...VALUE_STYLE, color: '#c62828' }}>{rcError}</div>
+            <button
+              onClick={() => {
+                setRcError(null);
+                setRcLoading(true);
+                fetchResearchCases({ situation_id: id })
+                  .then(d => setResearchCase(d.research_cases.length > 0 ? d.research_cases[0] : null))
+                  .catch(() => setRcError('Could not load research case. Try again.'))
+                  .finally(() => setRcLoading(false));
+              }}
+              className="btn btn--ghost btn--sm"
+              style={{ marginTop: 8 }}
+            >
+              Retry
+            </button>
+          </div>
+        )}
+        {!rcLoading && !rcError && researchCase && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <StatusBadge value={researchCase.status} />
+            {researchCase.investment_readiness && <StatusBadge value={researchCase.investment_readiness} />}
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-faint)' }}>
+              UPDATED: {new Date(researchCase.updated_at).toLocaleString('en-CH')}
+            </span>
+            <Link href={`/investment/research/${researchCase.id}`} className="btn btn--secondary btn--sm">
+              Open Research Case →
+            </Link>
+          </div>
+        )}
+        {!rcLoading && !rcError && !researchCase && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+            <span style={{ ...VALUE_STYLE, color: 'var(--text-muted)' }}>No research case yet.</span>
+            {rcMessage ? (
+              <span style={{ ...VALUE_STYLE, color: 'var(--text-muted)' }}>
+                {rcMessage.text}
+                <Link href="/investment/research" style={{ textDecoration: 'underline' }}>view research cases</Link>
+              </span>
+            ) : (
+              <button onClick={handleCreateResearchCase} disabled={rcCreating} className="btn btn--primary btn--sm">
+                {rcCreating ? 'Creating…' : 'Create Research Case'}
+              </button>
+            )}
+          </div>
+        )}
+      </SectionCard>
+
+      {/* Evaluator v2 Preview */}
+      <SectionCard title="Evaluator v2 Preview" className="mb-6">
+        <InfoBanner variant="warning">
+          PREVIEW ONLY — NOT SAVED TO DB. Manual preview only. Does not change the v1/default evaluator. Requires explicit confirmation.
+        </InfoBanner>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          {v2CanRun ? (
+            <button onClick={handleRunV2Preview} disabled={v2Running} className="btn btn--secondary btn--sm">
+              {v2Running ? 'Running v2…' : 'Run v2 preview (preview only)'}
+            </button>
+          ) : (
+            <>
+              <button disabled className="btn btn--ghost btn--sm" style={{ cursor: 'not-allowed', opacity: 0.6 }}>
+                Run v2 preview (preview only)
+              </button>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-faint)' }}>
+                Missing required fields (company, filing_type, date, or url)
+              </span>
+            </>
+          )}
+          {v2Result && (
+            <button onClick={() => setShowV2Result(!showV2Result)} className="btn btn--ghost btn--sm">
+              {showV2Result ? '▼ Hide result' : '▶ Show result'}
+            </button>
+          )}
+        </div>
+        {v2Error && (
+          <div style={{ marginTop: 12 }}>
+            <ErrorBanner message={v2Error} />
+          </div>
+        )}
+        {v2Result && showV2Result && (
+          <div style={{ marginTop: 16 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, marginBottom: 12, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-muted)' }}>
+              <span>Version: <strong>{v2Result.evaluator_version}</strong></span>
+              {v2Result.fallback_occurred && <span style={{ color: '#7a5a00' }}>⚠ Fallback to v1</span>}
+              {v2Result.usage?.model && <span>Model: {v2Result.usage.model}</span>}
+              {v2Result.usage?.input_tokens != null && (
+                <span>Tokens: {v2Result.usage.input_tokens}in / {v2Result.usage.output_tokens}out</span>
+              )}
+              <span style={{ color: v2Result.daily_limit.remaining === 0 ? '#c62828' : 'var(--text-muted)' }}>
+                Daily: {v2Result.daily_limit.used}/{v2Result.daily_limit.limit} used ({v2Result.daily_limit.remaining} remaining)
+              </span>
+            </div>
+            <pre style={{ padding: 16, background: 'var(--bg-subtle, #f5f4f1)', borderRadius: 8, overflowX: 'auto', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}>
+              {JSON.stringify(v2Result.result, null, 2)}
+            </pre>
+          </div>
+        )}
+      </SectionCard>
+
+      {/* Filing Information */}
+      <SectionCard title="Filing Information" className="mb-6">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px 24px' }}>
+          <Field label="Company">{situation.company_name}</Field>
+          <Field label="Ticker">{formatValue(situation.ticker)}</Field>
+          <Field label="Filing Type">{formatValue(situation.filing_type)}</Field>
+          <Field label="Detected At">{situation.detected_at ? new Date(situation.detected_at).toLocaleString() : '-'}</Field>
+          {situation.filing_url && (
+            <Field label="Source URL" span2>
+              <a href={situation.filing_url} target="_blank" rel="noopener noreferrer" style={{ wordBreak: 'break-all' }}>
+                {situation.filing_url}
+              </a>
+            </Field>
+          )}
+        </div>
+      </SectionCard>
+
+      {/* Evaluation Summary */}
+      <SectionCard title="Evaluation Summary" className="mb-6">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px 24px' }}>
+          <Field label="Evaluator Version">
+            <span className="status-badge status-badge--readonly">{formatValue(situation.evaluator_version)}</span>
+          </Field>
+          <Field label="Playbook Status">
+            {situation.playbook_status ? <StatusBadge value={situation.playbook_status} /> : '-'}
+          </Field>
+          <Field label="Selected Playbook">{formatValue(situation.selected_playbook)}</Field>
+          <Field label="Situation Type">{formatValue(situation.v2_situation_type)}</Field>
+          <Field label="Subtype">{formatValue(situation.v2_subtype)}</Field>
+          <Field label="Recommendation">{formatValue(situation.recommendation)}</Field>
+          <Field label="Evaluator Confidence">{formatValue(situation.evaluator_confidence)}</Field>
+          {situation.fallback_occurred && (
+            <Field label="Fallback Occurred" span2>
+              <span className="status-badge status-badge--partial">YES — FELL BACK TO V1</span>
+            </Field>
+          )}
+        </div>
+      </SectionCard>
+
+      {/* Human Review Required */}
+      {humanReviewItems.length > 0 && (
+        <SectionCard title={`Human Review Required (${humanReviewItems.length})`} className="mb-6">
+          <div style={{ display: 'grid', gap: 12 }}>
+            {humanReviewItems.map((item: any, index: number) => (
+              <div key={index} style={{ borderLeft: '3px solid #f0d080', background: '#fffbf0', padding: '12px 16px', borderRadius: 6 }}>
+                <div style={{ ...VALUE_STYLE, fontWeight: 600, marginBottom: 6 }}>{item.item || 'Review item'}</div>
+                {item.reason && (
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-muted)', marginBottom: 2 }}>
+                    REASON: {item.reason}
+                  </div>
+                )}
+                {item.required_human_input && (
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-muted)', marginBottom: 2 }}>
+                    REQUIRED: {item.required_human_input}
+                  </div>
+                )}
+                {item.related_playbook && (
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
+                    📋 {item.related_playbook}
+                  </div>
+                )}
+                {item.blocking_for_recommendation && (
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: '#7a5a00', marginTop: 6 }}>⚠ BLOCKING</div>
+                )}
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+      )}
+
+      {/* Risk Flags */}
+      {riskFlags.length > 0 && (
+        <SectionCard title={`Risk Flags (${riskFlags.length})`} className="mb-6">
+          <div style={{ display: 'grid', gap: 12 }}>
+            {riskFlags.map((flag: any, index: number) => (
+              <div key={index} style={{ borderLeft: '3px solid #e57373', background: '#fdf3f3', padding: '12px 16px', borderRadius: 6 }}>
+                <div style={VALUE_STYLE}>
+                  ⚠ {typeof flag === 'string' ? flag : flag.flag || flag.risk_type || 'Risk detected'}
+                </div>
+                {typeof flag === 'object' && flag.description && (
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>{flag.description}</div>
+                )}
+                {typeof flag === 'object' && flag.severity && (
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: '#c62828', marginTop: 6 }}>SEVERITY: {flag.severity}</div>
+                )}
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+      )}
+
+      {/* Prohibited Inferences */}
+      {prohibitedInferences.length > 0 && (
+        <SectionCard title={`⚠ Prohibited Inferences Detected (${prohibitedInferences.length})`} className="mb-6">
+          <div style={{ display: 'grid', gap: 12 }}>
+            {prohibitedInferences.map((inference: any, index: number) => (
+              <div key={index} style={{ borderLeft: '3px solid #c62828', background: '#fdf3f3', padding: '12px 16px', borderRadius: 6 }}>
+                <div style={{ ...VALUE_STYLE, color: '#c62828', fontWeight: 600 }}>
+                  ⛔ {typeof inference === 'string' ? inference.replace(/_/g, ' ').toUpperCase() : JSON.stringify(inference)}
+                </div>
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+      )}
+
+      {/* Missing Documents */}
+      {missingDocuments.length > 0 && (
+        <SectionCard title={`Missing Documents (${missingDocuments.length})`} className="mb-6">
+          <div style={{ display: 'grid', gap: 12 }}>
+            {missingDocuments.map((doc: any, index: number) => (
+              <div key={index} style={{ borderLeft: '3px solid var(--border-strong, #d4d0c8)', background: 'var(--bg-subtle, #f5f4f1)', padding: '12px 16px', borderRadius: 6 }}>
+                <div style={VALUE_STYLE}>
+                  📄 {typeof doc === 'string' ? doc : doc.document || doc.document_type || 'Document missing'}
+                </div>
+                {typeof doc === 'object' && doc.reason && (
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>REASON: {doc.reason}</div>
+                )}
+                {typeof doc === 'object' && doc.impact && (
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>IMPACT: {doc.impact}</div>
+                )}
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+      )}
+
+      {/* Latest Amendment Check */}
+      {latestAmendment.checked && (
+        <SectionCard title="Latest Amendment Check" className="mb-6">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px 24px' }}>
+            <Field label="Latest Document Date">{formatValue(latestAmendment.latest_document_date)}</Field>
+            <Field label="Latest Document Type">{formatValue(latestAmendment.latest_document_type)}</Field>
+            <Field label="Amendment Found">{formatValue(latestAmendment.amendment_found)}</Field>
+            <Field label="Stale Data Risk">{formatValue(latestAmendment.stale_data_risk)}</Field>
+          </div>
+        </SectionCard>
+      )}
+
+      {/* Human Notes */}
+      <SectionCard title="Human Notes" className="mb-6">
+        <textarea
+          value={notesText}
+          onChange={(e) => setNotesText(e.target.value)}
+          rows={4}
+          placeholder="Add your notes here..."
+          style={{
+            width: '100%',
+            background: 'var(--bg-subtle, #f5f4f1)',
+            border: '1px solid var(--border-subtle)',
+            borderRadius: 8,
+            padding: '10px 12px',
+            fontFamily: 'var(--font-mono)',
+            fontSize: 13,
+            color: 'var(--text-primary)',
+            resize: 'vertical',
+          }}
+        />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12 }}>
+          <button onClick={handleSaveNotes} disabled={notesSaving} className="btn btn--primary btn--sm">
+            {notesSaving ? 'Saving…' : 'Save Notes'}
+          </button>
+          {notesSaved && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: '#2e7d32' }}>✓ Notes saved</span>}
+          {notesError && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: '#c62828' }}>⚠ {notesError}</span>}
+        </div>
+      </SectionCard>
+
+      {/* Raw Evaluation JSON */}
+      <SectionCard className="mb-6">
+        <button
+          onClick={() => setShowRawJson(!showRawJson)}
+          style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+        >
+          <span style={{ ...LABEL_STYLE, marginBottom: 0, fontSize: 12 }}>Raw Evaluation JSON</span>
+          <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>{showRawJson ? '▼' : '▶'}</span>
+        </button>
+        {showRawJson && (
+          <pre style={{ marginTop: 16, padding: 16, background: 'var(--bg-subtle, #f5f4f1)', borderRadius: 8, overflowX: 'auto', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}>
+            {JSON.stringify(situation.evaluation, null, 2)}
+          </pre>
+        )}
+      </SectionCard>
+
+    </div>
   );
 }

@@ -94,7 +94,53 @@ source attribution required, per-source CANDIDATE-yield measurement).
    per-form caps, confidence floor HIGH-only, or a separate inbox lane for
    `candidate_only=true`.
 
-## 4. Related documents
+## 4. Verification report — full local test run (2026-06-10, Dani's machine)
+
+Result: 622 passed, 13 failed, 3 errors. **None of the failures touch the
+detection quick wins** (all 76 detection/routing tests pass). Breakdown:
+
+### F1 — PRODUCTION BLOCKER (fixed by Claude, Dani-approved)
+`backend/services/investment/research_cases.py`: `_initial_tasks_for_situation()`
+had lost its `return` block in a bad merge (the orphaned `return` was sitting
+dead inside `_initial_tasks_for_promoted_special_situation()`). Effect:
+`create_research_case_from_situation` raised `TypeError` at runtime —
+**SpecialSituation → ResearchCase promotion was broken** in the already-committed
+M1 code. Caused 8 of 13 failures. Fix applied: return restored with
+`source="system"`, dead code removed. Codex should review and re-run tests.
+
+### F2 — For Codex: M1 test/schema updates needed (4 failures)
+`ResearchDocumentRead` mocks in `test_research_cases_phase1b/1e` do not stub the
+new `body_text_*` fields → pydantic ValidationError. Also review whether
+`body_text_*` fields should be `Optional[str]` in the schema (they can be null
+for documents without acquired bodies).
+
+### F3 — For Codex: guardrail test now matches metadata, not imports (1 failure)
+`test_no_scanner_imports_in_research_cases_service` asserts the literal string
+"sec_edgar" is absent from the module source; M1 added
+`connector_key: "sec_edgar_efts"` as metadata. The test should check actual
+imports (e.g. via `sys.modules` or AST), not substrings.
+
+### F4 — For Codex: Fontana language test too literal (1 failure)
+Fontana report contains "no … investment recommendation was performed" — a
+legitimate negative guardrail statement that trips the prohibited-language
+assertion. Either rephrase the report text or make the test allow negated forms.
+
+### F5 — Environment only (3 errors)
+Windows temp-dir permission error (`pytest-of-kangr`). Not code. Resolution:
+delete the folder or run pytest with `--basetemp`.
+
+### Deploy status
+- Detection quick wins + UI phase 1 + docs commits: **GO** (pushed/pushable).
+- Backend deploy: **GO only after** Codex reviews the F1 fix and addresses F2;
+  promotion is part of the core daily loop and must be re-tested
+  (`test_research_cases_phase1b.py`) before the VPS deploy.
+- Reminder: `backend/services/investment/sec_company_facts.py` must be added to
+  the `scripts/deploy_backend_files.ps1` allowlist;
+  `backend/services/agent_ops/governance.py` is still untracked while
+  `backend/api/agent_ops/router.py` references agent-ops governance — Codex must
+  commit it or the build breaks on a clean checkout.
+
+## 5. Related documents
 
 - `docs/product/MVP_V3_PROPOSAL.md` (v0.2.0) — full plan and rationale.
 - `docs/product/PRD.md` (v0.3.1), `docs/product/MVP_SCOPE.md`, `docs/product/ROADMAP.md`.
