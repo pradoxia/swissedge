@@ -214,7 +214,7 @@ def test_research_inbox_preserves_price_context_when_decision_present():
 def test_research_inbox_shows_curated_source_context():
     situation = _situation(
         filing_type="curated_source",
-        status="candidate",
+        status="detected",
         evaluation={
             "origin": "curated",
             "candidate_only": True,

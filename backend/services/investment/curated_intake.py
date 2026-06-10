@@ -135,7 +135,7 @@ def build_curated_special_situation(values: dict) -> SpecialSituation:
         filing_type="curated_source",
         filing_url=values["url"],
         detected_at=now,
-        status="candidate",
+        status="detected",
         evaluation=evaluation,
         source_urls=[values["url"]],
         notes=values["notes"],
@@ -163,7 +163,7 @@ async def create_curated_special_situation(
     return CuratedIntakeResponse(
         special_situation_id=str(situation.id),
         origin="curated",
-        status="candidate",
+        status="detected",
         candidate_only=True,
         research_inbox_href=f"/investment/situations/{situation.id}",
     )

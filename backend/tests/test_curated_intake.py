@@ -97,7 +97,7 @@ def test_build_curated_special_situation_sets_candidate_origin():
         }
     )
 
-    assert situation.status == "candidate"
+    assert situation.status == "detected"
     assert situation.filing_type == "curated_source"
     assert situation.evaluation["origin"] == "curated"
     assert situation.evaluation["candidate_only"] is True
@@ -112,7 +112,7 @@ async def test_create_curated_special_situation():
     response = await create_curated_special_situation(db, _payload())
 
     assert response.origin == "curated"
-    assert response.status == "candidate"
+    assert response.status == "detected"
     assert response.candidate_only is True
     assert len(db.added) == 1
     assert isinstance(db.added[0], SpecialSituation)
