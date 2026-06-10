@@ -1,7 +1,7 @@
 ---
 document_id: ROADMAP
 title: Product Roadmap
-version: 0.5.1
+version: 0.5.2
 status: active
 owner: Dani
 last_updated: 2026-06-10
@@ -118,6 +118,7 @@ Status: implemented locally in Sprint M1. Production migration still requires Da
 ### M3 - Research Inbox + One-Click Human Decision
 
 - Add a single triage queue for new `SpecialSituation` records and open `ResearchCase` work.
+- Status: M3A implements the minimal unified Research Inbox queue and manual next-action links. Full persisted decision audit, reject, and reasoned deferral workflows remain deferred to M3B.
 - Add human decision actions: CANDIDATE, WATCHLIST, and REJECT.
 - Require reason and author for every decision.
 - Add decision persistence only after Dani approves any model or migration changes.

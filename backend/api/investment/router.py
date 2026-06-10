@@ -103,6 +103,10 @@ from backend.services.investment.research_cases import (
     get_research_case,
     promote_special_situation_to_research_case,
 )
+from backend.services.investment.research_inbox import (
+    ResearchInboxQueue,
+    get_research_inbox_queue,
+)
 from backend.services.observability import run_logger
 
 router = APIRouter()
@@ -381,6 +385,11 @@ async def get_detection_run(run_id: str, db: AsyncSession = Depends(get_db)):
     if not run:
         raise HTTPException(status_code=404, detail="Detection run not found")
     return serialize_detection_run(run)
+
+
+@router.get("/research-inbox", response_model=ResearchInboxQueue)
+async def get_research_inbox(db: AsyncSession = Depends(get_db)):
+    return await get_research_inbox_queue(db)
 
 
 @router.get("/intelligence/fontana-report")

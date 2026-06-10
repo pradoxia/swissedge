@@ -136,6 +136,7 @@ Operational rules:
 - Candidate-only items must remain labeled as candidate-only and unverified.
 - The inbox may link to existing manual promotion and detail routes, but must not auto-promote, reject, discard, publish, run AI, or create decisions.
 - Reject and reasoned deferral decisions require a persisted audit model and remain deferred to M3B.
+- No reject, watchlist, or need-more-evidence reasoned decision endpoint exists yet.
 
 ## Incident Notes
 

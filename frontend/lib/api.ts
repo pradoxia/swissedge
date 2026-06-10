@@ -1849,6 +1849,39 @@ export interface ResearchCasesResponse {
   research_cases: ResearchCase[];
 }
 
+export interface ResearchInboxAction {
+  action: string;
+  label: string;
+  href: string;
+  method: string;
+  manual_only: boolean;
+  reason_required: boolean;
+}
+
+export interface ResearchInboxItem {
+  id: string;
+  entity_type: 'special_situation' | 'research_case';
+  title: string;
+  ticker: string | null;
+  source_context: string;
+  status: string;
+  phase: string;
+  candidate_only: boolean;
+  blocker_summary: string;
+  created_at: string | null;
+  detected_at: string | null;
+  next_action: string;
+  detail_href: string;
+  actions: ResearchInboxAction[];
+}
+
+export interface ResearchInboxQueue {
+  count: number;
+  items: ResearchInboxItem[];
+  guardrails: string[];
+  deferred_decisions: string[];
+}
+
 export async function fetchResearchCases(params?: {
   status?: string;
   investment_readiness?: string;
@@ -1860,6 +1893,12 @@ export async function fetchResearchCases(params?: {
   if (params?.situation_id) url.searchParams.append('situation_id', params.situation_id);
   const response = await fetch(url.toString());
   if (!response.ok) throw new Error(`Failed to fetch research cases: ${response.statusText}`);
+  return response.json();
+}
+
+export async function fetchResearchInbox(): Promise<ResearchInboxQueue> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/research-inbox`);
+  if (!response.ok) throw new Error(`Failed to fetch research inbox: ${response.statusText}`);
   return response.json();
 }
 
