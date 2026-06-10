@@ -1,7 +1,7 @@
 ---
 document_id: DOCUMENT_VERSION_INDEX
 title: Document Version Index
-version: 0.5.4
+version: 0.5.5
 status: active
 owner: Dani
 last_updated: 2026-06-10
@@ -18,7 +18,7 @@ This index lists the official SwissEdge documents, versions, ownership, source-o
 | SwissEdge Documentation Index | `docs/README.md` | 0.1.4 | active | Dani | true | 2026-06-09 | Top-level documentation map and source-of-truth guide, including MVP v3 direction, scheduled detection operations, and proposal/reference hierarchy. |
 | Product Requirements Document | `docs/product/PRD.md` | 0.3.0 | active | Dani | true | 2026-06-09 | Official product requirements and MVP v3 direction: end-to-end research loop, North Star Metric, human approval rules, support surfaces, acceptance criteria, risks, and related docs. |
 | MVP Scope | `docs/product/MVP_SCOPE.md` | 0.4.0 | active | Dani | true | 2026-06-09 | MVP v3 in-scope, out-of-MVP, post-MVP, scheduled detection boundary, approval gates, and supporting governance boundaries. |
-| Product Roadmap | `docs/product/ROADMAP.md` | 0.5.1 | active | Dani | true | 2026-06-10 | MVP v3 M1-M6 sprint sequence, implemented scheduled detection and M1 document body acquisition status, superseded governance-first candidates, and post-MVP roadmap. |
+| Product Roadmap | `docs/product/ROADMAP.md` | 0.5.2 | active | Dani | true | 2026-06-10 | MVP v3 M1-M6 sprint sequence, implemented scheduled detection, M1 document body acquisition, and M3A Research Inbox foundation status, superseded governance-first candidates, and post-MVP roadmap. |
 | MVP v3 Proposal | `docs/product/MVP_V3_PROPOSAL.md` | 0.3.0 | superseded_reference | Dani | false | 2026-06-09 | Historical proposal/reference absorbed into official docs; not source of truth when conflicts exist. |
 | Operating Model | `docs/governance/OPERATING_MODEL.md` | 0.1.0 | active | Dani | true | 2026-06-08 | Collaboration model, roles, handoffs, decisions, and approvals. |
 | AI Collaboration Model | `docs/governance/AI_COLLABORATION_MODEL.md` | 0.1.1 | active | Dani | true | 2026-06-08 | AI roles, workflow, handoffs, context packs, screenshot protocol, and failure mode. |
@@ -30,7 +30,7 @@ This index lists the official SwissEdge documents, versions, ownership, source-o
 | Sprint Handoff Template | `docs/engineering/SPRINT_HANDOFF_TEMPLATE.md` | 0.1.0 | active | Dani | true | 2026-06-08 | Standard implementation and verification handoff format. |
 | Definition Of Done | `docs/engineering/DEFINITION_OF_DONE.md` | 0.1.0 | active | Dani | true | 2026-06-08 | Completion criteria for product, backend, frontend, docs, tests, and guardrails. |
 | API Specification | `docs/engineering/API_SPECIFICATION.md` | 0.1.0 | active | Dani | true | 2026-06-08 | High-level official API map. |
-| Operations Runbook | `docs/operations/RUNBOOK.md` | 0.4.2 | active | Dani | true | 2026-06-10 | Safe daily operations, scheduled detection checks, manual SEC body acquisition rules, AI client hardening, Analyze Case preview observability guardrails, and guarded action rules. |
+| Operations Runbook | `docs/operations/RUNBOOK.md` | 0.4.3 | active | Dani | true | 2026-06-10 | Safe daily operations, scheduled detection checks, manual SEC body acquisition rules, AI client hardening, Analyze Case preview observability, Research Inbox guardrails, and guarded action rules. |
 | Observability | `docs/operations/OBSERVABILITY.md` | 0.2.0 | active | Dani | true | 2026-06-08 | Logging, diagnostics, health, activity, execution-history, and Agent Ops governance requirements. |
 | Scheduled Detection | `docs/operations/SCHEDULED_DETECTION.md` | 0.1.0 | active | Dani | true | 2026-06-09 | Controlled SEC EDGAR scheduled detection flow, cron activation, statuses, deduplication, observability, and guardrails. |
 | Screenshot Map | `docs/ux/SCREENSHOT_MAP.md` | 0.2.1 | active | Dani | true | 2026-06-08 | Routes and screenshot protocol for Claude UX work, including Sprint 1 governance screenshots. |
@@ -49,6 +49,7 @@ This index lists the official SwissEdge documents, versions, ownership, source-o
 
 | Version | Date | Author | Change |
 | --- | --- | --- | --- |
+| 0.5.5 | 2026-06-10 | Codex | Updated Product Roadmap and Operations Runbook versions for M3A Research Inbox foundation guardrails. |
 | 0.5.4 | 2026-06-10 | Codex | Updated Operations Runbook version and purpose for M2B Analyze Case preview observability and budget hook guardrails. |
 | 0.5.3 | 2026-06-10 | Codex | Updated Operations Runbook version and purpose for M2A Analyze Case preview contract guardrails. |
 | 0.5.2 | 2026-06-10 | Codex | Updated Operations Runbook version and purpose for M2-pre AI client hardening guardrails. |

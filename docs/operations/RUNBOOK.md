@@ -1,7 +1,7 @@
 ---
 document_id: RUNBOOK
 title: Operations Runbook
-version: 0.4.2
+version: 0.4.3
 status: active
 owner: Dani
 last_updated: 2026-06-10
@@ -19,6 +19,7 @@ Date: 2026-06-10
 - Open Agent Ops: `/agent-ops`
 - Open Radar Status: `/investment/radar-status`
 - Open Situations: `/investment/situations`
+- Open Research Inbox: `/investment/research-inbox`
 - Review Intelligence KPIs: `/investment/intelligence`
 
 ## Guarded Actions
@@ -124,6 +125,17 @@ Safe checks:
 python scripts/run_special_situation_scan.py --help
 python -m py_compile backend/services/investment/scan_orchestrator.py scripts/run_special_situation_scan.py
 ```
+
+## Research Inbox
+
+M3A adds a minimal manual Research Inbox foundation.
+
+Operational rules:
+
+- `GET /api/investment/research-inbox` is read-only and combines detected `SpecialSituation` rows with open `ResearchCase` rows.
+- Candidate-only items must remain labeled as candidate-only and unverified.
+- The inbox may link to existing manual promotion and detail routes, but must not auto-promote, reject, discard, publish, run AI, or create decisions.
+- Reject and reasoned deferral decisions require a persisted audit model and remain deferred to M3B.
 
 ## Incident Notes
 
