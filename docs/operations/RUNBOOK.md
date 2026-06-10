@@ -1,7 +1,7 @@
 ---
 document_id: RUNBOOK
 title: Operations Runbook
-version: 0.4.6
+version: 0.4.7
 status: active
 owner: Dani
 last_updated: 2026-06-10
@@ -142,6 +142,17 @@ Operational rules:
 - Migration file created but not applied; production migration requires Dani approval.
 - No cron, scanner, deploy, live AI, evaluator v2, or provider LLM behavior changes are included.
 
+M4C adds manual curated source intake from Research Inbox.
+
+Operational rules:
+
+- Curated intake creates `SpecialSituation` triage candidates only.
+- Curated intake is candidate-only and unverified.
+- Curated intake records source attribution for later per-source yield metrics, deferred to M6.
+- Curated intake does not scrape, crawl, poll RSS, fetch URL bodies, promote, reject, discard, archive, publish, analyze, create ResearchCases, create DecisionRecords, create price context, acquire documents, or trigger scanners.
+- M4C uses existing `SpecialSituation` fields and `evaluation` metadata; no migration is required.
+- No production deployment, VPS change, production migration, source scraping cron, price cron, SEC cron, scanner change, live AI, or provider integration is approved in M4C.
+
 ## Price Context
 
 M4A adds local price/spread context foundations for triage prioritization only. M4B adds manual Research Inbox price-context editing.
@@ -174,6 +185,7 @@ For scanner, cron, live AI, or production incidents:
 
 | Version | Date | Author | Change |
 | --- | --- | --- | --- |
+| 0.4.7 | 2026-06-10 | Codex | Added M4C manual curated source intake rules and no-scraping/no-automation boundary. |
 | 0.4.6 | 2026-06-10 | Codex | Added M4B manual price context activation rules and no-provider/no-cron boundary. |
 | 0.4.5 | 2026-06-10 | Codex | Added M3B manual DecisionRecord operating rules and production migration approval boundary. |
 | 0.4.0 | 2026-06-10 | Codex | Added M2-pre AI client hardening note: live AI remains disabled by default, structured output failures are explicit, retries are bounded, and budget caps are conservative. |

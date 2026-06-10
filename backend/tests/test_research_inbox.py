@@ -211,6 +211,29 @@ def test_research_inbox_preserves_price_context_when_decision_present():
     assert queue.items[0].latest_decision.outcome == "WATCHLIST"
 
 
+def test_research_inbox_shows_curated_source_context():
+    situation = _situation(
+        filing_type="curated_source",
+        status="candidate",
+        evaluation={
+            "origin": "curated",
+            "candidate_only": True,
+            "verified": False,
+            "curated_intake": {
+                "source_name": "Special Situation Journal",
+                "source_url": "https://example.com/writeup",
+            },
+        },
+    )
+
+    queue = build_research_inbox_queue([situation], [])
+    item = queue.items[0]
+
+    assert item.candidate_only is True
+    assert item.phase == "candidate_only"
+    assert item.source_context == "Curated source / Special Situation Journal / tender_offer"
+
+
 def test_research_inbox_endpoint_returns_unified_queue():
     situation = _situation()
     rc = _case()

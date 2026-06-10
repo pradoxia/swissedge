@@ -145,6 +145,19 @@ def _case_phase(rc: ResearchCase) -> str:
 
 
 def _situation_source_context(situation: SpecialSituation) -> str:
+    evaluation = _evaluation(situation)
+    curated = evaluation.get("curated_intake")
+    if evaluation.get("origin") == "curated" and isinstance(curated, dict):
+        parts = [
+            part
+            for part in [
+                "Curated source",
+                curated.get("source_name"),
+                situation.situation_type,
+            ]
+            if part
+        ]
+        return " / ".join(str(part) for part in parts)
     parts = [
         part
         for part in [

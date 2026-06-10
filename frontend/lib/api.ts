@@ -1925,6 +1925,15 @@ export interface ResearchInboxQueue {
   deferred_decisions: string[];
 }
 
+export interface CuratedIntakeResponse {
+  special_situation_id: string;
+  origin: 'curated';
+  status: string;
+  candidate_only: boolean;
+  research_inbox_href: string;
+  duplicate: boolean;
+}
+
 export async function fetchResearchCases(params?: {
   status?: string;
   investment_readiness?: string;
@@ -1953,6 +1962,32 @@ export async function recordResearchInboxDecision(payload: {
   author: string;
 }): Promise<DecisionRecord> {
   const response = await fetch(`${API_BASE_URL}/api/investment/research-inbox/decision`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(typeof body?.detail === 'string' ? body.detail : `HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function createCuratedIntake(payload: {
+  url: string;
+  source_name: string;
+  situation_type: string;
+  title?: string;
+  summary?: string;
+  ticker?: string;
+  company_name?: string;
+  notes?: string;
+  source_published_at?: string;
+  submitted_by?: string;
+  source_tier?: string;
+  source_confidence?: string;
+}): Promise<CuratedIntakeResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/research-inbox/curated-intake`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),

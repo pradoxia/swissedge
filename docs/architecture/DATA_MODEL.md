@@ -1,7 +1,7 @@
 ---
 document_id: DATA_MODEL
 title: Data Model
-version: 0.2.3
+version: 0.2.4
 status: active
 owner: Dani
 last_updated: 2026-06-10
@@ -22,6 +22,10 @@ Implemented in `backend/models/investment.py`.
 Purpose: detection and triage object for special situation candidates.
 
 Key fields: `id`, `situation_type`, `company_name`, `ticker`, `filing_type`, `filing_url`, `detected_at`, `status`, `evaluation`, `notes`, `created_at`, `updated_at`.
+
+M4C curated intake uses existing fields: `filing_type="curated_source"`, `filing_url` as the source URL, `status="candidate"`, and `evaluation.origin="curated"` with `evaluation.candidate_only=true` plus source attribution metadata. No migration is required.
+
+Boundary: curated intake is unverified candidate-only source context. It must not scrape, crawl, promote, reject, discard, archive, publish, analyze, create ResearchCases, create DecisionRecords, create price context, acquire documents, or trigger scanners.
 
 ### ResearchCase
 
@@ -174,6 +178,7 @@ Future safe schema candidates:
 
 | Version | Date | Author | Change |
 | --- | --- | --- | --- |
+| 0.2.4 | 2026-06-10 | Codex | Documented M4C curated source intake metadata on `SpecialSituation` with no migration. |
 | 0.2.3 | 2026-06-10 | Codex | Documented M4B manual price context activation using existing M4A tables. |
 | 0.2.2 | 2026-06-10 | Codex | Documented M3B `DecisionRecord` model and no-side-effect decision boundary. |
 | 0.2.0 | 2026-06-10 | Codex | Documented M1 nullable `ResearchDocument` body text fields, status vocabulary, and SEC-only manual acquisition boundary. |

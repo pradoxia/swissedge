@@ -121,6 +121,12 @@ from backend.services.investment.price_context import (
     serialize_price_context,
     upsert_manual_price_context,
 )
+from backend.services.investment.curated_intake import (
+    CuratedIntakeError,
+    CuratedIntakePayload,
+    CuratedIntakeResponse,
+    create_curated_special_situation,
+)
 from backend.services.observability import run_logger
 
 router = APIRouter()
@@ -429,6 +435,17 @@ async def post_research_inbox_price_context(body: ManualPriceContextPayload, db:
             raise PriceContextError("Price context could not be serialized")
         return PriceContextResponse(price_context=serialized)
     except PriceContextError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
+
+
+@router.post("/research-inbox/curated-intake", response_model=CuratedIntakeResponse)
+async def post_research_inbox_curated_intake(body: CuratedIntakePayload, db: AsyncSession = Depends(get_db)):
+    try:
+        response = await create_curated_special_situation(db, body)
+        await db.commit()
+        return response
+    except CuratedIntakeError as exc:
         await db.rollback()
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
 

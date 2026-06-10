@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
+  createCuratedIntake,
   fetchResearchInbox,
   recordResearchInboxDecision,
   updateResearchInboxPriceContext,
@@ -28,6 +29,20 @@ type PriceForm = {
   currency: string;
   spread_status: PriceContextStatus | '';
   status_reason: string;
+};
+type CuratedForm = {
+  url: string;
+  source_name: string;
+  ticker: string;
+  company_name: string;
+  situation_type: string;
+  title: string;
+  summary: string;
+  notes: string;
+  source_published_at: string;
+  submitted_by: string;
+  source_tier: string;
+  source_confidence: string;
 };
 
 const FILTERS: { key: FilterKey; label: string }[] = [
@@ -128,8 +143,23 @@ export default function ResearchInboxPage() {
   const [filter, setFilter] = useState<FilterKey>('all');
   const [decisionForms, setDecisionForms] = useState<Record<string, DecisionForm>>({});
   const [priceForms, setPriceForms] = useState<Record<string, PriceForm>>({});
+  const [curatedForm, setCuratedForm] = useState<CuratedForm>({
+    url: '',
+    source_name: '',
+    ticker: '',
+    company_name: '',
+    situation_type: '',
+    title: '',
+    summary: '',
+    notes: '',
+    source_published_at: '',
+    submitted_by: 'Dani',
+    source_tier: '',
+    source_confidence: '',
+  });
   const [savingDecision, setSavingDecision] = useState<string | null>(null);
   const [savingPrice, setSavingPrice] = useState<string | null>(null);
+  const [savingCurated, setSavingCurated] = useState(false);
   const [decisionMessage, setDecisionMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -231,6 +261,39 @@ export default function ResearchInboxPage() {
     }
   }
 
+  function updateCuratedForm(patch: Partial<CuratedForm>) {
+    setCuratedForm(current => ({ ...current, ...patch }));
+  }
+
+  async function submitCuratedIntake() {
+    try {
+      setSavingCurated(true);
+      setDecisionMessage(null);
+      setError(null);
+      await createCuratedIntake(curatedForm);
+      setQueue(await fetchResearchInbox());
+      setCuratedForm({
+        url: '',
+        source_name: '',
+        ticker: '',
+        company_name: '',
+        situation_type: '',
+        title: '',
+        summary: '',
+        notes: '',
+        source_published_at: '',
+        submitted_by: curatedForm.submitted_by || 'Dani',
+        source_tier: '',
+        source_confidence: '',
+      });
+      setDecisionMessage('Curated source added as candidate-only manual intake.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add curated source');
+    } finally {
+      setSavingCurated(false);
+    }
+  }
+
   const items = queue?.items ?? [];
   const counts = useMemo(() => {
     const base: Record<FilterKey, number> = {
@@ -268,6 +331,106 @@ export default function ResearchInboxPage() {
         Manual-only foundation: this page does not trigger scans, AI previews, promotion, rejection, discard, publication, or automated conclusions.
       </InfoBanner>
       {decisionMessage && <InfoBanner>{decisionMessage}</InfoBanner>}
+
+      <div className="card" style={{ marginBottom: '20px' }}>
+        <h2 style={{ fontSize: '14px', marginBottom: '10px' }}>Add curated source</h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8, marginBottom: 10 }}>
+          <input
+            value={curatedForm.url}
+            onChange={event => updateCuratedForm({ url: event.target.value })}
+            placeholder="URL"
+            style={{ width: '100%' }}
+          />
+          <input
+            value={curatedForm.source_name}
+            onChange={event => updateCuratedForm({ source_name: event.target.value })}
+            placeholder="Source name"
+            style={{ width: '100%' }}
+          />
+          <input
+            value={curatedForm.ticker}
+            onChange={event => updateCuratedForm({ ticker: event.target.value })}
+            placeholder="Ticker"
+            style={{ width: '100%' }}
+          />
+          <input
+            value={curatedForm.company_name}
+            onChange={event => updateCuratedForm({ company_name: event.target.value })}
+            placeholder="Company name"
+            style={{ width: '100%' }}
+          />
+          <input
+            value={curatedForm.situation_type}
+            onChange={event => updateCuratedForm({ situation_type: event.target.value })}
+            placeholder="Situation type"
+            style={{ width: '100%' }}
+          />
+          <input
+            value={curatedForm.title}
+            onChange={event => updateCuratedForm({ title: event.target.value })}
+            placeholder="Title"
+            style={{ width: '100%' }}
+          />
+          <input
+            value={curatedForm.source_published_at}
+            onChange={event => updateCuratedForm({ source_published_at: event.target.value })}
+            placeholder="Source date"
+            type="date"
+            style={{ width: '100%' }}
+          />
+          <input
+            value={curatedForm.submitted_by}
+            onChange={event => updateCuratedForm({ submitted_by: event.target.value })}
+            placeholder="Submitted by"
+            style={{ width: '100%' }}
+          />
+          <input
+            value={curatedForm.source_tier}
+            onChange={event => updateCuratedForm({ source_tier: event.target.value })}
+            placeholder="Source tier"
+            style={{ width: '100%' }}
+          />
+          <input
+            value={curatedForm.source_confidence}
+            onChange={event => updateCuratedForm({ source_confidence: event.target.value })}
+            placeholder="Source confidence"
+            style={{ width: '100%' }}
+          />
+        </div>
+        <div style={{ display: 'grid', gap: 8, marginBottom: 10 }}>
+          <textarea
+            value={curatedForm.summary}
+            onChange={event => updateCuratedForm({ summary: event.target.value })}
+            placeholder="Summary"
+            rows={2}
+            style={{ width: '100%', resize: 'vertical' }}
+          />
+          <textarea
+            value={curatedForm.notes}
+            onChange={event => updateCuratedForm({ notes: event.target.value })}
+            placeholder="Notes"
+            rows={2}
+            style={{ width: '100%', resize: 'vertical' }}
+          />
+        </div>
+        <button
+          className="btn btn--secondary btn--sm"
+          onClick={submitCuratedIntake}
+          disabled={
+            savingCurated
+            || !curatedForm.url.trim()
+            || !curatedForm.source_name.trim()
+            || !curatedForm.situation_type.trim()
+            || (!curatedForm.title.trim() && !curatedForm.summary.trim())
+            || !curatedForm.submitted_by.trim()
+          }
+        >
+          {savingCurated ? 'Adding...' : 'Add curated source'}
+        </button>
+        <div style={{ marginTop: 8, fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-faint)' }}>
+          Manual intake creates candidate-only unverified source context. It does not fetch the URL or create a ResearchCase.
+        </div>
+      </div>
 
       <div className="card" style={{ marginBottom: '20px' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>

@@ -48,6 +48,7 @@ $backendFiles = @(
     "backend/services/investment/operational_view.py",
     "backend/services/investment/research_inbox.py",
     "backend/services/investment/decision_records.py",
+    "backend/services/investment/curated_intake.py",
     "backend/services/investment/sources/sec_edgar.py",
     "backend/cli/__init__.py",
     "backend/cli/sec_edgar_detect.py",
