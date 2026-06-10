@@ -1873,6 +1873,17 @@ export interface ResearchInboxItem {
   next_action: string;
   detail_href: string;
   actions: ResearchInboxAction[];
+  price_context: {
+    ticker: string | null;
+    offer_price: string | null;
+    offer_price_source: string | null;
+    latest_close_price: string | null;
+    latest_close_date: string | null;
+    estimated_spread_pct: string | null;
+    spread_status: string;
+    status_reason: string | null;
+    updated_at: string | null;
+  } | null;
 }
 
 export interface ResearchInboxQueue {

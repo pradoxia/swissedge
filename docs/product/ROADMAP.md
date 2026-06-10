@@ -1,7 +1,7 @@
 ---
 document_id: ROADMAP
 title: Product Roadmap
-version: 0.5.2
+version: 0.5.3
 status: active
 owner: Dani
 last_updated: 2026-06-10
@@ -119,6 +119,10 @@ Status: implemented locally in Sprint M1. Production migration still requires Da
 
 - Add a single triage queue for new `SpecialSituation` records and open `ResearchCase` work.
 - Status: M3A implements the minimal unified Research Inbox queue and manual next-action links. Full persisted decision audit, reject, and reasoned deferral workflows remain deferred to M3B.
+
+### M4 - Price Connector + Estimated Spread Context
+
+Status: M4A implements the local model/service foundation for cached price context and neutral `estimated_spread_pct` display in Research Inbox. Price/spread context is workflow prioritization context only, not advice or a decision signal. Provider selection, production migration, and production price refresh cron remain pending Dani approval.
 - Add human decision actions: CANDIDATE, WATCHLIST, and REJECT.
 - Require reason and author for every decision.
 - Add decision persistence only after Dani approves any model or migration changes.

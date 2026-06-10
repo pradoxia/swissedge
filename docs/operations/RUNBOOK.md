@@ -1,7 +1,7 @@
 ---
 document_id: RUNBOOK
 title: Operations Runbook
-version: 0.4.3
+version: 0.4.4
 status: active
 owner: Dani
 last_updated: 2026-06-10
@@ -137,6 +137,20 @@ Operational rules:
 - The inbox may link to existing manual promotion and detail routes, but must not auto-promote, reject, discard, publish, run AI, or create decisions.
 - Reject and reasoned deferral decisions require a persisted audit model and remain deferred to M3B.
 - No reject, watchlist, or need-more-evidence reasoned decision endpoint exists yet.
+
+## Price Context
+
+M4A adds local price/spread context foundations for triage prioritization only.
+
+Operational rules:
+
+- `estimated_spread_pct` is workflow context, not investment advice or a case decision.
+- Price refresh is decoupled from SEC detection cron.
+- No production price refresh cron is installed in M4A.
+- No SEC cron or scanner behavior changed in M4A.
+- The price context migration file is a local code artifact only; it has not been applied.
+- Production migration requires Dani approval.
+- Price context must not auto-promote, reject, discard, publish, analyze, or decide any case.
 
 ## Incident Notes
 

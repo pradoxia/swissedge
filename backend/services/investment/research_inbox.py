@@ -8,9 +8,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from backend.models.investment import SpecialSituation
+from backend.models.investment import CasePriceContext, SpecialSituation
 from backend.models.investment_research import ResearchCase
 from backend.services.investment.methodology_workspace import WORKSPACE_KEY
+from backend.services.investment.price_context import PriceContextRead, serialize_price_context
 
 
 EntityType = Literal["special_situation", "research_case"]
@@ -40,6 +41,7 @@ class ResearchInboxItem(BaseModel):
     next_action: str
     detail_href: str
     actions: list[ResearchInboxAction] = Field(default_factory=list)
+    price_context: PriceContextRead | None = None
 
 
 class ResearchInboxQueue(BaseModel):
@@ -220,8 +222,16 @@ def _case_next_action(rc: ResearchCase) -> tuple[str, list[ResearchInboxAction]]
 def build_research_inbox_queue(
     situations: list[SpecialSituation],
     research_cases: list[ResearchCase],
+    price_contexts: list[CasePriceContext] | None = None,
 ) -> ResearchInboxQueue:
     items: list[ResearchInboxItem] = []
+    situation_price_contexts: dict[str, CasePriceContext] = {}
+    research_case_price_contexts: dict[str, CasePriceContext] = {}
+    for context in price_contexts or []:
+        if context.special_situation_id:
+            situation_price_contexts.setdefault(str(context.special_situation_id), context)
+        if context.research_case_id:
+            research_case_price_contexts.setdefault(str(context.research_case_id), context)
 
     for situation in situations:
         if situation.status == "archived":
@@ -244,6 +254,7 @@ def build_research_inbox_queue(
                 next_action=next_action,
                 detail_href=f"/investment/situations/{situation.id}",
                 actions=actions,
+                price_context=serialize_price_context(situation_price_contexts.get(str(situation.id))),
             )
         )
 
@@ -271,6 +282,7 @@ def build_research_inbox_queue(
                 next_action=next_action,
                 detail_href=f"/investment/research/{rc.id}",
                 actions=actions,
+                price_context=serialize_price_context(research_case_price_contexts.get(str(rc.id))),
             )
         )
 
@@ -294,7 +306,9 @@ async def get_research_inbox_queue(db: AsyncSession) -> ResearchInboxQueue:
         )
         .order_by(ResearchCase.updated_at.desc())
     )
+    context_result = await db.execute(select(CasePriceContext).order_by(CasePriceContext.updated_at.desc()))
     return build_research_inbox_queue(
         list(situation_result.scalars().all()),
         list(rc_result.scalars().all()),
+        list(context_result.scalars().all()),
     )

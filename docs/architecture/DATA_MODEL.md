@@ -1,7 +1,7 @@
 ---
 document_id: DATA_MODEL
 title: Data Model
-version: 0.2.0
+version: 0.2.1
 status: active
 owner: Dani
 last_updated: 2026-06-10
@@ -52,6 +52,26 @@ M1 body text fields:
 - `body_text_size_bytes`: nullable response size metadata.
 
 Boundary: M1 body text acquisition is SEC-only, manual, and does not verify evidence, promote/reject cases, publish, activate live AI, or run scans/cron.
+
+### PriceSnapshot
+
+Implemented in `backend/models/investment.py`.
+
+Purpose: cached market price metadata from a future approved price provider. Provider selection is pending, and M4A does not install a production price refresh cron.
+
+Key fields: `id`, `ticker`, `provider`, `latest_close_price`, `close_date`, `currency`, `market_cap`, `average_daily_volume`, `fetched_at`, `safe_metadata`, `created_at`, `updated_at`.
+
+### CasePriceContext
+
+Implemented in `backend/models/investment.py`.
+
+Purpose: cached workflow/prioritization context for a `SpecialSituation` or `ResearchCase`.
+
+Key fields: `id`, `special_situation_id`, `research_case_id`, `ticker`, `offer_price`, `offer_price_source`, `price_snapshot_id`, `latest_close_price`, `latest_close_date`, `estimated_spread_pct`, `spread_status`, `status_reason`, `created_at`, `updated_at`.
+
+Safe statuses: `available`, `missing_offer_price`, `missing_market_price`, `stale_price`, `not_applicable`.
+
+Boundary: price context is not investment advice, does not verify candidate-only situations, and must not auto-promote, reject, discard, publish, analyze, or decide cases. Migration file exists for review but production migration requires Dani approval.
 
 ### AgentRoom
 

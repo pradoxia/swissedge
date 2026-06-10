@@ -155,7 +155,9 @@ def test_research_inbox_endpoint_returns_unified_queue():
     situation_result.scalars.return_value.all.return_value = [situation]
     rc_result = MagicMock()
     rc_result.scalars.return_value.all.return_value = [rc]
-    db.execute = AsyncMock(side_effect=[situation_result, rc_result])
+    context_result = MagicMock()
+    context_result.scalars.return_value.all.return_value = []
+    db.execute = AsyncMock(side_effect=[situation_result, rc_result, context_result])
 
     async def get_db_override():
         yield db

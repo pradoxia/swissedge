@@ -1,7 +1,7 @@
 ---
 document_id: API_SPECIFICATION
 title: API Specification
-version: 0.1.0
+version: 0.1.1
 status: active
 owner: Dani
 last_updated: 2026-06-08
@@ -23,6 +23,7 @@ This is the official high-level API map. Detailed route inventory is maintained 
 
 ## Investment Situations
 
+- `GET /api/investment/research-inbox`
 - `GET /api/investment/situations`
 - `GET /api/investment/situations/{id}`
 - `PATCH /api/investment/situations/{id}`
@@ -35,6 +36,8 @@ This is the official high-level API map. Detailed route inventory is maintained 
 - `GET /api/investment/situations/{id}/completion-workbench`
 - `GET /api/investment/situations/{id}/activity-timeline`
 - `POST /api/investment/situations/{id}/promote-to-research-case`
+
+`GET /api/investment/research-inbox` may include optional `price_context` per item with neutral fields such as `ticker`, `offer_price`, `latest_close_price`, `latest_close_date`, `estimated_spread_pct`, `spread_status`, and `updated_at`. This is workflow prioritization context only and must not be used as advice or an automated decision.
 
 ## Detection And Scanner
 
@@ -85,4 +88,5 @@ Guardrail: do not trigger `POST /api/investment/scan` unless explicitly approved
 
 | Version | Date | Author | Change |
 | --- | --- | --- | --- |
+| 0.1.1 | 2026-06-10 | Codex | Added Research Inbox and optional price context response note for M4A. |
 | 0.1.0 | 2026-06-08 | Codex | Initial official version. |

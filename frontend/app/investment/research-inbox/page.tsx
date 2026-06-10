@@ -43,6 +43,13 @@ function hasEvidenceNeed(item: ResearchInboxItem): boolean {
   return item.blocker_summary !== 'No blocker summary available.';
 }
 
+function spreadText(item: ResearchInboxItem): string {
+  const context = item.price_context;
+  if (!context) return 'unknown';
+  if (context.spread_status !== 'available') return context.spread_status;
+  return context.estimated_spread_pct ? `${context.estimated_spread_pct}%` : 'available';
+}
+
 function matchesFilter(item: ResearchInboxItem, filter: FilterKey): boolean {
   if (filter === 'candidate_only') return item.candidate_only;
   if (filter === 'needs_evidence') return hasEvidenceNeed(item);
@@ -155,6 +162,7 @@ export default function ResearchInboxPage() {
                   <th>Source / Form</th>
                   <th>Status / Phase</th>
                   <th>Evidence / Blocker</th>
+                  <th>Estimated spread %</th>
                   <th>Created / Detected</th>
                   <th>Next Action</th>
                 </tr>
@@ -182,6 +190,14 @@ export default function ResearchInboxPage() {
                     </td>
                     <td style={{ maxWidth: 300, color: hasEvidenceNeed(item) ? 'var(--text-primary)' : 'var(--text-faint)' }}>
                       {item.blocker_summary}
+                    </td>
+                    <td>
+                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text-muted)' }}>
+                        {spreadText(item)}
+                      </div>
+                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--text-faint)', marginTop: 2 }}>
+                        {item.price_context?.latest_close_date ? `close ${item.price_context.latest_close_date}` : 'price context unknown'}
+                      </div>
                     </td>
                     <td style={{ color: 'var(--text-faint)' }}>
                       <div>{formatDate(item.detected_at)}</div>
