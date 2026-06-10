@@ -1,7 +1,7 @@
 ---
 document_id: RUNBOOK
 title: Operations Runbook
-version: 0.3.0
+version: 0.4.0
 status: active
 owner: Dani
 last_updated: 2026-06-10
@@ -72,6 +72,19 @@ Manual endpoints:
 - `POST /api/investment/research-cases/{research_case_id}/sec-document-acquisition` acquires SEC metadata candidates and attempts body text for newly stored `ResearchDocument` rows.
 - `POST /api/investment/research-documents/{document_id}/body-text-acquisition` retries body acquisition for one existing `ResearchDocument`.
 
+## AI Client Hardening
+
+M2-pre prepares AI infrastructure for a future gated Analyze Case sprint, but does not enable live AI.
+
+Operational rules:
+
+- `ai_live_enabled` defaults to `false`.
+- Live AI provider calls require explicit Dani approval and environment configuration.
+- Structured AI output must fail explicitly when JSON parsing or schema validation fails.
+- Retries are limited to safe transient failures such as timeout, 429, or 5xx.
+- Daily budget caps are conservative and block calls when configured limits are reached.
+- AI output must not be persisted or shown as investment analysis unless a later approved sprint explicitly gates and scopes that behavior.
+
 ## Scheduled SEC EDGAR Detection
 
 Scheduled detection is documented in `docs/operations/SCHEDULED_DETECTION.md`.
@@ -107,6 +120,7 @@ For scanner, cron, live AI, or production incidents:
 
 | Version | Date | Author | Change |
 | --- | --- | --- | --- |
+| 0.4.0 | 2026-06-10 | Codex | Added M2-pre AI client hardening note: live AI remains disabled by default, structured output failures are explicit, retries are bounded, and budget caps are conservative. |
 | 0.3.0 | 2026-06-10 | Codex | Added M1 manual SEC document body acquisition operating rules, safe statuses, endpoints, and production migration approval note. |
 | 0.2.0 | 2026-06-09 | Codex | Added scheduled SEC EDGAR detection operating rules and safe validation commands. |
 | 0.1.0 | 2026-06-08 | Codex | Initial official version. |

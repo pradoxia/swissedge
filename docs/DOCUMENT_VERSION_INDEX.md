@@ -1,7 +1,7 @@
 ---
 document_id: DOCUMENT_VERSION_INDEX
 title: Document Version Index
-version: 0.5.1
+version: 0.5.2
 status: active
 owner: Dani
 last_updated: 2026-06-10
@@ -30,7 +30,7 @@ This index lists the official SwissEdge documents, versions, ownership, source-o
 | Sprint Handoff Template | `docs/engineering/SPRINT_HANDOFF_TEMPLATE.md` | 0.1.0 | active | Dani | true | 2026-06-08 | Standard implementation and verification handoff format. |
 | Definition Of Done | `docs/engineering/DEFINITION_OF_DONE.md` | 0.1.0 | active | Dani | true | 2026-06-08 | Completion criteria for product, backend, frontend, docs, tests, and guardrails. |
 | API Specification | `docs/engineering/API_SPECIFICATION.md` | 0.1.0 | active | Dani | true | 2026-06-08 | High-level official API map. |
-| Operations Runbook | `docs/operations/RUNBOOK.md` | 0.3.0 | active | Dani | true | 2026-06-10 | Safe daily operations, scheduled detection checks, manual SEC body acquisition rules, and guarded action rules. |
+| Operations Runbook | `docs/operations/RUNBOOK.md` | 0.4.0 | active | Dani | true | 2026-06-10 | Safe daily operations, scheduled detection checks, manual SEC body acquisition rules, AI client hardening guardrails, and guarded action rules. |
 | Observability | `docs/operations/OBSERVABILITY.md` | 0.2.0 | active | Dani | true | 2026-06-08 | Logging, diagnostics, health, activity, execution-history, and Agent Ops governance requirements. |
 | Scheduled Detection | `docs/operations/SCHEDULED_DETECTION.md` | 0.1.0 | active | Dani | true | 2026-06-09 | Controlled SEC EDGAR scheduled detection flow, cron activation, statuses, deduplication, observability, and guardrails. |
 | Screenshot Map | `docs/ux/SCREENSHOT_MAP.md` | 0.2.1 | active | Dani | true | 2026-06-08 | Routes and screenshot protocol for Claude UX work, including Sprint 1 governance screenshots. |
@@ -49,6 +49,7 @@ This index lists the official SwissEdge documents, versions, ownership, source-o
 
 | Version | Date | Author | Change |
 | --- | --- | --- | --- |
+| 0.5.2 | 2026-06-10 | Codex | Updated Operations Runbook version and purpose for M2-pre AI client hardening guardrails. |
 | 0.5.1 | 2026-06-10 | Codex | Updated versions and purposes for Sprint M1 SEC document body acquisition docs. |
 | 0.5.0 | 2026-06-09 | Codex | Updated source-of-truth docs for adopted MVP v3 direction and marked MVP_V3_PROPOSAL as superseded reference, not source of truth. |
 | 0.4.0 | 2026-06-09 | Codex | Added Scheduled Detection official document and updated Sprint 2 roadmap, architecture, runbook, MVP scope, and docs index versions. |

@@ -16,6 +16,11 @@ class Settings(BaseSettings):
     ai_provider: str = "openai"  # openai | anthropic
     openai_api_key: str = ""
     anthropic_api_key: str = ""
+    ai_live_enabled: bool = False
+    ai_openai_model: str = "gpt-4o-mini"
+    ai_anthropic_model: str = "claude-haiku-4-5-20251001"
+    ai_task_model_overrides: dict[str, str] = {}
+    ai_daily_budget_usd: float = 0.0
 
     # SEC EDGAR (email required by their API policy)
     sec_user_agent: str = ""
