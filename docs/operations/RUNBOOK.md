@@ -1,7 +1,7 @@
 ---
 document_id: RUNBOOK
 title: Operations Runbook
-version: 0.4.0
+version: 0.4.1
 status: active
 owner: Dani
 last_updated: 2026-06-10
@@ -74,7 +74,7 @@ Manual endpoints:
 
 ## AI Client Hardening
 
-M2-pre prepares AI infrastructure for a future gated Analyze Case sprint, but does not enable live AI.
+M2-pre prepares AI infrastructure for gated Analyze Case preview work, but does not enable live AI.
 
 Operational rules:
 
@@ -84,6 +84,16 @@ Operational rules:
 - Retries are limited to safe transient failures such as timeout, 429, or 5xx.
 - Daily budget caps are conservative and block calls when configured limits are reached.
 - AI output must not be persisted or shown as investment analysis unless a later approved sprint explicitly gates and scopes that behavior.
+
+M2A adds the backend preview contract at `POST /api/investment/research-cases/{research_case_id}/analyze-preview`.
+
+Operational rules:
+
+- The endpoint is manual only.
+- If live AI is disabled, the endpoint returns a controlled unavailable response.
+- If required document body text is missing, the endpoint returns `blocked_missing_documents` and does not call an AI provider.
+- Preview output is not persisted and must not mutate ResearchCase status, readiness, decisions, documents, sources, tasks, or publication state.
+- Analyze Case preview does not activate evaluator v2, scanner changes, cron, auto-promotion, auto-discard, auto-publish, or investment directive language.
 
 ## Scheduled SEC EDGAR Detection
 

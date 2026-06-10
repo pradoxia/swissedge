@@ -5,7 +5,7 @@ import uuid
 from copy import deepcopy
 from datetime import datetime, timezone
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -18,7 +18,7 @@ from backend.models.publishing import PublicArticleDraft
 from backend.models.investment import SpecialSituation
 from backend.models.agent_ops import AgentProfile, AgentRoom
 from backend.services.agent_ops.activity_logger import log_agent_activity
-from backend.services.ai_client import complete_with_usage
+from backend.services.ai_client import complete_structured_with_usage, complete_with_usage
 from backend.services.investment.evidence_links import summarize_evidence_links, build_research_case_evidence_links
 from backend.services.investment.methodology_workspace import WORKSPACE_KEY
 from backend.services.investment.routing_engine import check_scope, route_playbook
@@ -332,6 +332,68 @@ class ResearchCaseRead(BaseModel):
             documents=[ResearchDocumentRead.from_orm(d) for d in rc.documents],
             sources=[ResearchSourceRead.from_orm(s) for s in rc.sources],
         )
+
+
+class CaseClassificationPreview(BaseModel):
+    classification: str
+    rationale: str
+    confidence: str
+
+
+class EvidenceCoverageSummary(BaseModel):
+    documents_reviewed: int
+    documents_with_body_text: int
+    coverage_summary: str
+    missing_information: list[str]
+
+
+class BriefSectionPreview(BaseModel):
+    section_name: str
+    draft_text: str
+    source_document_ids: list[str]
+
+
+class BriefDraftPreview(BaseModel):
+    sections: list[BriefSectionPreview]
+
+
+class QualityChecklistItem(BaseModel):
+    item: str
+    status: str
+    notes: str
+
+
+class QualityChecklistPreview(BaseModel):
+    items: list[QualityChecklistItem]
+    overall_status: str
+
+
+class GuardrailFinding(BaseModel):
+    guardrail: str
+    status: str
+    notes: str
+
+
+class MissingDocumentBlocker(BaseModel):
+    document_id: str | None = None
+    title: str | None = None
+    url: str | None = None
+    reason: str
+
+
+class AnalyzeCasePreview(BaseModel):
+    saved_to_db: bool = False
+    research_case_id: str
+    status: str
+    blocked_reason: str | None = None
+    missing_documents: list[MissingDocumentBlocker] = Field(default_factory=list)
+    classification_preview: CaseClassificationPreview | None = None
+    evidence_coverage_summary: EvidenceCoverageSummary | None = None
+    brief_draft_preview: BriefDraftPreview | None = None
+    quality_checklist_preview: QualityChecklistPreview | None = None
+    guardrail_findings: list[GuardrailFinding] = Field(default_factory=list)
+    usage: dict = Field(default_factory=dict)
+    disclaimer: str = _DISCLAIMER
 
 
 class ResearchCaseCreate(BaseModel):
@@ -1540,6 +1602,125 @@ def render_public_article_markdown(draft: PublicArticleDraft) -> str:
     if _DISCLAIMER not in body:
         body = f"{body}\n\n{_DISCLAIMER}".strip()
     return f"# {title}\n\n{body}\n"
+
+
+# ── Analyze Case Preview Contract ─────────────────────────────────────────────
+
+_ANALYZE_CASE_SYSTEM = (
+    "You are preparing a private research-case preview for a human analyst. "
+    "Use only the supplied case and document body text. "
+    "Do not fetch URLs or use external knowledge. "
+    "Do not make autonomous decisions. "
+    "Do not use buy/sell language, target prices, or investment advice. "
+    "Return only the requested JSON object."
+)
+
+
+def _documents_missing_body_text(rc: ResearchCase) -> list[MissingDocumentBlocker]:
+    if not rc.documents:
+        return [
+            MissingDocumentBlocker(
+                reason="No research documents are attached to this case.",
+            )
+        ]
+
+    missing: list[MissingDocumentBlocker] = []
+    for doc in rc.documents:
+        body_text = _nullable_str(getattr(doc, "body_text", None))
+        if body_text:
+            continue
+        missing.append(
+            MissingDocumentBlocker(
+                document_id=str(doc.id),
+                title=_nullable_str(getattr(doc, "title", None)),
+                url=_nullable_str(getattr(doc, "url", None)),
+                reason="Document body text has not been acquired.",
+            )
+        )
+    return missing
+
+
+def _build_analyze_case_prompt(rc: ResearchCase, documents_with_body_text: list[ResearchDocument]) -> str:
+    lines: list[str] = [
+        "=== ANALYZE CASE PREVIEW REQUEST ===",
+        "",
+        f"Research Case ID: {rc.id}",
+        f"Current Status: {rc.status}",
+        f"Current Readiness: {rc.investment_readiness or 'not set'}",
+    ]
+    if rc.notes:
+        lines.extend(["", "--- ANALYST NOTES ---", rc.notes])
+
+    lines.extend(["", "--- DOCUMENT BODY TEXT ---"])
+    for doc in documents_with_body_text:
+        lines.append(f"Document ID: {doc.id}")
+        lines.append(f"Title: {doc.title or '(untitled)'}")
+        lines.append(f"Type: {doc.doc_type or 'unknown'}")
+        lines.append("Body Text:")
+        lines.append((getattr(doc, "body_text", "") or "").strip()[:8000])
+        lines.append("")
+
+    lines.extend(
+        [
+            "=== OUTPUT CONTRACT ===",
+            "Return a JSON object with saved_to_db=false, research_case_id, status, "
+            "classification_preview, evidence_coverage_summary, brief_draft_preview, "
+            "quality_checklist_preview, guardrail_findings, missing_documents, usage, and disclaimer. "
+            "Use exactly 14 draft brief sections when enough evidence exists. "
+            "Use neutral factual language only.",
+        ]
+    )
+    return "\n".join(lines)
+
+
+async def generate_analyze_case_preview(
+    db: AsyncSession,
+    research_case_id: uuid.UUID,
+) -> AnalyzeCasePreview:
+    result = await db.execute(
+        select(ResearchCase)
+        .where(ResearchCase.id == research_case_id)
+        .options(
+            selectinload(ResearchCase.tasks),
+            selectinload(ResearchCase.documents),
+            selectinload(ResearchCase.sources),
+        )
+    )
+    rc = result.scalars().first()
+    if not rc:
+        raise HTTPException(status_code=404, detail="Research case not found")
+
+    missing_documents = _documents_missing_body_text(rc)
+    documents_with_body_text = [
+        doc for doc in rc.documents if _nullable_str(getattr(doc, "body_text", None))
+    ]
+    if missing_documents or not documents_with_body_text:
+        return AnalyzeCasePreview(
+            research_case_id=str(research_case_id),
+            status="blocked_missing_documents",
+            blocked_reason="Body text is required before Analyze Case preview can run.",
+            missing_documents=missing_documents,
+            evidence_coverage_summary=EvidenceCoverageSummary(
+                documents_reviewed=len(rc.documents),
+                documents_with_body_text=len(documents_with_body_text),
+                coverage_summary="Analyze Case preview is blocked until document body text is available.",
+                missing_information=["Document body text is required."],
+            ),
+        )
+
+    prompt = _build_analyze_case_prompt(rc, documents_with_body_text)
+    preview, usage = await complete_structured_with_usage(
+        prompt,
+        AnalyzeCasePreview,
+        system=_ANALYZE_CASE_SYSTEM,
+        max_tokens=5000,
+        task_name="analyze_case_preview",
+    )
+    preview.saved_to_db = False
+    preview.research_case_id = str(research_case_id)
+    preview.usage = usage
+    preview.disclaimer = _DISCLAIMER
+    return preview
 
 
 _BRIEF_SECTIONS = [

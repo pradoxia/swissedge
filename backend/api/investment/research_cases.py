@@ -8,7 +8,14 @@ from backend.db.database import get_db
 from backend.models.agent_ops import AgentActivity
 from backend.models.investment import SpecialSituation
 from backend.models.investment_research import HistoricalCase, ResearchCase, ResearchDocument
+from backend.services.ai_client import (
+    AIBudgetExceededError,
+    AILiveDisabledError,
+    AIResponseParseError,
+    AIResponseValidationError,
+)
 from backend.services.investment.research_cases import (
+    AnalyzeCasePreview,
     ResearchCaseRead,
     ResearchCaseUpdate,
     EvaluationPrepPackage,
@@ -36,6 +43,7 @@ from backend.services.investment.research_cases import (
     create_source,
     list_sources,
     patch_source,
+    generate_analyze_case_preview,
     generate_brief_preview,
     generate_quality_preview,
     generate_document_analysis_preview,
@@ -117,6 +125,20 @@ def _parse_uuid(value: str, field_name: str = "id") -> uuid.UUID:
         return uuid.UUID(value)
     except ValueError:
         raise HTTPException(status_code=422, detail=f"Invalid {field_name}: expected UUID")
+
+
+def _raise_ai_preview_http_error(exc: Exception) -> None:
+    if isinstance(exc, AILiveDisabledError):
+        raise HTTPException(
+            status_code=503,
+            detail="Live AI is disabled. Dani approval is required before running AI previews.",
+        )
+    if isinstance(exc, AIBudgetExceededError):
+        raise HTTPException(status_code=429, detail="AI daily budget cap would be exceeded.")
+    if isinstance(exc, AIResponseParseError):
+        raise HTTPException(status_code=502, detail="AI response was not valid JSON.")
+    if isinstance(exc, AIResponseValidationError):
+        raise HTTPException(status_code=502, detail="AI response did not match the required preview schema.")
 
 
 @router.post("/research-cases/from-situation/{situation_id}", response_model=ResearchCaseRead, status_code=201)
@@ -629,6 +651,18 @@ async def update_source(
     return ResearchSourceRead.from_orm(src)
 
 
+@router.post("/research-cases/{research_case_id}/analyze-preview", response_model=AnalyzeCasePreview)
+async def preview_analyze_case(
+    research_case_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return await generate_analyze_case_preview(db, _parse_uuid(research_case_id, "research_case_id"))
+    except Exception as e:
+        _raise_ai_preview_http_error(e)
+        raise
+
+
 @router.post("/research-documents/{document_id}/analysis-preview")
 async def preview_document_analysis(
     document_id: str,
@@ -677,6 +711,7 @@ async def preview_document_analysis(
             await db.commit()
         except Exception:
             pass
+        _raise_ai_preview_http_error(e)
         raise
 
 
@@ -727,6 +762,7 @@ async def preview_brief(
             await db.commit()
         except Exception:
             pass
+        _raise_ai_preview_http_error(e)
         raise
 
 
@@ -780,6 +816,7 @@ async def preview_quality(
             await db.commit()
         except Exception:
             pass
+        _raise_ai_preview_http_error(e)
         raise
 
 
@@ -836,6 +873,7 @@ async def preview_source_intelligence(
             await db.commit()
         except Exception:
             pass
+        _raise_ai_preview_http_error(e)
         raise
 
 
@@ -986,6 +1024,7 @@ async def preview_hist_source_intelligence(
             await db.commit()
         except Exception:
             pass
+        _raise_ai_preview_http_error(e)
         raise
 
 

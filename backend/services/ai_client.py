@@ -135,13 +135,29 @@ async def complete_structured_with_usage(
         options=options,
     )
     try:
-        raw = json.loads(text)
+        raw = json.loads(_strip_json_fence(text))
     except json.JSONDecodeError as exc:
         raise AIResponseParseError("AI response was not valid JSON.") from exc
     try:
         return schema.model_validate(raw), usage
     except ValidationError as exc:
         raise AIResponseValidationError("AI response did not match the required schema.") from exc
+
+
+def _strip_json_fence(text: str) -> str:
+    stripped = text.strip()
+    if not stripped.startswith("```"):
+        return stripped
+
+    lines = stripped.splitlines()
+    if not lines:
+        return stripped
+    first_line = lines[0].strip().lower()
+    if first_line not in {"```", "```json"}:
+        return stripped
+    if len(lines) >= 2 and lines[-1].strip() == "```":
+        return "\n".join(lines[1:-1]).strip()
+    return stripped
 
 
 def _ensure_live_ai_allowed(settings: Any) -> None:

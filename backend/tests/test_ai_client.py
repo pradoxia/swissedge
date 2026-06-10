@@ -92,6 +92,34 @@ async def test_structured_output_success(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_structured_output_accepts_json_fence(monkeypatch):
+    monkeypatch.setattr(
+        ai_client,
+        "complete_with_usage",
+        AsyncMock(return_value=('```json\n{"summary": "parsed", "score": 7}\n```', {"provider": "test"})),
+    )
+
+    parsed, usage = await ai_client.complete_structured_with_usage("prompt", StructuredResult)
+
+    assert parsed == StructuredResult(summary="parsed", score=7)
+    assert usage["provider"] == "test"
+
+
+@pytest.mark.asyncio
+async def test_structured_output_accepts_generic_fence(monkeypatch):
+    monkeypatch.setattr(
+        ai_client,
+        "complete_with_usage",
+        AsyncMock(return_value=('```\n{"summary": "parsed", "score": 7}\n```', {"provider": "test"})),
+    )
+
+    parsed, usage = await ai_client.complete_structured_with_usage("prompt", StructuredResult)
+
+    assert parsed == StructuredResult(summary="parsed", score=7)
+    assert usage["provider"] == "test"
+
+
+@pytest.mark.asyncio
 async def test_structured_output_validation_failure(monkeypatch):
     monkeypatch.setattr(
         ai_client,
