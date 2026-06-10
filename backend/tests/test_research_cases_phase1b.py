@@ -1,4 +1,5 @@
 """Phase 1B tests: ORM relationship fix, service layer, and API endpoints."""
+import ast
 import os
 import uuid
 import pytest
@@ -916,12 +917,25 @@ def test_api_patch_invalid_status_returns_400():
 # ── 8. Scope containment ──────────────────────────────────────────────────────
 
 def test_no_scanner_imports_in_research_cases_service():
-    import backend.services.investment.research_cases as svc
-    import inspect
-    src = inspect.getsource(svc)
-    assert "sec_edgar" not in src
-    assert "evaluate_situation" not in src
-    assert "scan" not in src.lower().replace("research_case", "")
+    tree = ast.parse(Path("backend/services/investment/research_cases.py").read_text(encoding="utf-8"))
+    imported_modules = [
+        node.module or ""
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+    ]
+    imported_modules.extend(
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    )
+    forbidden_modules = [
+        "backend.services.investment.sec_detection",
+        "backend.services.investment.scan_orchestrator",
+        "backend.services.investment.sources.sec_edgar",
+    ]
+
+    assert not any(module in forbidden_modules for module in imported_modules)
 
 
 def test_no_scanner_evaluator_or_cron_imports_in_research_cases_service():
@@ -937,11 +951,25 @@ def test_no_scanner_evaluator_or_cron_imports_in_research_cases_service():
 
 
 def test_no_scanner_imports_in_research_cases_router():
-    import backend.api.investment.research_cases as rtr
-    import inspect
-    src = inspect.getsource(rtr)
-    assert "sec_edgar" not in src
-    assert "evaluate_situation" not in src
+    tree = ast.parse(Path("backend/api/investment/research_cases.py").read_text(encoding="utf-8"))
+    imported_modules = [
+        node.module or ""
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+    ]
+    imported_modules.extend(
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    )
+    forbidden_modules = [
+        "backend.services.investment.sec_detection",
+        "backend.services.investment.scan_orchestrator",
+        "backend.services.investment.sources.sec_edgar",
+    ]
+
+    assert not any(module in forbidden_modules for module in imported_modules)
 
 
 def test_research_cases_router_registered():

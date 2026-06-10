@@ -377,22 +377,67 @@ def build_fontana_diagnostic_report(kpis: dict[str, Any]) -> dict[str, Any]:
         item.get("label", "Manual review")
         for item in kpis.get("manual_next_actions", [])
     ] or ["Review the Intelligence KPI Dashboard for the next manual triage target."]
+    findings = [
+        {
+            "severity": "info",
+            "area": "System health",
+            "title": "Stored pipeline inventory",
+            "description": item,
+        }
+        for item in system_health
+    ]
+    findings.extend(
+        {
+            "severity": "needs_attention",
+            "area": "Case bottlenecks",
+            "title": "Case bottleneck",
+            "description": item,
+        }
+        for item in case_bottlenecks
+    )
+    findings.extend(
+        {
+            "severity": "needs_attention" if "missing" in item.lower() or "human review" in item.lower() else "info",
+            "area": "Evidence",
+            "title": "Evidence diagnostic",
+            "description": item,
+        }
+        for item in evidence_gaps
+    )
+    severity_summary: dict[str, int] = {}
+    for finding in findings:
+        severity = finding["severity"]
+        severity_summary[severity] = severity_summary.get(severity, 0) + 1
+    guardrail_note = "Diagnostic-only read-only report. It did not run scanners, crawlers, evaluators, AI, production mutation, case promotion, or investment advice."
 
     return {
         "title": "Fontana Diagnostic Report",
         "mode": "deterministic_observer",
+        "run_mode": "diagnostic_only",
         "generated_at": kpis.get("generated_at", _now_iso()),
+        "next_run_at": None,
         "summary": "Fontana observes platform preparation quality, documentation gaps, evidence coverage, and manual workload. It does not execute changes.",
         "system_health": system_health,
+        "scope_reviewed": [
+            "case counts",
+            "intelligence score aggregates",
+            "documentation quality aggregates",
+            "evidence coverage aggregates",
+            "Agent Ops aggregate visibility",
+        ],
+        "severity_summary": severity_summary,
+        "findings": findings,
         "case_bottlenecks": case_bottlenecks,
         "evidence_gaps": evidence_gaps,
         "agent_ops_findings": agent_ops_findings,
         "recommended_manual_next_steps": manual_steps,
+        "recommended_engineering_tasks": manual_steps,
         "suggested_future_sprints": [
             "Improve missing-evidence triage UX after manual review.",
             "Add historical trend charts after KPI definitions are reviewed.",
             "Review Agent Ops diagnostic taxonomy before adding automation.",
         ],
+        "guardrail_note": guardrail_note,
         "guardrails": [
             "Fontana does not execute changes.",
             "This report is deterministic and read-only.",

@@ -125,6 +125,10 @@ def _initial_tasks_for_situation() -> list[ResearchTask]:
         "Document missing information and risks.",
         "Decide whether the case should move to deep research, monitoring, or archive.",
     ]
+    return [
+        ResearchTask(description=description, status="open", priority=2, source="system")
+        for description in descriptions
+    ]
 
 
 def _initial_tasks_for_promoted_special_situation() -> list[ResearchTask]:
@@ -139,10 +143,6 @@ def _initial_tasks_for_promoted_special_situation() -> list[ResearchTask]:
     ]
     return [
         ResearchTask(description=description, status="open", priority=2, source="manual_promotion")
-        for description in descriptions
-    ]
-    return [
-        ResearchTask(description=description, status="open", priority=2, source="system")
         for description in descriptions
     ]
 
@@ -202,12 +202,12 @@ class ResearchDocumentRead(BaseModel):
     retrieved_at: str | None
     summary: str | None
     added_by: str | None
-    body_text_excerpt: str | None
-    body_text_sha256: str | None
-    body_text_acquired_at: str | None
-    body_text_status: str | None
-    body_text_error: str | None
-    body_text_size_bytes: int | None
+    body_text_excerpt: str | None = None
+    body_text_sha256: str | None = None
+    body_text_acquired_at: str | None = None
+    body_text_status: str | None = None
+    body_text_error: str | None = None
+    body_text_size_bytes: int | None = None
     created_at: str
 
     @classmethod
@@ -222,12 +222,20 @@ class ResearchDocumentRead(BaseModel):
             retrieved_at=d.retrieved_at.isoformat() if d.retrieved_at else None,
             summary=d.summary,
             added_by=d.added_by,
-            body_text_excerpt=d.body_text_excerpt,
-            body_text_sha256=d.body_text_sha256,
-            body_text_acquired_at=d.body_text_acquired_at.isoformat() if d.body_text_acquired_at else None,
-            body_text_status=d.body_text_status,
-            body_text_error=d.body_text_error,
-            body_text_size_bytes=d.body_text_size_bytes,
+            body_text_excerpt=_nullable_str(getattr(d, "body_text_excerpt", None)),
+            body_text_sha256=_nullable_str(getattr(d, "body_text_sha256", None)),
+            body_text_acquired_at=(
+                value.isoformat()
+                if isinstance((value := getattr(d, "body_text_acquired_at", None)), datetime)
+                else None
+            ),
+            body_text_status=_nullable_str(getattr(d, "body_text_status", None)),
+            body_text_error=_nullable_str(getattr(d, "body_text_error", None)),
+            body_text_size_bytes=(
+                value
+                if isinstance((value := getattr(d, "body_text_size_bytes", None)), int)
+                else None
+            ),
             created_at=d.created_at.isoformat(),
         )
 
