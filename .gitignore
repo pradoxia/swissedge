@@ -138,3 +138,10 @@ docs/openclaw-observability.md
 vscode-setup-backup/
 
 .env.*.local
+
+# Session/local artifacts
+.tmp/
+.claude/
+entrega/
+docs/private/
+*.tar

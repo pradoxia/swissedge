@@ -55,11 +55,12 @@ export default function WatchlistPage() {
 
       <PageHeader
         title="Watchlist"
-        subtitle="Situations under active monitoring."
-        backHref="/investment/evaluations"
-        backLabel="Evaluations Queue"
+        subtitle="Situations under active monitoring. Legacy surface: day-to-day triage now lives in the Research Inbox."
+        backHref="/investment/research-inbox"
+        backLabel="Research Inbox"
         actions={
           <div style={{ display: 'flex', gap: '8px' }}>
+            <Link href="/investment/research-inbox" className="btn btn--secondary btn--sm">Research Inbox</Link>
             <Link href="/investment/research" className="btn btn--secondary btn--sm">Research Cases</Link>
           </div>
         }
@@ -72,7 +73,7 @@ export default function WatchlistPage() {
         <EmptyState
           icon="👁"
           title="No situations on watchlist"
-          description="Add situations to the watchlist from the Evaluations Queue."
+          description="Move situations to watchlist from the Kanban or the case workbench."
         />
       )}
 
@@ -97,7 +98,7 @@ export default function WatchlistPage() {
                   <tr key={s.id}>
                     <td>
                       <Link
-                        href={`/investment/evaluations/${s.id}`}
+                        href={`/investment/situations/${s.id}`}
                         style={{ color: 'var(--text-primary)', fontWeight: 500, textDecoration: 'none', display: 'block', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                         title={s.company_name}
                       >

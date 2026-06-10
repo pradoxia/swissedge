@@ -131,7 +131,7 @@ const workflowSteps = [
   { label: 'Evidence',   href: '/investment/situations',   helper: 'Evidence remains unverified until manual review' },
   { label: 'Promote',    href: '/investment/situations',   helper: 'Manual promotion creates a durable ResearchCase' },
   { label: 'Evaluate',   href: '/investment/research',     helper: 'Evaluation preparation and Intelligence Score' },
-  { label: 'Decide',     href: '/investment/intelligence', helper: 'Operational view labels; not investment advice' },
+  { label: 'Decide',     href: '/investment/research-inbox', helper: 'Human decision with recorded reason; not investment advice' },
 ];
 
 const workflowNotes = [
@@ -142,17 +142,24 @@ const workflowNotes = [
 ];
 
 const quickLinks: Array<[string, string]> = [
-  ['Operations Campus', '/campus'],
+  ['Research Inbox', '/investment/research-inbox'],
   ['Kanban — Special Situations', '/investment/situations'],
   ['Research Cases', '/investment/research'],
   ['Intelligence KPIs', '/investment/intelligence'],
-  ['Agent Ops / Executive Office', '/agent-ops'],
+  ['Governance / Agent Ops', '/agent-ops'],
   ['Sources', '/investment/sources'],
   ['Historical Cases / Analogues', '/investment/historical-cases'],
   ['Publishing Drafts (manual only)', '/investment/public-drafts'],
 ];
 
 const offices: ModuleCard[] = [
+  {
+    name: 'Governance / Agent Ops',
+    description: 'Review Fontana, Dani Weber, Executive Review, agent activity, diagnostics and proposals.',
+    href: '/agent-ops',
+    status: 'READ-ONLY',
+    icon: 'GO',
+  },
   {
     name: 'Dani Weber Office — COO',
     description: 'Manual approval authority for promotion, editorial gates, deploys, scanner changes, and publication.',
@@ -243,11 +250,11 @@ export default function Home() {
       icon: 'RC',
     },
     {
-      name: 'Intelligence KPIs',
-      status: 'READ-ONLY',
-      description: 'Preparation quality, evidence coverage, documentation gaps, and manual review workload',
-      href: '/investment/intelligence',
-      icon: 'IK',
+      name: 'Research Inbox',
+      status: 'CORE',
+      description: 'Single working queue: review new detections and open cases, decide next action',
+      href: '/investment/research-inbox',
+      icon: 'RI',
     },
     {
       name: 'Investment Sources',
@@ -284,16 +291,16 @@ export default function Home() {
       icon: 'HC',
     },
     {
-      name: 'Research Inbox',
-      status: 'SUPPORTING',
-      description: 'ResearchCase intake overview and manual labels',
-      href: '/investment/research-inbox',
-      icon: 'RI',
+      name: 'Intelligence KPIs',
+      status: 'READ-ONLY',
+      description: 'Preparation quality, evidence coverage, documentation gaps, and manual review workload',
+      href: '/investment/intelligence',
+      icon: 'IK',
     },
     {
       name: 'Public Drafts',
       status: 'MANUAL',
-      description: 'Manual draft review only; no auto-publish or external posting',
+      description: 'Manual draft review only; no external posting from Mission Control',
       href: '/investment/public-drafts',
       icon: 'PD',
     },
@@ -336,6 +343,13 @@ export default function Home() {
       icon: 'MP',
     },
     {
+      name: 'Operations Campus',
+      status: 'PAUSED',
+      description: 'Static visual layer. Not operational truth; agent state lives in Agent Ops.',
+      href: '/campus',
+      icon: 'OC',
+    },
+    {
       name: 'Agent Roster',
       status: 'ADVANCED',
       description: 'Operational roster for all agents; not needed for daily case completion',
@@ -366,49 +380,20 @@ export default function Home() {
           </div>
         </div>
 
-        {/* ── System status strip ── */}
+        {/* ── System status note (no hardcoded operational claims) ── */}
         <div className={styles.statusStrip}>
           <div className={styles.statusItem}>
-            <div className={styles.statusLabel}>V2 Mode</div>
-            <div className={styles.statusValue}>Manual-only</div>
-          </div>
-          <div className={styles.statusItem}>
-            <div className={styles.statusLabel}>V2 Daily Cap</div>
-            <div className={styles.statusValue}>10 / day</div>
-          </div>
-          <div className={styles.statusItem}>
-            <div className={styles.statusLabel}>Production</div>
-            <div className={styles.statusValue}>V1 Default</div>
-          </div>
-          <div className={styles.statusItem}>
-            <div className={styles.statusLabel}>Cron V2</div>
-            <div className={styles.statusValue}>Disabled</div>
+            <div className={styles.statusLabel}>System status</div>
+            <div className={styles.statusValue}>
+              See <Link href="/investment/radar-status" style={{ textDecoration: 'underline' }}>Radar Status</Link> for live scanner/cron state
+            </div>
           </div>
           <div className={styles.statusSpacer} />
           <div className={styles.statusPill}>
             <span className={styles.statusPillDot} />
-            Operational
+            Human-reviewed · No autonomous decisions
           </div>
         </div>
-
-        {/* ── Campus hero ── */}
-        <Link href="/campus" className={styles.campusHero}>
-          <div className={styles.campusHeroRow}>
-            <div className={styles.campusHeroLeft}>
-              <div className={styles.campusHeroEyebrow}>New · Live agent campus</div>
-              <div className={styles.campusHeroTitle}>Operations Campus</div>
-              <div className={styles.campusHeroDesc}>
-                Visit the visual campus — eight rooms, eight agents, live logs, scheduled runs, and the
-                full mission control overlay. Click any building to enter its room and see the latest
-                runs in real time.
-              </div>
-            </div>
-            <div className={styles.campusHeroCta}>
-              Enter the campus
-              <span className={styles.campusHeroArrow}>→</span>
-            </div>
-          </div>
-        </Link>
 
         {/* ── Investment Operations (visible, primary surface) ── */}
         <div>

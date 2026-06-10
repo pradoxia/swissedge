@@ -1,7 +1,7 @@
 ---
 document_id: PRD
 title: Product Requirements Document
-version: 0.3.0
+version: 0.3.1
 status: active
 owner: Dani
 last_updated: 2026-06-09
@@ -19,7 +19,7 @@ Date: 2026-06-09
 | --- | --- |
 | document_id | PRD |
 | title | Product Requirements Document |
-| version | 0.3.0 |
+| version | 0.3.1 |
 | status | active |
 | owner | Dani |
 | last_updated | 2026-06-09 |
@@ -377,38 +377,20 @@ Agent implementation boundaries are defined in `docs/architecture/AGENT_IMPLEMEN
 - Expanded source connectors beyond current approved scope.
 - External publishing workflow after manual approval model is complete.
 
-## 18. Risks and Open Questions
+### 17.1 Curated Human Source Registry (planned intake)
 
-- Current agents are not real LLM agents yet; docs must not imply they are.
-- Source Registry and scanner behavior are not fully aligned.
-- Local IDs are needed for reliable screenshots of specific detail pages.
-- Mission Control may contain hardcoded statuses that must not be treated as operational truth.
-- Governance persistence is undecided.
-- SEC document body persistence requires an approved storage/model approach and any required migration approval.
-- Research Inbox, AI preview orchestration, and decision logging are MVP v3 planned work, not current runtime claims.
-- Evaluator v2 remains unavailable as a default/manual flow until explicitly approved.
-- Campus may remain a static/visual surface and must not be treated as operational truth.
-- `/investment/governance` may or may not be approved as a future route.
-- Study Guide coverage depends on real mapping completeness.
+Future curated-intake feature: ideas seen in these sources enter the same triage
+loop as SEC detections via manual intake (`origin=curated`, with source
+attribution). Selection criteria: historical quality of published cases and fit
+with the low-institutional-competition strategy. Performance per source must be
+measured (cases reaching CANDIDATE) and low-signal sources pruned periodically.
 
-## 19. Related Documents
-
-- `docs/product/MVP_SCOPE.md`
-- `docs/product/ROADMAP.md`
-- `docs/governance/GUARDRAILS.md`
-- `docs/governance/OPERATING_MODEL.md`
-- `docs/governance/AI_COLLABORATION_MODEL.md`
-- `docs/architecture/SYSTEM_ARCHITECTURE.md`
-- `docs/architecture/DATA_MODEL.md`
-- `docs/architecture/AGENT_IMPLEMENTATION_MODEL.md`
-- `docs/agents/README.md`
-- `docs/ux/SCREENSHOT_MAP.md`
-- `docs/DOCUMENT_VERSION_INDEX.md`
-
-## 20. Changelog
-
-| Version | Date | Author | Change |
-| --- | --- | --- | --- |
-| 0.3.0 | 2026-06-09 | Codex | Adopted MVP v3 direction: end-to-end research loop, North Star Metric, supporting-only governance surfaces, updated acceptance criteria, and explicit approval guardrails. |
-| 0.2.0 | 2026-06-09 | Codex | Rewrote PRD into full product requirements format with MVP scope, journeys, surface requirements, agent requirements, product rules, acceptance criteria, and current governance-route clarification. |
-| 0.1.0 | 2026-06-08 | Codex | Initial official version. |
+| # | Source | URL | Tier | Description |
+| --- | --- | --- | --- | --- |
+| 1 | Special Situation Investments | specialsituationinvestments.com | Daily | Tender offers, liquidations, odd lots, going-privates with spread math. Publishes closed-idea track record with returns. Closest match to SwissEdge's target universe. |
+| 2 | InsideArbitrage | insidearbitrage.com | Daily | Systematic event-driven coverage: "Merger Arbitrage Mondays" (15+ years uninterrupted), spin-offs, buybacks, tender offers, reverse splits, insider transactions. |
+| 3 | Odd Lot Special Situations Newsletter | oddlotspecialsituations.com | Daily | Specialized in odd-lot tenders and reverse splits — structurally closed to institutions; one of the best risk-adjusted niches for individual investors. |
+| 4 | Yet Another Value Blog (Andrew Walker) | yetanothervalueblog.com | Weekly | High-quality event-driven write-ups and podcast interviews with special situations managers. Reference for thesis structure. |
+| 5 | Clark Street Value | clarkstreetvalue.blogspot.com | Weekly | Micro/nano-cap event-driven: liquidations, REITs in sales processes, asset sales. Historically excellent; reduced posting frequency but active. |
+| 6 | Exploring with Alluvial Capital (Dave Waters) | alluvial.substack.com | Weekly | Nano-caps, OTC and forgotten market corners — where institutional competition is absent. |
+| 7 | PETITION | petition.substack.com | Weekly | Distressed investing, restructuring and b
