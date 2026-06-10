@@ -1,7 +1,7 @@
 ---
 document_id: DATA_MODEL
 title: Data Model
-version: 0.2.2
+version: 0.2.3
 status: active
 owner: Dani
 last_updated: 2026-06-10
@@ -57,7 +57,7 @@ Boundary: M1 body text acquisition is SEC-only, manual, and does not verify evid
 
 Implemented in `backend/models/investment.py`.
 
-Purpose: cached market price metadata from a future approved price provider. Provider selection is pending, and M4A does not install a production price refresh cron.
+Purpose: cached market price metadata from a future approved price provider or from M4B manual Research Inbox entry. Provider selection is pending, and no production price refresh cron is installed.
 
 Key fields: `id`, `ticker`, `provider`, `latest_close_price`, `close_date`, `currency`, `market_cap`, `average_daily_volume`, `fetched_at`, `safe_metadata`, `created_at`, `updated_at`.
 
@@ -71,7 +71,7 @@ Key fields: `id`, `special_situation_id`, `research_case_id`, `ticker`, `offer_p
 
 Safe statuses: `available`, `missing_offer_price`, `missing_market_price`, `stale_price`, `not_applicable`.
 
-Boundary: price context is not investment advice, does not verify candidate-only situations, and must not auto-promote, reject, discard, publish, analyze, or decide cases. Migration file exists for review but production migration requires Dani approval.
+Boundary: price context is not investment advice, does not verify candidate-only situations, and must not auto-promote, reject, discard, archive, publish, analyze, or decide cases. M4B uses the existing M4A tables and adds no migration; production M4A migration still requires Dani approval.
 
 ### DecisionRecord
 
@@ -174,6 +174,7 @@ Future safe schema candidates:
 
 | Version | Date | Author | Change |
 | --- | --- | --- | --- |
+| 0.2.3 | 2026-06-10 | Codex | Documented M4B manual price context activation using existing M4A tables. |
 | 0.2.2 | 2026-06-10 | Codex | Documented M3B `DecisionRecord` model and no-side-effect decision boundary. |
 | 0.2.0 | 2026-06-10 | Codex | Documented M1 nullable `ResearchDocument` body text fields, status vocabulary, and SEC-only manual acquisition boundary. |
 | 0.1.0 | 2026-06-08 | Codex | Initial official version with agent-doc reference alignment. |

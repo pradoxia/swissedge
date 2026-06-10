@@ -114,6 +114,13 @@ from backend.services.investment.decision_records import (
     create_decision_record,
     serialize_decision_record,
 )
+from backend.services.investment.price_context import (
+    ManualPriceContextPayload,
+    PriceContextError,
+    PriceContextResponse,
+    serialize_price_context,
+    upsert_manual_price_context,
+)
 from backend.services.observability import run_logger
 
 router = APIRouter()
@@ -407,6 +414,21 @@ async def post_research_inbox_decision(body: DecisionRecordCreate, db: AsyncSess
         await db.refresh(record)
         return serialize_decision_record(record)
     except DecisionRecordError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
+
+
+@router.post("/research-inbox/price-context", response_model=PriceContextResponse)
+async def post_research_inbox_price_context(body: ManualPriceContextPayload, db: AsyncSession = Depends(get_db)):
+    try:
+        context = await upsert_manual_price_context(db, body)
+        await db.commit()
+        await db.refresh(context)
+        serialized = serialize_price_context(context)
+        if serialized is None:
+            raise PriceContextError("Price context could not be serialized")
+        return PriceContextResponse(price_context=serialized)
+    except PriceContextError as exc:
         await db.rollback()
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
 

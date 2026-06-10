@@ -1,7 +1,7 @@
 ---
 document_id: RUNBOOK
 title: Operations Runbook
-version: 0.4.5
+version: 0.4.6
 status: active
 owner: Dani
 last_updated: 2026-06-10
@@ -144,7 +144,7 @@ Operational rules:
 
 ## Price Context
 
-M4A adds local price/spread context foundations for triage prioritization only.
+M4A adds local price/spread context foundations for triage prioritization only. M4B adds manual Research Inbox price-context editing.
 
 Operational rules:
 
@@ -155,6 +155,10 @@ Operational rules:
 - The price context migration file is a local code artifact only; it has not been applied.
 - Production migration requires Dani approval.
 - Price context must not auto-promote, reject, discard, publish, analyze, or decide any case.
+- Manual price context may record ticker, offer price, offer price source, latest close, currency, status, and status reason.
+- Manual price context does not call a market-data provider, live AI, evaluator v2, scanner, SEC cron, or price cron.
+- M4B uses existing M4A tables; no new migration is required.
+- No production deployment, VPS change, production migration, provider integration, or price cron is approved in M4B.
 
 ## Incident Notes
 
@@ -170,6 +174,7 @@ For scanner, cron, live AI, or production incidents:
 
 | Version | Date | Author | Change |
 | --- | --- | --- | --- |
+| 0.4.6 | 2026-06-10 | Codex | Added M4B manual price context activation rules and no-provider/no-cron boundary. |
 | 0.4.5 | 2026-06-10 | Codex | Added M3B manual DecisionRecord operating rules and production migration approval boundary. |
 | 0.4.0 | 2026-06-10 | Codex | Added M2-pre AI client hardening note: live AI remains disabled by default, structured output failures are explicit, retries are bounded, and budget caps are conservative. |
 | 0.3.0 | 2026-06-10 | Codex | Added M1 manual SEC document body acquisition operating rules, safe statuses, endpoints, and production migration approval note. |

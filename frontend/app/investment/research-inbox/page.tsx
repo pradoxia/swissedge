@@ -5,7 +5,9 @@ import Link from 'next/link';
 import {
   fetchResearchInbox,
   recordResearchInboxDecision,
+  updateResearchInboxPriceContext,
   type DecisionOutcome,
+  type PriceContextStatus,
   type ResearchInboxItem,
   type ResearchInboxQueue,
 } from '@/lib/api';
@@ -16,6 +18,16 @@ type DecisionForm = {
   outcome: DecisionOutcome;
   reason: string;
   author: string;
+};
+type PriceForm = {
+  ticker: string;
+  offer_price: string;
+  offer_price_source: string;
+  latest_close_price: string;
+  latest_close_date: string;
+  currency: string;
+  spread_status: PriceContextStatus | '';
+  status_reason: string;
 };
 
 const FILTERS: { key: FilterKey; label: string }[] = [
@@ -33,6 +45,13 @@ const DECISION_LABELS: Record<DecisionOutcome, string> = {
 };
 
 const DECISION_OPTIONS: DecisionOutcome[] = ['CANDIDATE', 'WATCHLIST', 'REJECT', 'NEED_MORE_EVIDENCE'];
+const PRICE_STATUS_OPTIONS: Array<PriceContextStatus | ''> = [
+  '',
+  'not_applicable',
+  'missing_offer_price',
+  'missing_market_price',
+  'stale_price',
+];
 
 function formatDate(value: string | null): string {
   if (!value) return 'unknown';
@@ -70,6 +89,20 @@ function itemKey(item: ResearchInboxItem): string {
   return `${item.entity_type}-${item.id}`;
 }
 
+function priceFormFromItem(item: ResearchInboxItem): PriceForm {
+  const context = item.price_context;
+  return {
+    ticker: context?.ticker ?? item.ticker ?? '',
+    offer_price: context?.offer_price ?? '',
+    offer_price_source: context?.offer_price_source ?? '',
+    latest_close_price: context?.latest_close_price ?? '',
+    latest_close_date: context?.latest_close_date ?? '',
+    currency: '',
+    spread_status: context?.spread_status === 'not_applicable' ? 'not_applicable' : '',
+    status_reason: context?.status_reason ?? '',
+  };
+}
+
 function matchesFilter(item: ResearchInboxItem, filter: FilterKey): boolean {
   if (filter === 'candidate_only') return item.candidate_only;
   if (filter === 'needs_evidence') return hasEvidenceNeed(item);
@@ -94,7 +127,9 @@ export default function ResearchInboxPage() {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterKey>('all');
   const [decisionForms, setDecisionForms] = useState<Record<string, DecisionForm>>({});
+  const [priceForms, setPriceForms] = useState<Record<string, PriceForm>>({});
   const [savingDecision, setSavingDecision] = useState<string | null>(null);
+  const [savingPrice, setSavingPrice] = useState<string | null>(null);
   const [decisionMessage, setDecisionMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -116,11 +151,23 @@ export default function ResearchInboxPage() {
     return decisionForms[itemKey(item)] ?? { outcome: 'CANDIDATE', reason: '', author: 'Dani' };
   }
 
+  function priceFormFor(item: ResearchInboxItem): PriceForm {
+    return priceForms[itemKey(item)] ?? priceFormFromItem(item);
+  }
+
   function updateDecisionForm(item: ResearchInboxItem, patch: Partial<DecisionForm>) {
     const key = itemKey(item);
     setDecisionForms(current => ({
       ...current,
       [key]: { ...formFor(item), ...patch },
+    }));
+  }
+
+  function updatePriceForm(item: ResearchInboxItem, patch: Partial<PriceForm>) {
+    const key = itemKey(item);
+    setPriceForms(current => ({
+      ...current,
+      [key]: { ...priceFormFor(item), ...patch },
     }));
   }
 
@@ -148,6 +195,39 @@ export default function ResearchInboxPage() {
       setError(err instanceof Error ? err.message : 'Failed to record decision');
     } finally {
       setSavingDecision(null);
+    }
+  }
+
+  async function submitPriceContext(item: ResearchInboxItem) {
+    const key = itemKey(item);
+    const form = priceFormFor(item);
+    try {
+      setSavingPrice(key);
+      setDecisionMessage(null);
+      setError(null);
+      await updateResearchInboxPriceContext({
+        target_type: item.entity_type,
+        target_id: item.id,
+        ticker: form.ticker,
+        offer_price: form.offer_price,
+        offer_price_source: form.offer_price_source,
+        latest_close_price: form.latest_close_price,
+        latest_close_date: form.latest_close_date,
+        currency: form.currency,
+        spread_status: form.spread_status,
+        status_reason: form.status_reason,
+      });
+      setQueue(await fetchResearchInbox());
+      setPriceForms(current => {
+        const next = { ...current };
+        delete next[key];
+        return next;
+      });
+      setDecisionMessage('Manual price context updated.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update price context');
+    } finally {
+      setSavingPrice(null);
     }
   }
 
@@ -265,6 +345,69 @@ export default function ResearchInboxPage() {
                       </div>
                       <div style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--text-faint)', marginTop: 2 }}>
                         {item.price_context?.latest_close_date ? `close ${item.price_context.latest_close_date}` : 'price context unknown'}
+                      </div>
+                      <div style={{ display: 'grid', gap: 5, marginTop: 8, minWidth: 230 }}>
+                        <input
+                          value={priceFormFor(item).ticker}
+                          onChange={event => updatePriceForm(item, { ticker: event.target.value })}
+                          placeholder="Ticker"
+                          style={{ width: '100%' }}
+                        />
+                        <input
+                          value={priceFormFor(item).offer_price}
+                          onChange={event => updatePriceForm(item, { offer_price: event.target.value })}
+                          placeholder="Offer price"
+                          style={{ width: '100%' }}
+                        />
+                        <input
+                          value={priceFormFor(item).offer_price_source}
+                          onChange={event => updatePriceForm(item, { offer_price_source: event.target.value })}
+                          placeholder="Offer price source"
+                          style={{ width: '100%' }}
+                        />
+                        <input
+                          value={priceFormFor(item).latest_close_price}
+                          onChange={event => updatePriceForm(item, { latest_close_price: event.target.value })}
+                          placeholder="Latest close price"
+                          style={{ width: '100%' }}
+                        />
+                        <input
+                          value={priceFormFor(item).latest_close_date}
+                          onChange={event => updatePriceForm(item, { latest_close_date: event.target.value })}
+                          placeholder="Latest close date"
+                          type="date"
+                          style={{ width: '100%' }}
+                        />
+                        <input
+                          value={priceFormFor(item).currency}
+                          onChange={event => updatePriceForm(item, { currency: event.target.value })}
+                          placeholder="Currency"
+                          style={{ width: '100%' }}
+                        />
+                        <select
+                          value={priceFormFor(item).spread_status}
+                          onChange={event => updatePriceForm(item, { spread_status: event.target.value as PriceContextStatus | '' })}
+                          style={{ width: '100%' }}
+                        >
+                          <option value="">Auto status</option>
+                          {PRICE_STATUS_OPTIONS.filter(Boolean).map(status => (
+                            <option key={status} value={status}>{status}</option>
+                          ))}
+                        </select>
+                        <textarea
+                          value={priceFormFor(item).status_reason}
+                          onChange={event => updatePriceForm(item, { status_reason: event.target.value })}
+                          placeholder="Status reason"
+                          rows={2}
+                          style={{ width: '100%', resize: 'vertical' }}
+                        />
+                        <button
+                          className="btn btn--secondary btn--sm"
+                          onClick={() => submitPriceContext(item)}
+                          disabled={savingPrice === key}
+                        >
+                          {savingPrice === key ? 'Updating...' : 'Update price context'}
+                        </button>
                       </div>
                     </td>
                     <td style={{ maxWidth: 260 }}>

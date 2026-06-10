@@ -1,7 +1,7 @@
 ---
 document_id: ROADMAP
 title: Product Roadmap
-version: 0.5.4
+version: 0.5.5
 status: active
 owner: Dani
 last_updated: 2026-06-10
@@ -122,7 +122,7 @@ Status: implemented locally in Sprint M1. Production migration still requires Da
 
 ### M4 - Price Connector + Estimated Spread Context
 
-Status: M4A implements the local model/service foundation for cached price context and neutral `estimated_spread_pct` display in Research Inbox. Price/spread context is workflow prioritization context only, not advice or a decision signal. Provider selection, production migration, and production price refresh cron remain pending Dani approval.
+Status: M4A implements the local model/service foundation for cached price context and neutral `estimated_spread_pct` display in Research Inbox. M4B adds manual Research Inbox price-context editing for `SpecialSituation` and `ResearchCase` items, with source/reason capture and Decimal recalculation. Price/spread context is workflow prioritization context only, not advice or a decision signal. Provider selection, automated offer-price extraction, production deployment, production migration, and production price refresh cron remain pending Dani approval.
 
 ### M4 - Consolidated Workbench
 
@@ -245,6 +245,7 @@ The earlier candidate list prioritized governance stabilization, observability r
 
 | Version | Date | Author | Change |
 | --- | --- | --- | --- |
+| 0.5.5 | 2026-06-10 | Codex | Documented M4B manual price context activation and no-provider/no-cron boundary. |
 | 0.5.4 | 2026-06-10 | Codex | Documented M3B manual DecisionRecord foundation and no-autonomous-decision boundary. |
 | 0.5.1 | 2026-06-10 | Codex | Marked M1 SEC Document Acquisition v2 as implemented locally and documented production migration approval boundary. |
 | 0.5.0 | 2026-06-09 | Codex | Adopted MVP v3 roadmap with M1-M6 research-loop sprints, North Star validation, and post-MVP governance/agent/source/publishing work. |

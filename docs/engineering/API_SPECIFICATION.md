@@ -1,7 +1,7 @@
 ---
 document_id: API_SPECIFICATION
 title: API Specification
-version: 0.1.2
+version: 0.1.3
 status: active
 owner: Dani
 last_updated: 2026-06-08
@@ -25,6 +25,7 @@ This is the official high-level API map. Detailed route inventory is maintained 
 
 - `GET /api/investment/research-inbox`
 - `POST /api/investment/research-inbox/decision`
+- `POST /api/investment/research-inbox/price-context`
 - `GET /api/investment/situations`
 - `GET /api/investment/situations/{id}`
 - `PATCH /api/investment/situations/{id}`
@@ -43,6 +44,8 @@ This is the official high-level API map. Detailed route inventory is maintained 
 `GET /api/investment/research-inbox` may include optional `latest_decision` per item with `id`, `target_type`, `target_id`, `outcome`, `reason`, `author`, `source_surface`, and `created_at`.
 
 `POST /api/investment/research-inbox/decision` records one manual decision. Request fields: `target_type` (`special_situation` or `research_case`), `target_id`, `outcome` (`CANDIDATE`, `WATCHLIST`, `REJECT`, or `NEED_MORE_EVIDENCE`), `reason`, and `author`. Reason and author are required. The endpoint creates only a `DecisionRecord`; it must not promote, reject, discard, archive, publish, analyze, verify evidence, acquire documents, or hide queue items.
+
+`POST /api/investment/research-inbox/price-context` manually creates or updates cached price context. Request fields: `target_type`, `target_id`, optional `ticker`, `offer_price`, `offer_price_source`, `latest_close_price`, `latest_close_date`, optional `currency`, optional manual `spread_status`, and `status_reason`. If valid offer and latest close prices are present, `estimated_spread_pct` is recalculated with Decimal math. The endpoint does not call market-data providers, live AI, evaluator v2, scanner, cron, or external data sources, and it must not mutate case status or create decisions.
 
 ## Detection And Scanner
 
@@ -93,6 +96,7 @@ Guardrail: do not trigger `POST /api/investment/scan` unless explicitly approved
 
 | Version | Date | Author | Change |
 | --- | --- | --- | --- |
+| 0.1.3 | 2026-06-10 | Codex | Added M4B manual Research Inbox price-context endpoint. |
 | 0.1.2 | 2026-06-10 | Codex | Added M3B Research Inbox decision recording endpoint and latest_decision response note. |
 | 0.1.1 | 2026-06-10 | Codex | Added Research Inbox and optional price context response note for M4A. |
 | 0.1.0 | 2026-06-08 | Codex | Initial official version. |

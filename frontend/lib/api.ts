@@ -1859,6 +1859,12 @@ export interface ResearchInboxAction {
 }
 
 export type DecisionOutcome = 'CANDIDATE' | 'WATCHLIST' | 'REJECT' | 'NEED_MORE_EVIDENCE';
+export type PriceContextStatus =
+  | 'available'
+  | 'missing_offer_price'
+  | 'missing_market_price'
+  | 'stale_price'
+  | 'not_applicable';
 
 export interface DecisionRecord {
   id: string;
@@ -1900,6 +1906,18 @@ export interface ResearchInboxItem {
   } | null;
 }
 
+export interface PriceContextRead {
+  ticker: string | null;
+  offer_price: string | null;
+  offer_price_source: string | null;
+  latest_close_price: string | null;
+  latest_close_date: string | null;
+  estimated_spread_pct: string | null;
+  spread_status: PriceContextStatus;
+  status_reason: string | null;
+  updated_at: string | null;
+}
+
 export interface ResearchInboxQueue {
   count: number;
   items: ResearchInboxItem[];
@@ -1935,6 +1953,30 @@ export async function recordResearchInboxDecision(payload: {
   author: string;
 }): Promise<DecisionRecord> {
   const response = await fetch(`${API_BASE_URL}/api/investment/research-inbox/decision`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(typeof body?.detail === 'string' ? body.detail : `HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function updateResearchInboxPriceContext(payload: {
+  target_type: 'special_situation' | 'research_case';
+  target_id: string;
+  ticker?: string;
+  offer_price?: string;
+  offer_price_source?: string;
+  latest_close_price?: string;
+  latest_close_date?: string;
+  currency?: string;
+  spread_status?: PriceContextStatus | '';
+  status_reason?: string;
+}): Promise<{ price_context: PriceContextRead }> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/research-inbox/price-context`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
