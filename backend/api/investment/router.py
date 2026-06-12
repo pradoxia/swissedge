@@ -127,6 +127,10 @@ from backend.services.investment.curated_intake import (
     CuratedIntakeResponse,
     create_curated_special_situation,
 )
+from backend.models.investment_research import ResearchDocument
+from backend.services.investment.auto_acquisition import auto_acquire_situation_documents
+from backend.services.investment.research_cases import ResearchDocumentRead
+from backend.services.investment.study_guide import build_study_guide_map, get_study_guide_for_type
 from backend.services.observability import run_logger
 
 router = APIRouter()
@@ -1189,6 +1193,71 @@ async def promote_situation_to_research_case(
     }
 
 
+@router.get("/situations/{situation_id}/documents")
+async def get_situation_documents(situation_id: str, db: AsyncSession = Depends(get_db)):
+    """W4: read-only list of documents acquired for this situation (W1 output)."""
+    result = await db.execute(
+        select(ResearchDocument)
+        .where(ResearchDocument.special_situation_id == uuid.UUID(situation_id))
+        .order_by(ResearchDocument.created_at.desc())
+    )
+    docs = result.scalars().all()
+    return {
+        "situation_id": situation_id,
+        "count": len(docs),
+        "documents": [ResearchDocumentRead.from_orm(d).model_dump() for d in docs],
+        "note": "Auto-acquired documents are candidate evidence; human review required; not verified.",
+    }
+
+
+@router.post("/situations/{situation_id}/auto-acquire-documents")
+async def post_situation_auto_acquire_documents(
+    situation_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """W1 manual trigger: acquire SEC document bodies + map checklist evidence.
+
+    Manual backfill for situations detected before W1 (or beyond the per-run
+    cap). SEC hosts only; evidence_found is never verified; no promotion,
+    no AI, no decisions.
+    """
+    situation = await db.get(SpecialSituation, uuid.UUID(situation_id))
+    if not situation:
+        raise HTTPException(status_code=404, detail="Situation not found")
+
+    run_id = await run_logger.start_run(
+        db,
+        agent_name="edgar_scout_auto_acquisition",
+        agent_type="acquirer",
+        module="backend.services.investment.auto_acquisition",
+        runtime="fastapi",
+        trigger_source="manual_auto_acquire_endpoint",
+        task_name=f"Auto-acquire SEC documents for situation {situation_id[:8]}",
+        input_summary=f"situation_id={situation_id}",
+    )
+    try:
+        summary = await auto_acquire_situation_documents(db, situation)
+        await run_logger.finish_run(
+            db,
+            run_id,
+            output_summary=(
+                f"documents_acquired={summary['documents_acquired']}; "
+                f"resources_marked={len(summary['resources_marked_evidence_found'])}; "
+                f"warnings={len(summary['warnings'])}"
+            ),
+            final_outcome="success" if summary["documents_acquired"] else "completed_no_documents",
+        )
+        await db.commit()
+        return summary
+    except Exception as exc:
+        try:
+            await run_logger.fail_run(db, run_id, str(exc))
+            await db.commit()
+        except Exception:
+            await db.rollback()
+        raise HTTPException(status_code=500, detail="Auto-acquisition failed safely; see run logs.") from exc
+
+
 @router.get("/follow-up")
 @router.post("/follow-up")
 async def follow_up_watchlist(db: AsyncSession = Depends(get_db)):
@@ -1204,6 +1273,20 @@ async def follow_up_watchlist(db: AsyncSession = Depends(get_db)):
     )
     due = result.scalars().all()
     return {"due_for_follow_up": len(due), "situations": [_serialize(s) for s in due]}
+
+
+@router.get("/study-guide")
+async def get_study_guide_map_endpoint():
+    """W3: real situation-type -> course-chapter mapping from course_index.
+
+    Educational references only. Unmapped types are explicit gaps, never guesses.
+    """
+    return build_study_guide_map()
+
+
+@router.get("/study-guide/{situation_type}")
+async def get_study_guide_for_type_endpoint(situation_type: str):
+    return get_study_guide_for_type(situation_type)
 
 
 @router.get("/course-index")

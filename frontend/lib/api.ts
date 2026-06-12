@@ -2962,3 +2962,71 @@ export async function updateAgentOpsProposal(
   if (!response.ok) throw await parseAgentOpsError(response, 'Failed to update Agent Ops proposal');
   return response.json();
 }
+
+// ── W3: Study Guide real chapter mapping ────────────────────────────────────
+
+export interface StudyGuideMapPayload {
+  source: string;
+  generated_at: string;
+  warnings: string[];
+  guardrails: string[];
+  situation_types: Record<string, {
+    core: Array<{
+      chapter_number: number;
+      chapter_title: string;
+      concept_label: string;
+      description: string;
+      file_path: string | null;
+    }>;
+    supporting: Array<{
+      chapter_number: number;
+      chapter_title: string;
+      concept_label: string;
+      description: string;
+      file_path: string | null;
+    }>;
+    gaps: Array<{
+      concept_label: string;
+      description: string;
+      closest_chapters: number[];
+      annotation_note: string;
+    }>;
+  }>;
+}
+
+export async function fetchStudyGuideMap(): Promise<StudyGuideMapPayload> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/study-guide`);
+  if (!response.ok) throw new Error(`Failed to fetch study guide map: ${response.status}`);
+  return response.json();
+}
+
+// ── W4: situation acquired documents (W1 output) ───────────────────────────
+
+export interface SituationDocument {
+  id: string;
+  title: string | null;
+  url: string;
+  doc_type: string | null;
+  body_text_status: string | null;
+  body_text_size_bytes: number | null;
+  body_text_excerpt: string | null;
+  added_by: string | null;
+  created_at: string;
+}
+
+export async function fetchSituationDocuments(situationId: string): Promise<{ count: number; documents: SituationDocument[]; note: string }> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/situations/${situationId}/documents`);
+  if (!response.ok) throw new Error(`Failed to fetch situation documents: ${response.status}`);
+  return response.json();
+}
+
+export async function autoAcquireSituationDocuments(situationId: string): Promise<{
+  documents_acquired: number;
+  documents_failed: number;
+  resources_marked_evidence_found: string[];
+  warnings: string[];
+}> {
+  const response = await fetch(`${API_BASE_URL}/api/investment/situations/${situationId}/auto-acquire-documents`, { method: 'POST' });
+  if (!response.ok) throw new Error(`Auto-acquisition failed: ${response.status}`);
+  return response.json();
+}

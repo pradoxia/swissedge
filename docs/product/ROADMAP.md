@@ -1,7 +1,7 @@
 ---
 document_id: ROADMAP
 title: Product Roadmap
-version: 0.5.7
+version: 0.5.8
 status: active
 owner: Dani
 last_updated: 2026-06-10
@@ -143,6 +143,38 @@ Status: M4A implements the local model/service foundation for cached price conte
 - Reserve time for parsing failures, retry behavior, UI polish, documentation cleanup, and real-case edge cases found in M1-M5.
 - Keep scope bounded to hardening the MVP v3 loop.
 
+## W-Series - Working Agents (Dani-approved 2026-06-11)
+
+Converts documented agent personas into deterministic pipeline workers. Approved
+guardrail changes: scheduled SEC body acquisition post-detection (W1), the W1
+migration, and live AI activation at deploy time (W2).
+
+### W1 - Automatic SEC Document Acquisition + Evidence Mapping
+
+- Status: implemented locally (Claude). Migration `k1f2g3h4i5j6` created, NOT applied; production migration requires Dani.
+- After detection creates a SpecialSituation, the orchestrator automatically fetches the SEC filing index and downloads up to 8 document bodies (SEC hosts only, 2MB cap, throttled, max 5 situations/run, `AUTO_ACQUIRE_DOCUMENTS` off-switch).
+- Documents are stored as `ResearchDocument` rows linked via new `special_situation_id` and adopted by the ResearchCase on manual promotion.
+- Acquired documents are deterministically matched to methodology-workspace required resources and related checklist items, upgrading `missing`/`needs_evidence`/`candidate_found` to `evidence_found` with `verified: false` evidence refs.
+- `evidence_found` means located, never verified. No AI, no promotion, no rejection, no publishing, no decisions. Enrichment failures degrade to DetectionRun warnings and never break detection.
+- Manual backfill endpoint: `POST /api/investment/situations/{id}/auto-acquire-documents` (run-logged as `edgar_scout_auto_acquisition`).
+
+### W2 - Gated Analyze Case Activation (pending deploy decision)
+
+- Turn on live AI for the existing M2 analyze-preview with provider key, `AI_LIVE_ENABLED=true`, and `AI_DAILY_BUDGET_USD` set by Dani at deploy time. No code change expected beyond task-model configuration.
+
+### W3 - Study Guide Real Chapter Mapping
+
+- Status: implemented locally (Claude) against the restored course_index.
+- `GET /api/investment/study-guide` (+ per-type endpoint) serves real chapter references from `master_index.json`: chapter number, primary flag, course timestamp, and a real summary excerpt per chapter. Currently mapped: merger_arbitrage (5 primary; 6,7,9,10,13), merger, spin_off, bankruptcy.
+- The Study Guide panel fetches the live map with a safe fallback to the pending state; unmapped types (tender_offer, proxy_fight, rights_offering, delisting) render as explicit gaps pending Dani validation — a deterministic chapter scan found no real course coverage for them, so no mapping was invented.
+
+### W4 - Situation Detail Decluttering + W1 Visibility
+
+- Status: implemented locally (Claude).
+- New primary "Acquired documents" block in the Documents section: lists W1 auto-acquired documents with body-text status/size/excerpt and a manual "Auto-acquire SEC documents" button (backfill for pre-W1 cases). New read-only endpoint `GET /api/investment/situations/{id}/documents`.
+- Manual collection tools (documentation tasks, document package, evidence links) collapsed into a secondary details block; Case Documentation Guide and Case Completion Workbench moved into Advanced tools — W1 now does the work those panels described.
+- Primary flow is now: Acquired documents -> Study Guide (real chapters) -> Decision. Nothing was deleted; everything remains reachable under collapsed sections.
+
 ## Post-MVP
 
 - Eval harness / golden set for classification, analysis, and prompt/model regression testing.
@@ -247,6 +279,7 @@ The earlier candidate list prioritized governance stabilization, observability r
 
 | Version | Date | Author | Change |
 | --- | --- | --- | --- |
+| 0.5.8 | 2026-06-11 | Claude (Cowork) | Added W-Series working agents; documented W1 automatic SEC document acquisition + evidence mapping (Dani-approved guardrail change). |
 | 0.5.7 | 2026-06-11 | Codex | Documented M5 local ResearchCase workbench consolidation and no-new-persistence boundary. |
 | 0.5.6 | 2026-06-10 | Codex | Documented M4C manual curated source intake and no-scraping/no-automation boundary. |
 | 0.5.5 | 2026-06-10 | Codex | Documented M4B manual price context activation and no-provider/no-cron boundary. |

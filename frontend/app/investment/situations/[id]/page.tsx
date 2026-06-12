@@ -25,6 +25,9 @@ import { EducationStudyGuidePanel } from '@/app/components/EducationStudyGuidePa
 import {
   addSituationResource,
   acquireSituationSecDocuments,
+  autoAcquireSituationDocuments,
+  fetchSituationDocuments,
+  type SituationDocument,
   fetchSituationActivityTimeline,
   fetchSituationDocumentationGuide,
   fetchSituationDocumentPackage,
@@ -761,6 +764,10 @@ export default function SpecialSituationMethodologyPage() {
   const [completionWorkbench, setCompletionWorkbench] = useState<CaseCompletionPackage | null>(null);
   const [completionWorkbenchError, setCompletionWorkbenchError] = useState<string | null>(null);
   const [completionWorkbenchLoading, setCompletionWorkbenchLoading] = useState(false);
+  const [situationDocuments, setSituationDocuments] = useState<SituationDocument[]>([]);
+  const [situationDocumentsError, setSituationDocumentsError] = useState<string | null>(null);
+  const [autoAcquiring, setAutoAcquiring] = useState(false);
+  const [autoAcquireMsg, setAutoAcquireMsg] = useState<string | null>(null);
   const [officialSourceFinder, setOfficialSourceFinder] = useState<OfficialSourceFinderPackage | null>(null);
   const [officialSourceFinderError, setOfficialSourceFinderError] = useState<string | null>(null);
   const [officialSourceFinderLoading, setOfficialSourceFinderLoading] = useState(false);
@@ -857,6 +864,15 @@ export default function SpecialSituationMethodologyPage() {
         setEvidenceLinks(linksData);
       } catch (err) {
         setEvidenceLinksError(err instanceof Error ? err.message : 'Failed to load evidence links');
+      }
+    }
+    async function loadSituationDocuments() {
+      try {
+        setSituationDocumentsError(null);
+        const docsData = await fetchSituationDocuments(id);
+        setSituationDocuments(docsData.documents ?? []);
+      } catch (err) {
+        setSituationDocumentsError(err instanceof Error ? err.message : 'Failed to load acquired documents');
       }
     }
     async function loadDocumentationGuide() {
@@ -977,6 +993,7 @@ export default function SpecialSituationMethodologyPage() {
     if (id) loadEvidenceLinks();
     if (id) loadDocumentationGuide();
     if (id) loadCompletionWorkbench();
+    if (id) loadSituationDocuments();
     if (id) loadOfficialSourceFinder();
     if (id) loadSecDocumentAcquisition();
     if (id) loadDocumentPackage();
@@ -1030,6 +1047,26 @@ export default function SpecialSituationMethodologyPage() {
       setSecDocumentAcquisitionError(err instanceof Error ? err.message : 'Failed to acquire SEC document metadata');
     } finally {
       setSecDocumentAcquiring(false);
+    }
+  }
+
+  async function handleAutoAcquire() {
+    if (!situation) return;
+    setAutoAcquiring(true);
+    setAutoAcquireMsg(null);
+    try {
+      const result = await autoAcquireSituationDocuments(situation.id);
+      setAutoAcquireMsg(
+        `Acquired ${result.documents_acquired} document(s); ` +
+        `${result.resources_marked_evidence_found.length} checklist resource(s) marked evidence_found (not verified).`
+      );
+      const docsData = await fetchSituationDocuments(situation.id);
+      setSituationDocuments(docsData.documents ?? []);
+      await load();
+    } catch (err) {
+      setAutoAcquireMsg(err instanceof Error ? err.message : 'Auto-acquisition failed');
+    } finally {
+      setAutoAcquiring(false);
     }
   }
 
@@ -1308,6 +1345,68 @@ export default function SpecialSituationMethodologyPage() {
               </div>
               <div className={styles.sectionBody}>
                 <div style={{ display: 'grid', gap: 16 }}>
+                  <SectionCard title={`Acquired documents (${situationDocuments.length})`}>
+                    <div style={{ display: 'grid', gap: 10 }}>
+                      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <button
+                          className="btn btn--primary btn--sm"
+                          disabled={autoAcquiring}
+                          onClick={handleAutoAcquire}
+                        >
+                          {autoAcquiring ? 'Acquiring from SEC…' : 'Auto-acquire SEC documents'}
+                        </button>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)' }}>
+                          SEC hosts only · candidate evidence · not verified
+                        </span>
+                      </div>
+                      {autoAcquireMsg && (
+                        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{autoAcquireMsg}</div>
+                      )}
+                      {situationDocumentsError && (
+                        <div style={{ fontSize: 12, color: '#c62828' }}>{situationDocumentsError}</div>
+                      )}
+                      {situationDocuments.length === 0 && !situationDocumentsError && (
+                        <div className={styles.emptyState}>
+                          No documents acquired yet. New detections acquire automatically; use the button for older cases.
+                        </div>
+                      )}
+                      {situationDocuments.map(doc => (
+                        <div
+                          key={doc.id}
+                          style={{ border: '1px solid var(--border-subtle)', borderRadius: 8, padding: '10px 12px', display: 'grid', gap: 4 }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                            <a href={doc.url} target="_blank" rel="noreferrer" style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
+                              {doc.title || doc.url.rsplit('/', 1).pop()}
+                            </a>
+                            <span className={`status-badge ${doc.body_text_status === 'acquired' ? 'status-badge--active' : 'status-badge--readonly'}`}>
+                              {doc.body_text_status ?? 'metadata only'}
+                            </span>
+                          </div>
+                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faint)' }}>
+                            {doc.doc_type ?? 'document'}
+                            {doc.body_text_size_bytes ? ` · ${(doc.body_text_size_bytes / 1024).toFixed(0)} KB` : ''}
+                            {' · '}{doc.added_by ?? 'manual'} · not verified
+                          </div>
+                          {doc.body_text_excerpt && (
+                            <details>
+                              <summary style={{ cursor: 'pointer', fontSize: 11, color: 'var(--text-muted)' }}>Excerpt</summary>
+                              <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                                {doc.body_text_excerpt}
+                              </div>
+                            </details>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </SectionCard>
+
+                  <details className={styles.section}>
+                    <summary className={styles.sectionHeader}>
+                      <span className={styles.sectionTitle}>Manual collection tools</span>
+                    </summary>
+                    <div className={styles.sectionBody}>
+                      <div style={{ display: 'grid', gap: 16 }}>
                   <DocumentationTasksPanel
                     report={documentationAgentReport}
                     situation={situation}
@@ -1352,6 +1451,9 @@ export default function SpecialSituationMethodologyPage() {
                       />
                     </SectionCard>
                   </div>
+                      </div>
+                    </div>
+                  </details>
 
                   <details id="add-resource-manually" className={styles.section} style={{ scrollMarginTop: 80 }}>
                     <summary className={styles.sectionHeader}>
@@ -1477,19 +1579,6 @@ export default function SpecialSituationMethodologyPage() {
                     situation={situation}
                     report={documentationAgentReport}
                   />
-
-                  <CaseDocumentationGuidePanel
-                    guide={documentationGuide}
-                    error={documentationGuideError}
-                    onCopy={copyText}
-                    copiedKey={copiedKey}
-                  />
-
-                  <CaseCompletionWorkbench
-                    workbench={completionWorkbench}
-                    loading={completionWorkbenchLoading}
-                    error={completionWorkbenchError}
-                  />
                 </div>
               </div>
             </section>
@@ -1544,6 +1633,20 @@ export default function SpecialSituationMethodologyPage() {
               </summary>
               <div className={styles.sectionBody}>
                 <div className={styles.advancedWrapper}>
+                  {/* W4: meta-panels moved out of the primary flow (W1 does the work now) */}
+                  <CaseDocumentationGuidePanel
+                    guide={documentationGuide}
+                    error={documentationGuideError}
+                    onCopy={copyText}
+                    copiedKey={copiedKey}
+                  />
+
+                  <CaseCompletionWorkbench
+                    workbench={completionWorkbench}
+                    loading={completionWorkbenchLoading}
+                    error={completionWorkbenchError}
+                  />
+
                   <SECTransparencyPanel
                     situation={situation}
                     secDetection={secDetection as Record<string, unknown>}
