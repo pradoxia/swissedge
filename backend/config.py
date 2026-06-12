@@ -24,6 +24,9 @@ class Settings(BaseSettings):
 
     # SEC EDGAR (email required by their API policy)
     sec_user_agent: str = ""
+    # W1: automatic SEC document acquisition after detection (Dani-approved).
+    # Operational off-switch; acquired evidence remains unverified either way.
+    auto_acquire_documents: bool = True
 
     # App
     debug: bool = False

@@ -101,6 +101,9 @@ class ResearchDocument(Base):
     historical_case_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("historical_cases.id", ondelete="CASCADE"), nullable=True
     )
+    special_situation_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("special_situations.id", ondelete="CASCADE"), nullable=True
+    )
     doc_type: Mapped[str | None] = mapped_column(String(50))
     url: Mapped[str] = mapped_column(Text, nullable=False)
     title: Mapped[str | None] = mapped_column(Text)
@@ -122,6 +125,7 @@ class ResearchDocument(Base):
     __table_args__ = (
         Index("idx_research_documents_case_id", "research_case_id"),
         Index("idx_research_documents_doc_type", "doc_type"),
+        Index("idx_research_documents_special_situation_id", "special_situation_id"),
     )
 
 

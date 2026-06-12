@@ -1,9 +1,11 @@
 'use client';
 
-import type { DocumentationAgentReport, Situation } from '@/lib/api';
+import { useEffect, useState } from 'react';
+import { fetchStudyGuideMap, type DocumentationAgentReport, type Situation } from '@/lib/api';
 import {
   normalizeStudyGuideSituationType,
   studyGuideMapping,
+  type StudyGuideSituationMapping,
   type StudyGuideChapterReference,
   type StudyGuideGap,
 } from '@/app/components/studyGuideMapping';
@@ -18,13 +20,18 @@ function typeCandidates(situation: Situation, report: DocumentationAgentReport |
   ];
 }
 
-function mappingFor(situation: Situation, report: DocumentationAgentReport | null) {
+function mappingFor(
+  situation: Situation,
+  report: DocumentationAgentReport | null,
+  liveMap: Record<string, StudyGuideSituationMapping> | null,
+) {
+  const source = liveMap ?? studyGuideMapping;
   for (const candidate of typeCandidates(situation, report)) {
     const normalized = normalizeStudyGuideSituationType(candidate);
-    if (normalized) {
+    if (normalized && source[normalized]) {
       return {
         normalizedType: normalized,
-        mapping: studyGuideMapping[normalized],
+        mapping: source[normalized],
       };
     }
   }
@@ -162,7 +169,25 @@ export function EducationStudyGuidePanel({
   situation: Situation;
   report: DocumentationAgentReport | null;
 }) {
-  const { normalizedType, mapping } = mappingFor(situation, report);
+  const [liveMap, setLiveMap] = useState<Record<string, StudyGuideSituationMapping> | null>(null);
+  const [mapError, setMapError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchStudyGuideMap()
+      .then(payload => {
+        if (!cancelled) setLiveMap(payload.situation_types ?? null);
+      })
+      .catch(() => {
+        // Safe fallback: keep the empty local placeholder -> pending state.
+        if (!cancelled) setMapError('Course mapping unavailable; showing pending state.');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const { normalizedType, mapping } = mappingFor(situation, report, liveMap);
   const showPending = !mapping || !hasMappedContent(mapping);
   const studyFirst = mapping ? [...mapping.core, ...mapping.supporting].slice(0, 3) : [];
 
@@ -183,8 +208,9 @@ export function EducationStudyGuidePanel({
           </div>
           <div style={{ marginTop: 4, fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
             {normalizedType
-              ? `A safe placeholder exists for ${normalizedType}, but no course chapters have been mapped yet.`
+              ? `No course chapters are mapped for ${normalizedType} in the processed course index.`
               : 'No supported situation-type mapping was found for this record.'}
+            {mapError ? ` ${mapError}` : ''}
           </div>
         </div>
       ) : (

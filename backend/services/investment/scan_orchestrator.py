@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.config import get_settings
 from backend.models.investment import DetectionRun
+from backend.services.investment.auto_acquisition import auto_acquire_for_created_situations
 from backend.services.investment.sec_detection import run_sec_edgar_detection
 from backend.services.investment.sources.sec_edgar import SECEdgarAdapter
 
@@ -124,7 +125,28 @@ async def run_special_situation_scan(
         await _finish_run(db, run, summary, error_message=str(exc))
         return summary
 
+    # W1 (Dani-approved 2026-06-11): automatic SEC document acquisition for
+    # situations created in this run. Bounded, SEC-only, fail-safe: any failure
+    # becomes a warning and never breaks detection. evidence_found != verified.
+    auto_acquisition_summary: dict[str, Any] = {
+        "enabled": bool(getattr(settings, "auto_acquire_documents", True)),
+        "situations_processed": 0,
+        "documents_acquired": 0,
+        "resources_marked_evidence_found": 0,
+        "warnings": [],
+    }
+    created_entries = list(detection_summary.get("created_situations") or [])
+    if auto_acquisition_summary["enabled"] and not dry_run and created_entries:
+        try:
+            enrichment = await auto_acquire_for_created_situations(db, created_entries)
+            auto_acquisition_summary.update(enrichment)
+        except Exception as exc:  # never break detection
+            logger.exception("Auto-acquisition enrichment failed safely run_id=%s", run.id)
+            auto_acquisition_summary["warnings"].append(f"Auto-acquisition failed safely: {exc}")
+    detection_summary["auto_acquisition"] = auto_acquisition_summary
+
     warnings = _warnings_from_detection_summary(detection_summary)
+    warnings.extend(auto_acquisition_summary.get("warnings") or [])
     errors = list(detection_summary.get("errors") or [])
     status = _status_from_detection_summary(detection_summary, errors)
     summary = {

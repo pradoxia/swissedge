@@ -29,6 +29,7 @@ const KNOWN_SITUATION_TYPES = new Set([
   'spin_off',
   'rights_offering',
   'liquidation',
+  'delisting',
   'bankruptcy',
   'other',
 ]);

@@ -105,6 +105,32 @@ Operational rules:
 - AI usage is logged only when a provider call actually occurs and usage metadata exists.
 - Daily budget checks use logged `AiUsage.estimated_cost` as an operational estimate, not billing-grade cost accounting.
 
+### W2 — Live AI Activation Procedure (Dani-approved 2026-06-11, OpenAI first)
+
+Dani approved activating live AI with OpenAI as the initial provider; switching
+to Anthropic later is a `.env`-only change (`AI_PROVIDER=anthropic` plus key).
+
+Activation steps (Dani only, on the target environment's `.env`):
+
+1. Set `OPENAI_API_KEY` (never commit keys; `.env` is gitignored).
+2. Set `AI_LIVE_ENABLED=true`.
+3. Set `AI_DAILY_BUDGET_USD` (recommended starting value: 5).
+4. Optional but recommended: `AI_TASK_MODEL_OVERRIDES={"analyze_case_preview": "gpt-4o", "brief_preview": "gpt-4o"}` so long-document analysis uses a stronger model; everything else stays on `gpt-4o-mini`.
+5. Restart the backend service.
+
+Billing note: API usage is billed separately from any ChatGPT subscription —
+the subscription does not cover API tokens. The operational cost guard is
+`AI_DAILY_BUDGET_USD` plus the logged `AiUsage` estimates.
+
+Smoke test after activation:
+
+1. Open a ResearchCase with acquired body text and run Analyze Preview — it must return a preview (no 503) with usage metadata.
+2. Check `/agent-ops` (or `GET /api/observability/agents/analyze_case_previewer`) for the run record with tokens and estimated cost.
+3. Run a second preview on a case WITHOUT body text — it must still return `blocked_missing_documents` without an AI call.
+
+Rollback: set `AI_LIVE_ENABLED=false` and restart — every AI endpoint returns
+the controlled 503 again. No code change required in either direction.
+
 ## Scheduled SEC EDGAR Detection
 
 Scheduled detection is documented in `docs/operations/SCHEDULED_DETECTION.md`.

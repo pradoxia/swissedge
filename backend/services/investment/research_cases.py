@@ -197,6 +197,7 @@ class ResearchDocumentRead(BaseModel):
     id: str
     research_case_id: str | None
     historical_case_id: str | None
+    special_situation_id: str | None = None
     doc_type: str | None
     url: str
     title: str | None
@@ -217,6 +218,7 @@ class ResearchDocumentRead(BaseModel):
             id=str(d.id),
             research_case_id=str(d.research_case_id) if d.research_case_id else None,
             historical_case_id=str(d.historical_case_id) if d.historical_case_id else None,
+            special_situation_id=_nullable_uuid_str(getattr(d, "special_situation_id", None)),
             doc_type=d.doc_type,
             url=d.url,
             title=d.title,
@@ -779,6 +781,18 @@ async def promote_special_situation_to_research_case(
             signal_quality="medium",
             notes="Resource candidate copied from SpecialSituation methodology workspace. Metadata only; URL not fetched.",
         ))
+
+    # W1: adopt auto-acquired situation documents (body text included) into the
+    # promoted ResearchCase. Documents keep their special_situation_id link and
+    # remain unverified candidate evidence.
+    situation_docs = await db.execute(
+        select(ResearchDocument).where(
+            ResearchDocument.special_situation_id == situation_id,
+            ResearchDocument.research_case_id.is_(None),
+        )
+    )
+    for doc in situation_docs.scalars().all():
+        doc.research_case_id = rc.id
 
     await db.flush()
     workspace["research_case_id"] = str(rc.id)
